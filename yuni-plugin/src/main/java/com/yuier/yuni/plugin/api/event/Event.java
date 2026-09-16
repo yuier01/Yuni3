@@ -80,6 +80,25 @@ public interface Event {
     String subType();
 
     /**
+     * 判定本事件的子类型是否匹配。
+     *
+     * <p>与 {@link MatchToken#is(String)} 对称。在处理器里做二次判定时比
+     * {@code "poke".equals(ev.subType())} 更简洁，且 {@code null} 安全。</p>
+     *
+     * <pre>{@code
+     * ctx.onNotice((ev, reply) -> {
+     *     if (ev.is("poke")) { ... }
+     * });
+     * }</pre>
+     *
+     * @param expected 期望的子类型；{@code null} 恒返回 {@code false}
+     * @return 子类型相等时返回 {@code true}
+     */
+    default boolean is(String expected) {
+        return expected != null && expected.equals(subType());
+    }
+
+    /**
      * 按名取差异字段。
      *
      * @param key 字段名

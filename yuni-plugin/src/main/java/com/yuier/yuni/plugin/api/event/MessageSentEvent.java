@@ -70,6 +70,17 @@ public interface MessageSentEvent extends Event {
     long messageId();
 
     /**
+     * 发送者账号。
+     *
+     * <p>发出消息的通常是机器人自己，因此该值一般等于 {@link Event#selfId()}。
+     * 保留本方法是为了让「转发/审计」类插件能像处理普通消息一样读取，
+     * 不必特判事件类型。</p>
+     *
+     * @return 发送者 QQ 号；协议未提供时为 {@code 0}
+     */
+    long userId();
+
+    /**
      * 消息内容（只读视图）。
      *
      * @return 消息链视图，永不为 {@code null}
