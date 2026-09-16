@@ -341,11 +341,49 @@ public interface YuniContext {
      * <p>是 Effect——插件卸载时服务自动注销，依赖它的插件会转为
      * {@code PENDING} 或失败（取决于依赖是必需还是可选）。</p>
      *
+     * <pre>{@code
+     * ctx.provide(MaiMaiApi.class, new MaiMaiApiImpl(server));
+     * }</pre>
+     *
      * @param type 服务类型（通常是接口）
      * @param impl 实现实例
      * @return 撤销句柄
      */
     Disposable provide(Class<?> type, Object impl);
+
+    /**
+     * 注册一个服务，实现由工厂函数<b>按服务类型</b>创建。
+     *
+     * <h3>为什么需要这个重载</h3>
+     * <p>当服务契约是<b>函数式接口</b>（例如 {@code interface Greeter { String greet(); }}）
+     * 时，想把一个 lambda 直接注册为服务会遇到 Java 类型推断的硬限制：</p>
+     *
+     * <pre>{@code
+     * ctx.provide(Greeter.class, () -> "hello");          // ✗ 编译失败
+     * }</pre>
+     *
+     * <p>{@link #provide(Class, Object)} 的第二参数是 {@code Object}，
+     * 编译器没有任何信息把 lambda 推断成 {@code Greeter}，于是把它当成
+     * 「目标类型为 Object 的 lambda」——而 {@code Object} 不是函数式接口，报错。
+     * 写法只能是带转型的丑陋形式：{@code (Greeter) () -> "hello"}。</p>
+     *
+     * <p>本重载把服务类型<b>同时作为工厂的返回值类型</b>，编译器于是能把 lambda
+     * 正确推断为 {@code Greeter}：</p>
+     *
+     * <pre>{@code
+     * ctx.provide(Greeter.class, type -> () -> "hello");  // ✓
+     * // 或更简洁：对函数式契约用方法引用
+     * ctx.provide(Greeter.class, type -> this::greet);
+     * }</pre>
+     *
+     * <p>工厂参数 {@code type} 就是传入的服务类型，便于同一实现在多个契约间分派。</p>
+     *
+     * @param type    服务类型
+     * @param factory 由服务类型创建实现的工厂
+     * @param <T>     服务类型
+     * @return 撤销句柄
+     */
+    <T> Disposable provide(Class<T> type, java.util.function.Function<Class<T>, T> factory);
 
     // ==================== 作用域状态 ====================
 

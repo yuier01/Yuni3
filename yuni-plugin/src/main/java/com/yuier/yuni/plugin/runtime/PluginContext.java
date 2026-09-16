@@ -469,6 +469,18 @@ public final class PluginContext implements YuniContext {
         return registerDisposable(() -> services.unregister(type, fiber));
     }
 
+    @Override
+    public <T> Disposable provide(Class<T> type, java.util.function.Function<Class<T>, T> factory) {
+        if (type == null || factory == null) {
+            throw new IllegalArgumentException("服务类型与工厂均不能为 null");
+        }
+        T impl = factory.apply(type);
+        if (impl == null) {
+            throw new IllegalStateException("服务工厂未返回实现: " + type.getName());
+        }
+        return provide(type, (Object) impl);
+    }
+
     // ==================== 作用域状态 ====================
 
     @Override
