@@ -15,8 +15,6 @@ import com.yuier.yuni.core.util.SpringContextUtil;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.event.detector.message.MessageDetector;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
-import lombok.AllArgsConstructor;
-import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,12 +28,72 @@ import static com.yuier.yuni.core.constants.YuniMessageType.PRIVATE_MESSAGE;
  * 命令节点探测器 —— 使用 CommandNode + CommandMatcher 替代旧的 CommandModel + CommandMatcher。
  *
  * <p>插件在 {@code getDetector()} 中返回本探测器即可迁移到新命令系统。</p>
+ *
+ * <h2>依赖注入（重构 P4 新增）</h2>
+ * <p>本类原先通过 {@code SpringContextUtil.getBean(...)} 静态取
+ * {@code YuniBot} 与 {@code BotApp}。这让它在 Spring 容器之外完全无法使用——
+ * 单元测试必须启动整个容器。新插件系统通过构造器注入这两个依赖，
+ * 静态取 Bean 仅作为<b>兼容回退</b>保留（旧插件路径仍在用无参构造）。</p>
  */
-@Data
-@AllArgsConstructor
 public class CommandDetector implements MessageDetector {
 
     private CommandNode rootNode;
+
+    /**
+     * 机器人实例，用于在 tokenize 阶段查询被回复人。
+     *
+     * <p>{@code null} 时回退到静态容器查找。</p>
+     */
+    private YuniBot bot;
+
+    /**
+     * 机器人业务配置，提供命令前缀。
+     *
+     * <p>{@code null} 时回退到静态容器查找。</p>
+     */
+    private BotApp botApp;
+
+    /**
+     * 兼容构造器：依赖在首次使用时经静态容器解析。
+     *
+     * <p>供旧插件系统与既有插件代码使用，行为与重构前完全一致。</p>
+     *
+     * @param rootNode 命令树根节点
+     */
+    public CommandDetector(CommandNode rootNode) {
+        this.rootNode = rootNode;
+    }
+
+    /**
+     * 依赖注入构造器（新插件系统使用）。
+     *
+     * @param rootNode 命令树根节点
+     * @param bot      机器人实例，用于查询被回复人；可为 {@code null}
+     * @param botApp   机器人业务配置，提供命令前缀；可为 {@code null}
+     */
+    public CommandDetector(CommandNode rootNode, YuniBot bot, BotApp botApp) {
+        this.rootNode = rootNode;
+        this.bot = bot;
+        this.botApp = botApp;
+    }
+
+    /**
+     * 命令树根节点。
+     *
+     * @return 根节点
+     */
+    public CommandNode getRootNode() {
+        return rootNode;
+    }
+
+    /**
+     * 设置命令树根节点。
+     *
+     * @param rootNode 根节点
+     */
+    public void setRootNode(CommandNode rootNode) {
+        this.rootNode = rootNode;
+    }
 
     @Override
     public Boolean match(YuniMessageEvent event) {
@@ -44,13 +102,14 @@ public class CommandDetector implements MessageDetector {
         }
 
         // tokenize → CommandTokens（含抽离的回复消息段）
-        CommandTokens tokens = tokenize(event.getMessageChain());
+        // 传入实例化的 bot：新插件系统在 Spring 容器之外也能正常工作
+        CommandTokens tokens = tokenize(event.getMessageChain(), resolveBot());
         if (tokens.isEmpty()) {
             return false;
         }
 
         // 检查命令头是否以 commandFlag 开头
-        String commandFlag = getBotApp().getCommandFlag();
+        String commandFlag = resolveBotApp().getCommandFlag();
         if (!(tokens.get(FIRST_INDEX) instanceof TextSegment)) {
             return false;
         }
@@ -79,6 +138,48 @@ public class CommandDetector implements MessageDetector {
         return false;
     }
 
+    /**
+     * 解析机器人业务配置：优先用注入实例，回退到静态容器。
+     *
+     * <p>回退路径在 Spring 容器之外必然失败（{@code SpringContextUtil} 的
+     * 静态字段为 {@code null}）。这里给出明确的错误信息，而不是让
+     * {@code NullPointerException} 从容器内部抛出来——后者在插件里表现为
+     * 「命令莫名其妙不生效」，极难定位。</p>
+     *
+     * @return 业务配置
+     * @throws IllegalStateException 未注入且容器不可用时
+     */
+    private BotApp resolveBotApp() {
+        if (botApp != null) {
+            return botApp;
+        }
+        try {
+            return SpringContextUtil.getBean(BotApp.class);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "CommandDetector 未注入 BotApp，且无法从 Spring 容器获取。"
+                            + "请使用 CommandDetector(CommandNode, YuniBot, BotApp) 构造器，"
+                            + "或在 Spring 容器内运行。", e);
+        }
+    }
+
+    /**
+     * 解析机器人实例：优先用注入实例，回退到静态容器。
+     *
+     * @return 机器人实例；两者都不可用时返回 {@code null}
+     */
+    private YuniBot resolveBot() {
+        if (bot != null) {
+            return bot;
+        }
+        try {
+            return SpringContextUtil.getBean(YuniBot.class);
+        } catch (Exception e) {
+            // 无 bot 时仍可完成匹配，只是无法剔除「@被回复人」的 At 段
+            return null;
+        }
+    }
+
     @Override
     public MessageType listenAt() {
         return MessageType.GROUP;
@@ -100,6 +201,22 @@ public class CommandDetector implements MessageDetector {
      * </ul>
      */
     static CommandTokens tokenize(MessageChain chain) {
+        // 兼容入口：无注入依赖时回退到静态容器查找。
+        // 静态方法签名保持不变，以免破坏既有调用点（设计文档 §6.8 承诺命令引擎零改动）。
+        return tokenize(chain, null);
+    }
+
+    /**
+     * 将消息链 tokenize（支持依赖注入）。
+     *
+     * <p>与单参版本的唯一区别是「查询被回复人」所用的机器人实例来源：
+     * 本重载接收显式实例，供新插件系统在 Spring 容器之外使用。</p>
+     *
+     * @param chain 消息链
+     * @param bot   机器人实例，用于查询被回复人；{@code null} 时回退到静态容器
+     * @return token 列表 + 抽离的回复段
+     */
+    static CommandTokens tokenize(MessageChain chain, YuniBot bot) {
         List<MessageSegment> rawTokens = new ArrayList<>();
 
         // 初步处理，先按消息段对消息链进行拆分；其中，对于文本消息段，进一步按空格进行拆分。结果输出为 rawToken
@@ -125,7 +242,10 @@ public class CommandDetector implements MessageDetector {
         ReplySegment reply = null;
         if (!rawTokens.isEmpty() && rawTokens.get(FIRST_INDEX).typeOf(MessageSegmentTypes.REPLY)) {
             reply = (ReplySegment) rawTokens.remove(FIRST_INDEX);
-            BotMessageInfo msg = getYuniBot().getMessage(reply.getId()).orElse(null);
+            YuniBot effectiveBot = bot != null ? bot : tryGetYuniBot();
+            BotMessageInfo msg = effectiveBot == null
+                    ? null
+                    : effectiveBot.getMessage(reply.getId()).orElse(null);
             Long userId = msg != null ? msg.getUserId() : 0L;
             rawTokens.removeIf(seg ->
                     seg.typeOf(MessageSegmentTypes.AT) &&
@@ -135,11 +255,18 @@ public class CommandDetector implements MessageDetector {
         return new CommandTokens(rawTokens, reply);
     }
 
-    private static YuniBot getYuniBot() {
-        return SpringContextUtil.getBean(YuniBot.class);
-    }
-
-    private static BotApp getBotApp() {
-        return SpringContextUtil.getBean(BotApp.class);
+    /**
+     * 尝试从静态容器取机器人实例。
+     *
+     * @return 机器人实例；容器未就绪时返回 {@code null}
+     */
+    private static YuniBot tryGetYuniBot() {
+        try {
+            return SpringContextUtil.getBean(YuniBot.class);
+        } catch (Exception e) {
+            // 容器未启动或 bot 尚未注册：无法剔除「@被回复人」的 At 段，
+            // 但匹配本身仍可继续
+            return null;
+        }
     }
 }

@@ -1,0 +1,659 @@
+package com.yuier.yuni.plugin.runtime.dispatch;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.yuier.yuni.core.bot.JsonCodec;
+import com.yuier.yuni.core.enums.CommandArgRequireType;
+import com.yuier.yuni.core.enums.UserPermission;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.notice.PokeEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
+import com.yuier.yuni.core.model.bot.BotApp;
+import com.yuier.yuni.core.model.message.MessageChain;
+import com.yuier.yuni.core.model.user.MessageSender;
+import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
+import com.yuier.yuni.event.detector.message.command.model.ArgDef;
+import com.yuier.yuni.event.detector.message.command.model.CommandNode;
+import com.yuier.yuni.plugin.api.PluginMetadata;
+import com.yuier.yuni.plugin.api.YuniContext;
+import com.yuier.yuni.plugin.api.YuniPlugin;
+import com.yuier.yuni.plugin.runtime.PluginFiber;
+import com.yuier.yuni.plugin.runtime.PluginRuntime;
+import com.yuier.yuni.plugin.runtime.RegistrationTable;
+import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
+import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
+import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * {@link EventPipeline} 与 {@link CommandDispatcher} 的集成测试。
+ *
+ * <h2>为什么这组测试重要</h2>
+ * <p>它验证设计文档 §10.2 的两条<b>现行不变式</b>在新流水线里被保持：</p>
+ * <ol>
+ *   <li><b>命令优先且短路模式插件</b>——命中命令后不再匹配消息/模式处理器；</li>
+ *   <li><b>节点级权限递归校验</b>——沿匹配路径逐层比对，同一命令不同子命令
+ *       可要求不同权限。</li>
+ * </ol>
+ * <p>以及 §1.6 声称修掉的行为不一致：作用域过滤成为<b>所有事件类型的必经关卡</b>
+ * （现行 {@code matchRequestEvent} / {@code matchMetaEvent} / {@code matchMessageSentEvent}
+ * 完全不检查启停）。</p>
+ */
+class EventPipelineTest {
+
+    private RecordingYuniBot bot;
+    private JsonCodec jsonCodec;
+    private PluginRuntime runtime;
+    private PluginEventAdapter adapter;
+    private CommandDispatcher commandDispatcher;
+    private EventPipeline pipeline;
+
+    /** 命令前缀配置。 */
+    private BotApp botApp;
+
+    @BeforeEach
+    void setUp() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        new PolymorphicRegistrationProcessor().applyTo(mapper);
+        jsonCodec = new JsonCodec(mapper);
+
+        bot = new RecordingYuniBot();
+        runtime = new PluginRuntime(null, jsonCodec);
+        adapter = new PluginEventAdapter(bot, jsonCodec);
+
+        // 命令前缀必须注入——CommandDetector 会用它剥离命令头。
+        // 不注入时会回退到 SpringContextUtil，而在单元测试里没有 Spring 容器。
+        botApp = new BotApp();
+        botApp.setCommandFlag("/");
+
+        commandDispatcher = new CommandDispatcher(
+                runtime.registrations(), bot, botApp, CommandDispatcher.permissiveResolver());
+        pipeline = new EventPipeline(
+                runtime, adapter, runtime.registrations(), commandDispatcher);
+    }
+
+    /**
+     * 构造一个群消息事件。
+     *
+     * @param text 文本内容
+     * @return 核心消息事件
+     */
+    private static YuniMessageEvent groupMessage(String text) {
+        YuniMessageEvent event = new YuniMessageEvent();
+        event.setTime(1700000000L);
+        event.setSelfId(10000L);
+        event.setMessageType("group");
+        event.setSubType("normal");
+        event.setMessageId(1L);
+        event.setUserId(10001L);
+        event.setGroupId(123L);
+        MessageChain chain = new MessageChain();
+        chain.addTextSegment(text);
+        event.setMessage(chain.getContent());
+        event.setMessageChain(chain);
+
+        MessageSender sender = new MessageSender();
+        sender.setUserId(10001L);
+        sender.setNickname("测试用户");
+        sender.setRole("member");
+        event.setSender(sender);
+        return event;
+    }
+
+    /**
+     * 等待异步处理器执行完毕。
+     *
+     * <p>处理器在 {@code ForkJoinPool.commonPool} 上执行，测试无法直接 join。
+     * 用轮询等待是朴素但可靠的做法。</p>
+     *
+     * @param condition 条件
+     * @param timeoutMs 超时毫秒
+     */
+    private static void await(java.util.function.BooleanSupplier condition, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    // ==================== 消息 / 模式 ====================
+
+    @Test
+    @DisplayName("消息事件：条件与处理器在同一次注册中生效")
+    void messageHandlerWithCondition() {
+        AtomicInteger hits = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("模式插件", ctx ->
+                ctx.onMessage(ev -> ev.chain().containsText("你好"),
+                        (ev, reply) -> hits.incrementAndGet())), null, null, null);
+
+        // 条件不满足：不执行
+        pipeline.onMessage(groupMessage("再见"));
+        await(() -> hits.get() > 0, 200);
+        assertEquals(0, hits.get());
+
+        // 条件满足：执行
+        pipeline.onMessage(groupMessage("你好呀"));
+        await(() -> hits.get() > 0, 2000);
+        assertEquals(1, hits.get());
+    }
+
+    @Test
+    @DisplayName("通知事件：按子类型过滤，处理器无需再解 rawJson")
+    void noticeHandlerFilteredBySubType() {
+        AtomicInteger pokes = new AtomicInteger();
+        AtomicInteger others = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("通知插件", ctx -> {
+            ctx.onNotice("poke", (ev, reply) -> pokes.incrementAndGet());
+            // 无子类型过滤：用恒真条件表达「所有通知都要」
+            ctx.onNotice((ev) -> true, (ev, reply) -> others.incrementAndGet());
+        }), null, null, null);
+
+        YuniNoticeEvent notice = new YuniNoticeEvent();
+        notice.setTime(1L);
+        notice.setSelfId(10000L);
+        notice.setNoticeType("notify");
+        notice.setUserId(10001L);
+        notice.setGroupId(123L);
+        PokeEvent poke = new PokeEvent();
+        poke.setSubType("poke");
+        poke.setTargetId(10000L);
+        notice.setMatchedEvent(poke);
+
+        pipeline.onNotice(notice);
+
+        await(() -> pokes.get() > 0, 2000);
+        assertEquals(1, pokes.get(), "poke 子类型处理器应被调用");
+        assertEquals(1, others.get(), "无条件处理器也应被调用");
+    }
+
+    // ==================== 作用域过滤（现行系统的行为不一致所在）====================
+
+    @Test
+    @DisplayName("作用域过滤是所有事件类型的必经关卡（现行仅在消息/通知路径生效）")
+    void scopeFilterAppliesToAllEventKinds() {
+        AtomicInteger inScopeHits = new AtomicInteger();
+        AtomicInteger outOfScopeHits = new AtomicInteger();
+
+        // 两个插件，唯一的区别是注册项上的 ScopeFilter：
+        // 前者只在群 999 生效，后者排除群 999。
+        // 通过直接构造注册项来设定过滤器——插件侧目前没有「运行时改 filter」的公开 API，
+        // 管理端要走 PluginRuntime 的 enable/disable 路径（见 §10.5）。
+        PluginFiber inScope = runtime.load(
+                YuniPlugin.of("限定群插件", ctx -> { }), null, null, null);
+        PluginFiber outOfScope = runtime.load(
+                YuniPlugin.of("排除群插件", ctx -> { }), null, null, null);
+
+        runtime.registrations().add(new RegistrationTable.Entry(
+                RegistrationTable.Kind.NOTICE, inScope,
+                com.yuier.yuni.plugin.api.ScopeFilter.onlyGroups(999L),
+                null, null,
+                (com.yuier.yuni.plugin.api.handler.NoticeHandler)
+                        (ev, reply) -> inScopeHits.incrementAndGet()));
+
+        runtime.registrations().add(new RegistrationTable.Entry(
+                RegistrationTable.Kind.NOTICE, outOfScope,
+                com.yuier.yuni.plugin.api.ScopeFilter.excludeGroups(999L),
+                null, null,
+                (com.yuier.yuni.plugin.api.handler.NoticeHandler)
+                        (ev, reply) -> outOfScopeHits.incrementAndGet()));
+
+        // 事件来自群 123
+        YuniNoticeEvent notice = new YuniNoticeEvent();
+        notice.setTime(1L);
+        notice.setSelfId(10000L);
+        notice.setNoticeType("group_ban");
+        notice.setUserId(10001L);
+        notice.setGroupId(123L);
+
+        pipeline.onNotice(notice);
+
+        await(() -> outOfScopeHits.get() > 0, 2000);
+        assertEquals(1, outOfScopeHits.get(), "群 123 不在白名单但不在黑名单，应被调用");
+        assertEquals(0, inScopeHits.get(), "群 123 不在白名单，不应被调用");
+
+        // 事件来自群 999：两者的判定应互换
+        YuniNoticeEvent inScopeNotice = new YuniNoticeEvent();
+        inScopeNotice.setTime(2L);
+        inScopeNotice.setSelfId(10000L);
+        inScopeNotice.setNoticeType("group_ban");
+        inScopeNotice.setUserId(10001L);
+        inScopeNotice.setGroupId(999L);
+
+        pipeline.onNotice(inScopeNotice);
+
+        await(() -> inScopeHits.get() > 0, 2000);
+        assertEquals(1, inScopeHits.get(), "群 999 在白名单，应被调用");
+        assertEquals(1, outOfScopeHits.get(), "群 999 在黑名单，不应再被调用");
+    }
+
+    // ==================== 插件状态关卡 ====================
+
+    @Test
+    @DisplayName("FAILED 插件不再收到任何事件")
+    void failedPluginReceivesNoEvents() {
+        AtomicInteger hits = new AtomicInteger();
+
+        PluginFiber fiber = runtime.load(new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("失败插件").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.onMessage((ev, reply) -> hits.incrementAndGet());
+                throw new IllegalStateException("加载失败");
+            }
+        }, null, null, null);
+
+        assertEquals(com.yuier.yuni.plugin.runtime.FiberState.FAILED, fiber.state());
+
+        pipeline.onMessage(groupMessage("任意消息"));
+        await(() -> hits.get() > 0, 300);
+        assertEquals(0, hits.get(), "FAILED 插件不应收到事件");
+    }
+
+    // ==================== 统一异常兜底 ====================
+
+    @Test
+    @DisplayName("处理器抛 Error 被兜住，且向用户回报失败提示")
+    void handlerThrowableIsCaughtAndReported() {
+        runtime.load(YuniPlugin.of("抛异常的插件", ctx ->
+                ctx.onMessage((ev, reply) -> {
+                    throw new NoClassDefFoundError("simulated");
+                })), null, null, null);
+
+        pipeline.onMessage(groupMessage("触发"));
+
+        // 失败必须对用户可见——这是 2026-08 P0 事故的教训
+        await(() -> bot.sentCount() > 0, 2000);
+        assertTrue(bot.sentCount() > 0, "应回复一条失败提示");
+        assertTrue(bot.lastMessage().orElseThrow().text().contains("抛异常的插件"),
+                bot.lastMessage().orElseThrow().text());
+    }
+
+    @Test
+    @DisplayName("条件判定抛异常按不匹配处理，不打断分发")
+    void predicateThrowableIsTreatedAsNoMatch() {
+        AtomicInteger secondCalled = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("坏条件插件", ctx -> {
+            ctx.onMessage(ev -> {
+                throw new IllegalStateException("条件写坏了");
+            }, (ev, reply) -> {
+                throw new AssertionError("不应被执行");
+            });
+            // 同一插件的第二个处理器应不受影响
+            ctx.onMessage((ev, reply) -> secondCalled.incrementAndGet());
+        }), null, null, null);
+
+        pipeline.onMessage(groupMessage("任意"));
+
+        await(() -> secondCalled.get() > 0, 2000);
+        assertEquals(1, secondCalled.get(), "坏条件不应阻断其他注册项");
+    }
+
+    // ==================== 命令：端到端 ====================
+
+    /** 供测试内的辅助方法绑定时使用的分发器引用。 */
+    private static CommandDispatcher commandDispatcher0;
+
+    /**
+     * 注册一个命令插件。
+     *
+     * @param tree 命令树
+     */
+    private void registerCommandTree(CommandNode tree) {
+        commandDispatcher0 = commandDispatcher;
+        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
+    }
+
+    /**
+     * 把根节点与处理器绑定。
+     *
+     * @param tree    命令树
+     * @param handler 处理器
+     */
+    private static void bind(CommandNode tree, Runnable handler) {
+        commandDispatcher0.bindHandler(tree, (event, reply) -> handler.run());
+    }
+
+    @Test
+    @DisplayName("命令端到端：匹配 → 权限通过 → 执行处理器")
+    void commandEndToEnd() {
+        AtomicInteger rootRuns = new AtomicInteger();
+
+        CommandNode tree = CommandNode.builder("测试")
+                .description("测试命令")
+                .build();
+        registerCommandTree(tree);
+        bind(tree, () -> rootRuns.incrementAndGet());
+
+        pipeline.onMessage(groupMessage("/测试"));
+
+        await(() -> rootRuns.get() > 0, 3000);
+        assertEquals(1, rootRuns.get(), "命令处理器应被执行");
+    }
+
+    @Test
+    @DisplayName("命令优先并短路模式插件（现行不变式）")
+    void commandShortCircuitsPatternHandlers() {
+        AtomicInteger patternRuns = new AtomicInteger();
+        AtomicInteger commandRuns = new AtomicInteger();
+
+        // 模式插件：匹配任意含「测试」的消息
+        runtime.load(YuniPlugin.of("模式插件", ctx ->
+                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+
+        CommandNode tree = CommandNode.builder("测试").build();
+        registerCommandTree(tree);
+        bind(tree, () -> commandRuns.incrementAndGet());
+
+        pipeline.onMessage(groupMessage("/测试"));
+
+        await(() -> commandRuns.get() > 0, 3000);
+        assertEquals(1, commandRuns.get());
+        // 给模式处理器一点时间，确认它确实没被调用
+        await(() -> patternRuns.get() > 0, 300);
+        assertEquals(0, patternRuns.get(), "命中命令后不应再匹配模式插件");
+    }
+
+    @Test
+    @DisplayName("未命中命令时模式插件正常执行")
+    void patternRunsWhenCommandNotMatched() {
+        AtomicInteger patternRuns = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("模式插件", ctx ->
+                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+
+        CommandNode tree = CommandNode.builder("测试").build();
+        registerCommandTree(tree);
+        bind(tree, () -> { });
+
+        // 没有命令前缀：命令不匹配，模式应生效
+        pipeline.onMessage(groupMessage("测试一下"));
+
+        await(() -> patternRuns.get() > 0, 3000);
+        assertEquals(1, patternRuns.get());
+    }
+
+    @Test
+    @DisplayName("命令前缀缺失时不匹配")
+    void commandRequiresFlag() {
+        AtomicInteger runs = new AtomicInteger();
+
+        CommandNode tree = CommandNode.builder("测试").build();
+        registerCommandTree(tree);
+        bind(tree, runs::incrementAndGet);
+
+        pipeline.onMessage(groupMessage("测试"));
+
+        await(() -> runs.get() > 0, 300);
+        assertEquals(0, runs.get(), "无命令前缀不应匹配");
+    }
+
+    @Test
+    @DisplayName("节点级权限：子命令要求 ADMIN 时普通用户被拒绝并收到提示")
+    void childNodePermissionIsEnforced() {
+        AtomicInteger runs = new AtomicInteger();
+
+        CommandNode tree = CommandNode.builder("测试")
+                .child(CommandNode.builder("管理")
+                        .permission(UserPermission.ADMIN)
+                        .build())
+                .build();
+        registerCommandTree(tree);
+        bind(tree.getChildren().get(0), runs::incrementAndGet);
+
+        pipeline.onMessage(groupMessage("/测试 管理"));
+
+        // 权限不足：应回复提示且不执行
+        await(() -> bot.sentCount() > 0, 2000);
+        assertTrue(bot.sentCount() > 0, "权限不足应回复提示");
+        assertTrue(bot.lastMessage().orElseThrow().text().contains("权限不足"),
+                bot.lastMessage().orElseThrow().text());
+        assertEquals(0, runs.get(), "权限不足不应执行处理器");
+    }
+
+    @Test
+    @DisplayName("节点级权限：有足够权限时子命令正常执行")
+    void childNodePermissionAllowsSufficientRole() {
+        AtomicInteger runs = new AtomicInteger();
+
+        // 注册表是共享的，因此这里只需注册一次命令树；
+        // 差别在于用哪个分发器来跑——它同时决定了权限判定函数与处理器绑定表。
+        CommandNode tree = CommandNode.builder("测试")
+                .child(CommandNode.builder("管理")
+                        .permission(UserPermission.ADMIN)
+                        .build())
+                .build();
+
+        registerCommandTree(tree);
+
+        // 注入一个「拥有 ADMIN」的权限判定，并用它构造独立的分发器与流水线。
+        // 注意处理器必须绑到这个分发器上——处理器绑定表是分发器私有的。
+        CommandDispatcher adminDispatcher = new CommandDispatcher(
+                runtime.registrations(), bot, botApp,
+                (userId, groupId, pluginId) -> UserPermission.ADMIN);
+        adminDispatcher.bindHandler(tree.getChildren().get(0),
+                (event, reply) -> runs.incrementAndGet());
+
+        EventPipeline adminPipeline = new EventPipeline(
+                runtime, adapter, runtime.registrations(), adminDispatcher);
+
+        adminPipeline.onMessage(groupMessage("/测试 管理"));
+
+        await(() -> runs.get() > 0, 3000);
+        assertEquals(1, runs.get(), "权限足够时应执行");
+    }
+
+    @Test
+    @DisplayName("未绑定处理器的命令树视为纯帮助声明，不算命中")
+    void commandTreeWithoutHandlerIsHelpOnly() {
+        AtomicInteger patternRuns = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("模式插件", ctx ->
+                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+
+        // 只声明命令树，不绑定任何处理器
+        CommandNode tree = CommandNode.builder("测试").build();
+        registerCommandTree(tree);
+
+        pipeline.onMessage(groupMessage("/测试"));
+
+        // 命令树命中但无处理器 → 不短路，模式插件仍应执行
+        await(() -> patternRuns.get() > 0, 3000);
+        assertEquals(1, patternRuns.get(), "纯帮助声明不应短路模式插件");
+    }
+
+    @Test
+    @DisplayName("命令参数取值可用：处理器内能读到 CommandResult")
+    void commandResultIsAvailableInHandler() {
+        AtomicInteger argValue = new AtomicInteger(-1);
+
+        CommandNode tree = CommandNode.builder("测试")
+                .arg(ArgDef.required("数字", "一个数字", CommandArgRequireType.NUMBER))
+                .build();
+        registerCommandTree(tree);
+        commandDispatcher.bindHandler(tree, (event, reply) -> {
+            var result = ((YuniMessageEvent) event).getCommandResult();
+            argValue.set(result.getArg("数字").asNumber().intValue());
+        });
+
+        pipeline.onMessage(groupMessage("/测试 42"));
+
+        await(() -> argValue.get() >= 0, 3000);
+        assertEquals(42, argValue.get(), "命令参数应可取值");
+    }
+
+    // ==================== 消息发出事件 ====================
+
+    @Test
+    @DisplayName("消息发出事件：作用域过滤生效（现行系统完全不做检查）")
+    void messageSentRespectsScopeFilter() {
+        AtomicInteger hits = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("转发插件", ctx ->
+                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
+                null, null, null);
+
+        com.yuier.yuni.core.event.YuniMessageSentEvent sent =
+                new com.yuier.yuni.core.event.YuniMessageSentEvent();
+        sent.setTime(1L);
+        sent.setSelfId(10000L);
+        sent.setMessageType("group");
+        sent.setGroupId(123L);
+        sent.setMessageId(2L);
+        MessageChain chain = new MessageChain();
+        chain.addTextSegment("机器人说的话");
+        sent.setMessageChain(chain);
+
+        pipeline.onMessageSent(sent);
+
+        await(() -> hits.get() > 0, 2000);
+        assertEquals(1, hits.get(), "群消息发出事件应被处理");
+    }
+
+    @Test
+    @DisplayName("消息发出事件：私聊在 isGroup 条件下被过滤")
+    void messageSentPrivateFilteredByCondition() {
+        AtomicInteger hits = new AtomicInteger();
+
+        runtime.load(YuniPlugin.of("转发插件", ctx ->
+                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
+                null, null, null);
+
+        com.yuier.yuni.core.event.YuniMessageSentEvent sent =
+                new com.yuier.yuni.core.event.YuniMessageSentEvent();
+        sent.setTime(1L);
+        sent.setSelfId(10000L);
+        sent.setMessageType("private");
+        sent.setUserId(10001L);
+        sent.setMessageId(3L);
+        MessageChain chain = new MessageChain();
+        chain.addTextSegment("私聊内容");
+        sent.setMessageChain(chain);
+
+        pipeline.onMessageSent(sent);
+
+        await(() -> hits.get() > 0, 300);
+        assertEquals(0, hits.get(), "私聊应被 isGroup 条件过滤");
+    }
+
+    // ==================== 卸载后不再分发 ====================
+
+    @Test
+    @DisplayName("插件卸载后不再收到事件，且注册表清空")
+    void unloadedPluginReceivesNoEvents() {
+        AtomicInteger hits = new AtomicInteger();
+
+        PluginFiber fiber = runtime.load(YuniPlugin.of("临时插件", ctx ->
+                ctx.onMessage((ev, reply) -> hits.incrementAndGet())), null, null, null);
+
+        runtime.unload(fiber.id());
+        assertEquals(0, runtime.registrations().totalSize());
+
+        pipeline.onMessage(groupMessage("任意"));
+        await(() -> hits.get() > 0, 300);
+        assertEquals(0, hits.get(), "已卸载插件不应收到事件");
+    }
+
+    @Test
+    @DisplayName("未注入 BotApp 时命令匹配给出明确错误，而不是容器内部的 NPE")
+    void missingBotAppProducesActionableError() {
+        // 不传 botApp：CommandDetector 会回退到 SpringContextUtil，
+        // 而单元测试里没有 Spring 容器。它必须给出可操作的错误信息，
+        // 否则在插件里表现为「命令莫名其妙不生效」，极难定位。
+        CommandDispatcher noBotApp = new CommandDispatcher(
+                runtime.registrations(), bot, null, CommandDispatcher.permissiveResolver());
+
+        CommandNode tree = CommandNode.builder("测试").build();
+        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
+        noBotApp.bindHandler(tree, (event, reply) -> { });
+
+        // 直接调用 detector 验证错误语义——CommandDispatcher 会把异常吞成日志，
+        // 因此这里绕过它，单独断言底层行为
+        var adapted = adapter.adapt(groupMessage("/测试"));
+        var engineEvent = new YuniMessageEvent();
+        engineEvent.setMessageChain(adapted.chain() instanceof
+                com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view
+                ? buildChain(view) : new MessageChain());
+        engineEvent.setMessageType("group");
+        engineEvent.setSubType("normal");
+        engineEvent.setUserId(10001L);
+        engineEvent.setGroupId(123L);
+
+        var detector = new com.yuier.yuni.event.detector.message.command.CommandDetector(tree, bot, null);
+        IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class, () -> detector.match(engineEvent));
+
+        assertTrue(ex.getMessage().contains("未注入 BotApp"), ex.getMessage());
+    }
+
+    /**
+     * 由消息链视图构造核心消息链。
+     *
+     * @param view 视图
+     * @return 核心消息链
+     */
+    private static MessageChain buildChain(
+            com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
+        MessageChain chain = new MessageChain();
+        chain.addAll(view.rawSegments());
+        return chain;
+    }
+
+    @Test
+    @DisplayName("命令处理器绑定可查询与解绑")
+    void commandHandlerBindingIsQueryable() {
+        CommandNode tree = CommandNode.builder("测试").build();
+
+        assertFalse(commandDispatcher.handlerOf(tree).isPresent());
+        commandDispatcher.bindHandler(tree, (event, reply) -> { });
+        assertTrue(commandDispatcher.handlerOf(tree).isPresent());
+        assertEquals(1, commandDispatcher.handlerCount());
+
+        commandDispatcher.unbindHandler(tree);
+        assertFalse(commandDispatcher.handlerOf(tree).isPresent());
+        assertEquals(0, commandDispatcher.handlerCount());
+    }
+
+    @Test
+    @DisplayName("collectHandlers 递归登记整棵命令树的处理器")
+    void collectHandlersWalksTree() {
+        CommandNode tree = CommandNode.builder("根")
+                .child(CommandNode.builder("子").build())
+                .build();
+
+        commandDispatcher.collectHandlers(tree, node ->
+                node.getName().equals("根") ? (event, reply) -> { } : null);
+
+        assertTrue(commandDispatcher.handlerOf(tree).isPresent());
+        assertFalse(commandDispatcher.handlerOf(tree.getChildren().get(0)).isPresent());
+        assertEquals(1, commandDispatcher.handlerCount());
+    }
+}
