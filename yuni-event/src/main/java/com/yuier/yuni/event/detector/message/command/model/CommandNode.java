@@ -69,6 +69,23 @@ public class CommandNode {
     /** 是否要求至少一个选项或子命令被匹配 */
     private boolean requiresChild = false;
 
+    /**
+     * 节点绑定的命令处理器（不透明引用）。
+     *
+     * <p><b>本模块不认识这个对象的类型</b>：它由
+     * {@code com.yuier.yuni.plugin.api.Commands#on} 写入，由
+     * {@code CommandDispatcher} 读出并转型为 {@code CommandHandler}。</p>
+     *
+     * <p>之所以用 {@code Object} 而非具体类型：{@code CommandHandler} 需要
+     * {@code Reply}，而 {@code Reply} 位于下游模块 yuni-plugin。
+     * 依赖方向是 {@code yuni-plugin → yuni-event}，反向依赖会形成循环。
+     * 因此这里只做「保管」，类型安全由 {@code Commands} 门面保证。</p>
+     *
+     * <p>语义：绑定处理器的节点是「可执行命令」；未绑定的是「纯帮助声明」——
+     * 参与匹配但不短路模式插件，供帮助系统遍历展示。</p>
+     */
+    private Object handler;
+
     // ---- Builder ----
 
     public static Builder builder(String name) {

@@ -5,17 +5,15 @@ import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.event.matched.CommandResult;
 import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
+import com.yuier.yuni.plugin.api.CommandHandler;
+import com.yuier.yuni.plugin.api.Commands;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.runtime.RegistrationTable;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 /**
  * 命令分发器——把注册的命令树接到现有匹配引擎上。
@@ -61,20 +59,6 @@ public final class CommandDispatcher {
     /** 能力注册总表。 */
     private final RegistrationTable registrations;
 
-    /**
-     * 命令节点 → 处理器 的绑定表。
-     *
-     * <p>用 {@link IdentityHashMap} 而非 {@code HashMap}：键是节点对象本身，
-     * 语义是「这一个节点实例」，而不是「两个结构相等的节点」。节点树由插件
-     * 声明，可能在不同插件里存在结构相同但语义不同的节点。</p>
-     *
-     * <p>用 {@link ConcurrentHashMap} 不能用于 IdentityHashMap，
-     * 因此这里用同步包装——注册发生在插件加载期（低频），
-     * 查询发生在事件分发期。为兼顾两者，读路径用 {@code synchronized} 块
-     * 获取快照。</p>
-     */
-    private final Map<CommandNode, CommandHandler> handlers = new IdentityHashMap<>();
-
     /** 机器人实例，传给 {@link CommandDetector} 以支持回复段解析。 */
     private final com.yuier.yuni.core.bot.YuniBot bot;
 
@@ -108,26 +92,6 @@ public final class CommandDispatcher {
     }
 
     /**
-     * 命令处理器。
-     *
-     * <p>参数为「携带 {@code CommandResult} 的消息事件」与回复入口。
-     * 处理器内用 {@code ev.getCommandResult()} 取参——与现行写法完全一致，
-     * 因此命令插件迁移时参数取值代码<b>一行都不用改</b>。</p>
-     */
-    @FunctionalInterface
-    public interface CommandHandler {
-
-        /**
-         * 执行命令。
-         *
-         * @param event 消息事件（其 {@code commandResult} 已就绪）
-         * @param reply 回复入口；可为 {@code null}
-         * @throws Exception 执行失败
-         */
-        void handle(YuniMessageEvent event, Reply reply) throws Exception;
-    }
-
-    /**
      * 构造命令分发器。
      *
      * @param registrations      能力注册总表
@@ -145,23 +109,20 @@ public final class CommandDispatcher {
         this.permissionResolver = permissionResolver;
     }
 
-    // ==================== 处理器绑定 ====================
+    // ==================== 处理器查询 ====================
 
     /**
-     * 绑定节点与处理器。
+     * 查询节点绑定的处理器。
      *
-     * <p>由插件注册命令时调用（遍历注册好的命令树，把每个带处理器的节点登记进来）。</p>
+     * <p>处理器存放在 {@link CommandNode} 自身的不透明字段里（见
+     * {@link com.yuier.yuni.plugin.api.Commands}），因此本方法是一次直接读取，
+     * 没有额外的注册表需要维护。</p>
      *
-     * @param node    命令节点
-     * @param handler 处理器
+     * @param node 命令节点
+     * @return 处理器；未绑定时为空
      */
-    public void bindHandler(CommandNode node, CommandHandler handler) {
-        if (node == null || handler == null) {
-            return;
-        }
-        synchronized (handlers) {
-            handlers.put(node, handler);
-        }
+    public Optional<CommandHandler> handlerOf(CommandNode node) {
+        return Commands.handlerOf(node);
     }
 
     /**
@@ -176,34 +137,43 @@ public final class CommandDispatcher {
         if (node == null) {
             return;
         }
-        synchronized (handlers) {
-            handlers.remove(node);
-        }
+        // 清空节点的处理器字段：该节点退回为「纯帮助声明」
+        node.setHandler(null);
     }
 
     /**
-     * 查询节点绑定的处理器。
+     * 当前已绑定的处理器数量（跨全部已注册命令树）。
      *
-     * @param node 命令节点
-     * @return 处理器；未绑定时为空
-     */
-    public Optional<CommandHandler> handlerOf(CommandNode node) {
-        synchronized (handlers) {
-            return Optional.ofNullable(handlers.get(node));
-        }
-    }
-
-    /**
-     * 当前已绑定的处理器数量。
-     *
-     * <p>用于泄漏检测：插件卸载后该计数应回到卸载前的水平。</p>
+     * <p>用于泄漏检测与诊断：插件卸载后注册表清空，本计数应回到 0。</p>
      *
      * @return 数量
      */
     public int handlerCount() {
-        synchronized (handlers) {
-            return handlers.size();
+        int count = 0;
+        for (RegistrationTable.Entry entry : registrations.commandEntries()) {
+            CommandNode tree = asCommandNode(entry);
+            if (tree != null) {
+                count += countHandlers(tree);
+            }
         }
+        return count;
+    }
+
+    /**
+     * 递归统计一棵命令树上绑定了处理器的节点数。
+     *
+     * @param node 节点
+     * @return 数量
+     */
+    private static int countHandlers(CommandNode node) {
+        if (node == null) {
+            return 0;
+        }
+        int count = Commands.handlerOf(node).isPresent() ? 1 : 0;
+        for (CommandNode child : node.getChildren()) {
+            count += countHandlers(child);
+        }
+        return count;
     }
 
     // ==================== 分发 ====================
@@ -308,7 +278,7 @@ public final class CommandDispatcher {
             }
         }
         CommandNode node = findNodeByKey(result.getMatchedKey(), result);
-        return node == null ? null : handlerOf(node).orElse(null);
+        return node == null ? null : Commands.handlerOf(node).orElse(null);
     }
 
     /**
@@ -513,28 +483,5 @@ public final class CommandDispatcher {
             return permissiveResolver();
         }
         return service::resolve;
-    }
-
-    /**
-     * 遍历命令树并对每个「绑定过处理器」的节点执行动作。
-     *
-     * <p>供插件注册时把处理器登记进来：插件侧用
-     * {@code CommandNode.Builder#on(...)} 把处理器挂在节点上，注册命令时
-     * 由本方法把它们转入 {@link #handlers} 表。</p>
-     *
-     * @param tree   命令树根节点
-     * @param mapper 由节点取出处理器的函数；返回 {@code null} 表示该节点无处理器
-     */
-    public void collectHandlers(CommandNode tree, Function<CommandNode, CommandHandler> mapper) {
-        if (tree == null || mapper == null) {
-            return;
-        }
-        CommandHandler handler = mapper.apply(tree);
-        if (handler != null) {
-            bindHandler(tree, handler);
-        }
-        for (CommandNode child : tree.getChildren()) {
-            collectHandlers(child, mapper);
-        }
     }
 }

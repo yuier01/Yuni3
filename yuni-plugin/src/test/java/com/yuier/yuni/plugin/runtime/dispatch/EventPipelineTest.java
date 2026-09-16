@@ -316,27 +316,26 @@ class EventPipelineTest {
 
     // ==================== 命令：端到端 ====================
 
-    /** 供测试内的辅助方法绑定时使用的分发器引用。 */
-    private static CommandDispatcher commandDispatcher0;
-
     /**
      * 注册一个命令插件。
      *
      * @param tree 命令树
      */
     private void registerCommandTree(CommandNode tree) {
-        commandDispatcher0 = commandDispatcher;
         runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
     }
 
     /**
      * 把根节点与处理器绑定。
      *
+     * <p>使用 API 层的 {@link com.yuier.yuni.plugin.api.Commands#on} 门面——
+     * 这是插件作者实际会用的绑定方式。</p>
+     *
      * @param tree    命令树
      * @param handler 处理器
      */
     private static void bind(CommandNode tree, Runnable handler) {
-        commandDispatcher0.bindHandler(tree, (event, reply) -> handler.run());
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> handler.run());
     }
 
     @Test
@@ -458,7 +457,7 @@ class EventPipelineTest {
         CommandDispatcher adminDispatcher = new CommandDispatcher(
                 runtime.registrations(), bot, botApp,
                 (userId, groupId, pluginId) -> UserPermission.ADMIN);
-        adminDispatcher.bindHandler(tree.getChildren().get(0),
+        com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0),
                 (event, reply) -> runs.incrementAndGet());
 
         EventPipeline adminPipeline = new EventPipeline(
@@ -499,7 +498,7 @@ class EventPipelineTest {
                 .arg(ArgDef.required("数字", "一个数字", CommandArgRequireType.NUMBER))
                 .build();
         registerCommandTree(tree);
-        commandDispatcher.bindHandler(tree, (event, reply) -> {
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> {
             var result = ((YuniMessageEvent) event).getCommandResult();
             argValue.set(result.getArg("数字").asNumber().intValue());
         });
@@ -593,7 +592,7 @@ class EventPipelineTest {
 
         CommandNode tree = CommandNode.builder("测试").build();
         runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
-        noBotApp.bindHandler(tree, (event, reply) -> { });
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
 
         // 直接调用 detector 验证错误语义——CommandDispatcher 会把异常吞成日志，
         // 因此这里绕过它，单独断言底层行为
@@ -628,32 +627,41 @@ class EventPipelineTest {
     }
 
     @Test
-    @DisplayName("命令处理器绑定可查询与解绑")
-    void commandHandlerBindingIsQueryable() {
-        CommandNode tree = CommandNode.builder("测试").build();
-
-        assertFalse(commandDispatcher.handlerOf(tree).isPresent());
-        commandDispatcher.bindHandler(tree, (event, reply) -> { });
-        assertTrue(commandDispatcher.handlerOf(tree).isPresent());
-        assertEquals(1, commandDispatcher.handlerCount());
-
-        commandDispatcher.unbindHandler(tree);
-        assertFalse(commandDispatcher.handlerOf(tree).isPresent());
-        assertEquals(0, commandDispatcher.handlerCount());
-    }
-
-    @Test
-    @DisplayName("collectHandlers 递归登记整棵命令树的处理器")
-    void collectHandlersWalksTree() {
+    @DisplayName("Commands 门面：绑定、查询、解绑，且逐节点独立")
+    void commandsFacadeBindsPerNode() {
         CommandNode tree = CommandNode.builder("根")
                 .child(CommandNode.builder("子").build())
                 .build();
+        // handlerCount 统计的是「已注册命令树」上的处理器，因此需要先注册
+        registerCommandTree(tree);
 
-        commandDispatcher.collectHandlers(tree, node ->
-                node.getName().equals("根") ? (event, reply) -> { } : null);
+        // 只给根绑处理器
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
 
         assertTrue(commandDispatcher.handlerOf(tree).isPresent());
-        assertFalse(commandDispatcher.handlerOf(tree.getChildren().get(0)).isPresent());
+        assertFalse(commandDispatcher.handlerOf(tree.getChildren().get(0)).isPresent(),
+                "处理器绑定是逐节点的，不应自动下推到子节点");
         assertEquals(1, commandDispatcher.handlerCount());
+
+        // 给子节点也绑上
+        com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0), (event, reply) -> { });
+        assertEquals(2, commandDispatcher.handlerCount());
+
+        commandDispatcher.unbindHandler(tree);
+        assertFalse(commandDispatcher.handlerOf(tree).isPresent());
+        assertEquals(1, commandDispatcher.handlerCount(), "解绑根节点不应影响子节点");
+    }
+
+    @Test
+    @DisplayName("Commands 门面拒绝 null 参数，避免静默的无效绑定")
+    void commandsFacadeRejectsNull() {
+        CommandNode tree = CommandNode.builder("测试").build();
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> com.yuier.yuni.plugin.api.Commands.on(null, (event, reply) -> { }));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> com.yuier.yuni.plugin.api.Commands.on(tree, null));
+        // null 节点查询返回空而不是抛异常
+        assertTrue(com.yuier.yuni.plugin.api.Commands.handlerOf(null).isEmpty());
     }
 }
