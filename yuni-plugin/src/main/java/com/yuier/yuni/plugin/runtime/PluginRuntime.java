@@ -76,6 +76,27 @@ public final class PluginRuntime {
     /** 插件标识 → 资源目录；用于依赖推进时重建上下文。 */
     private final java.util.Map<String, Path> pluginDataDirs = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * 机器人实例供应函数。
+     *
+     * <p>由启动流程在 bot 创建完毕后设置（见 {@link #bindBot}）。用供应函数
+     * 而非直接持有实例：bot 由 engine 的 {@code BotManager} 动态创建，
+     * 时机晚于本运行时的构造。</p>
+     */
+    private volatile java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> botSupplier;
+
+    /** 事件分发流水线；首次访问时构造并缓存。 */
+    private volatile com.yuier.yuni.plugin.runtime.dispatch.EventPipeline pipeline;
+
+    /** 命令分发器；由 {@link #pipeline()} 惰性构造。 */
+    private volatile com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher commandDispatcher;
+
+    /** 事件适配工厂；由 {@link #pipeline()} 惰性构造。 */
+    private volatile com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter eventAdapter;
+
+    /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
+    private volatile com.yuier.yuni.core.model.bot.BotApp botApp;
+
     /** 定时任务管理器；由外部注入，可为 {@code null}（测试场景）。 */
     private final DynamicTaskManager taskManager;
 
@@ -119,6 +140,33 @@ public final class PluginRuntime {
         Optional<Object> previous = services.register(type, impl, null);
         if (previous.isPresent()) {
             log.warn("内置服务 {} 被重复注册，旧实现将失效", type.getName());
+        }
+        return this;
+    }
+
+    /**
+     * 注册框架内置服务（自动按实现的接口类型登记）。
+     *
+     * <p>与 {@link #registerService(Class, Object)} 的区别：本方法按传入对象
+     * <b>实现的服务接口</b>登记，调用方无需指定类型。用于批量装配内置服务。</p>
+     *
+     * @param impl 服务实现
+     * @return {@code this}
+     */
+    public PluginRuntime registerService(Object impl) {
+        if (impl == null) {
+            return this;
+        }
+        // 按实现类实现的接口逐一登记：一个实现可以同时提供多个服务契约
+        Class<?>[] interfaces = impl.getClass().getInterfaces();
+        if (interfaces.length == 0) {
+            log.warn("服务实现 {} 未实现任何接口，无法按契约登记", impl.getClass().getName());
+            return this;
+        }
+        for (Class<?> type : interfaces) {
+            if (type.getPackageName().startsWith("com.yuier.yuni.plugin.api")) {
+                services.register(type, impl, null);
+            }
         }
         return this;
     }
@@ -441,6 +489,98 @@ public final class PluginRuntime {
         throw new UnsupportedOperationException(
                 "reload 需要 jar 扫描与 ClassLoader 生命周期管理" + PHASE_NOTE
                         + "。当前可用 PluginRuntime.unload + load 手动完成重载。");
+    }
+
+    /**
+     * 绑定机器人实例供应函数与业务配置。
+     *
+     * <p>由启动流程在 bot 创建完毕、业务配置就绪后调用。这两个依赖都晚于
+     * 本运行时的构造时机，因此采用后置绑定而非构造器注入。</p>
+     *
+     * @param botSupplier 机器人实例供应函数；{@code null} 表示不提供
+     * @param botApp      机器人业务配置（提供命令前缀）；可为 {@code null}
+     * @return {@code this}，便于链式配置
+     */
+    public PluginRuntime bindBot(java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> botSupplier,
+                                 com.yuier.yuni.core.model.bot.BotApp botApp) {
+        this.botSupplier = botSupplier;
+        this.botApp = botApp;
+        // 使已构造的流水线失效，下次访问时用新的 bot 重建
+        this.pipeline = null;
+        this.commandDispatcher = null;
+        this.eventAdapter = null;
+        return this;
+    }
+
+    // ==================== 事件分发 ====================
+
+    /**
+     * 取事件分发流水线（惰性构造并缓存）。
+     *
+     * <p>流水线需要 bot（用于构造 Reply）与 BotApp（提供命令前缀）。
+     * 二者都由 {@link #bindBot} 后置注入，因此这里是惰性构造：
+     * 若在绑定之前就收到事件，构造出的适配器会在解析 bot 时安全降级
+     * （事件可翻译但没有 Reply），不会抛异常。</p>
+     *
+     * @return 流水线，永不为 {@code null}
+     */
+    public com.yuier.yuni.plugin.runtime.dispatch.EventPipeline pipeline() {
+        com.yuier.yuni.plugin.runtime.dispatch.EventPipeline current = this.pipeline;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (this.pipeline == null) {
+                this.eventAdapter = new com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter(
+                        botSupplier, jsonCodec);
+                this.commandDispatcher = new com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher(
+                        registrations,
+                        // 命令引擎需要 bot 的具体实例（用于回复段解析）；
+                        // 这里即时解析一次，未就绪时传 null，由引擎的静态回退兜住
+                        resolveBot(),
+                        botApp,
+                        // 权限判定委托给权限服务——插件可通过 ctx.permission() 覆盖注册
+                        com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher.fromService(
+                                services.resolve(com.yuier.yuni.plugin.api.service.PermissionService.class)
+                                        .orElse(null)));
+                this.pipeline = new com.yuier.yuni.plugin.runtime.dispatch.EventPipeline(
+                        this, eventAdapter, registrations, commandDispatcher);
+            }
+            return this.pipeline;
+        }
+    }
+
+    /**
+     * 立即解析机器人实例（不抛异常）。
+     *
+     * <p>供 {@code PluginContext.bot()} 与命令引擎使用。解析失败返回
+     * {@code null}，由调用方决定降级策略。</p>
+     *
+     * @return 机器人实例；未就绪时返回 {@code null}
+     */
+    public com.yuier.yuni.core.bot.YuniBot resolveBot() {
+        java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> supplier = this.botSupplier;
+        if (supplier == null) {
+            return null;
+        }
+        try {
+            return supplier.get();
+        } catch (Exception e) {
+            log.debug("机器人实例尚未就绪", e);
+            return null;
+        }
+    }
+
+    /**
+     * 取命令分发器（惰性构造，与 {@link #pipeline()} 共享实例）。
+     *
+     * <p>供插件注册命令时绑定处理器使用。</p>
+     *
+     * @return 命令分发器，永不为 {@code null}
+     */
+    public com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher commandDispatcher() {
+        pipeline();
+        return commandDispatcher;
     }
 
     // ==================== 访问器 ====================

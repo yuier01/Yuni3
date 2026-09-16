@@ -57,7 +57,17 @@ public final class PluginFiber {
     /** 插件元数据（不可变，可安全跨 Fiber 共享）。 */
     private final PluginMetadata metadata;
 
-    /** 加载本插件的类加载器；用于诊断与重载时的生命周期断言。 */
+    /**
+     * 加载本插件的类加载器。
+     *
+     * <p><b>可能已被关闭。</b>扫描阶段会加载 jar 内全部类，之后即可关闭
+     * 类加载器以释放 jar 文件句柄（Windows 下这是覆盖 jar 实现热更新的前提）。
+     * 已加载的类定义不受 {@code close()} 影响，因此运行期引用仍然有效
+     * （见设计文档 §9.4 / §9.5）。</p>
+     *
+     * <p>保留本引用是为了诊断（打印加载器标识）与将来可能的显式加载需求。
+     * 切勿在不检查 {@code isClosed} 的情况下用它做新的 {@code loadClass}。</p>
+     */
     private final ClassLoader classLoader;
 
     /** 子 Fiber；随本 Fiber 一同卸载。 */

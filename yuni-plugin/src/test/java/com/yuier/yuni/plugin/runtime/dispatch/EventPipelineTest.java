@@ -70,7 +70,7 @@ class EventPipelineTest {
 
         bot = new RecordingYuniBot();
         runtime = new PluginRuntime(null, jsonCodec);
-        adapter = new PluginEventAdapter(bot, jsonCodec);
+        adapter = PluginEventAdapter.of(bot, jsonCodec);
 
         // 命令前缀必须注入——CommandDetector 会用它剥离命令头。
         // 不注入时会回退到 SpringContextUtil，而在单元测试里没有 Spring 容器。

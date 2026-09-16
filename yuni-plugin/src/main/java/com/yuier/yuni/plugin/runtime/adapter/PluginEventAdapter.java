@@ -11,6 +11,7 @@ import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.Reply;
 
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * 事件适配工厂——把 core 事件对象翻译为插件侧的 {@code Event} 与 {@link Reply}。
@@ -38,8 +39,15 @@ import java.util.Optional;
  */
 public final class PluginEventAdapter {
 
-    /** 机器人实例，用于构造可发送的 Reply。 */
-    private final YuniBot bot;
+    /**
+     * 机器人实例供应函数。
+     *
+     * <p>用 {@link Supplier} 而非直接持有实例：{@code YuniBot} 由 engine 的
+     * {@code BotManager} 在启动流程中<b>动态创建</b>，时机晚于本适配器的构造。
+     * 因此这里按需解析——适配器构造时 bot 可能还不存在，
+     * 但事件真正到达时它一定已经就绪。</p>
+     */
+    private final Supplier<YuniBot> botSupplier;
 
     /** JSON 编解码器，用于消息段序列化与 Reply 的段构造。 */
     private final JsonCodec jsonCodec;
@@ -47,12 +55,41 @@ public final class PluginEventAdapter {
     /**
      * 构造适配工厂。
      *
-     * @param bot       机器人实例；可为 {@code null}（此时 Reply 不可用，仅能翻译事件）
-     * @param jsonCodec JSON 编解码器；可为 {@code null}
+     * @param botSupplier 机器人实例供应函数；可为 {@code null}（则 Reply 不可用，仅能翻译事件）
+     * @param jsonCodec   JSON 编解码器；可为 {@code null}
      */
-    public PluginEventAdapter(YuniBot bot, JsonCodec jsonCodec) {
-        this.bot = bot;
+    public PluginEventAdapter(Supplier<YuniBot> botSupplier, JsonCodec jsonCodec) {
+        this.botSupplier = botSupplier;
         this.jsonCodec = jsonCodec;
+    }
+
+    /**
+     * 以固定机器人实例构造适配工厂（测试与静态场景）。
+     *
+     * @param bot       机器人实例；可为 {@code null}
+     * @param jsonCodec JSON 编解码器
+     * @return 适配工厂
+     */
+    public static PluginEventAdapter of(YuniBot bot, JsonCodec jsonCodec) {
+        return new PluginEventAdapter(() -> bot, jsonCodec);
+    }
+
+    /**
+     * 解析当前的机器人实例。
+     *
+     * @return 机器人实例；不可用时返回 {@code null}
+     */
+    private YuniBot bot() {
+        if (botSupplier == null) {
+            return null;
+        }
+        try {
+            return botSupplier.get();
+        } catch (Exception e) {
+            // bot 尚未就绪（启动早期）：事件仍可翻译，只是没有 Reply。
+            // 不抛异常——否则启动阶段的第一批事件会全部失败。
+            return null;
+        }
     }
 
     /**
@@ -162,17 +199,17 @@ public final class PluginEventAdapter {
      * @return 回复入口；无法构造时返回 {@code null}
      */
     private Reply replyFor(Long groupId, Long userId, String messageType, Long sourceMessageId) {
-        if (bot == null) {
+        if (bot() == null) {
             // 测试或未接线场景：事件可翻译但没有可发送的 Reply。
             // 返回 null 而不是抛异常——事件翻译本身仍有价值（供条件判定）。
             return null;
         }
         if ("group".equals(messageType) && groupId != null) {
-            return new CoreReply(bot, MessageTarget.group(groupId), sourceMessageId, jsonCodec);
+            return new CoreReply(bot(), MessageTarget.group(groupId), sourceMessageId, jsonCodec);
         }
         if (userId != null) {
             // 私聊；也覆盖「messageType 未知但有 userId」的情况
-            return new CoreReply(bot, MessageTarget.privateChat(userId), sourceMessageId, jsonCodec);
+            return new CoreReply(bot(), MessageTarget.privateChat(userId), sourceMessageId, jsonCodec);
         }
         return null;
     }
@@ -185,6 +222,7 @@ public final class PluginEventAdapter {
      * @return 机器人 ID；bot 缺失时为空
      */
     public Optional<String> botId() {
-        return bot == null ? Optional.empty() : Optional.ofNullable(bot.getBotId());
+        YuniBot current = bot();
+        return current == null ? Optional.empty() : Optional.ofNullable(current.getBotId());
     }
 }

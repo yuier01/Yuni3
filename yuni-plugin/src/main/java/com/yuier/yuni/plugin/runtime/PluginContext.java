@@ -496,6 +496,17 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public YuniBot bot() {
+        /*
+         * 优先经运行时解析：bot 由 engine 的 BotManager 动态创建，
+         * 运行时持有的供应函数是唯一在启动全阶段都可靠的来源。
+         * 服务表作为回退——某些集成场景会直接注册 bot。
+         */
+        if (runtime != null) {
+            YuniBot resolved = runtime.resolveBot();
+            if (resolved != null) {
+                return resolved;
+            }
+        }
         return service(YuniBot.class);
     }
 
@@ -517,11 +528,12 @@ public final class PluginContext implements YuniContext {
     @Override
     public Cache cache() {
         /*
-         * 按需构造：RedisCache 是无状态包装（只依赖 JsonCodec），
-         * 不需要每插件一份，但也不值得预注册进服务表——
-         * 插件注册的服务可能覆盖同名类型，内置服务应保持独立。
+         * 优先取注册表里的实例（启动配置会注入一个共享实例），
+         * 未注册时按需构造。共享实例的价值在于连接池与线程池的复用——
+         * 若每个插件各持一个 HttpClient，连接池就被割裂了。
          */
-        return new com.yuier.yuni.plugin.runtime.service.RedisCache(jsonCodec());
+        return services.resolve(Cache.class)
+                .orElseGet(() -> new com.yuier.yuni.plugin.runtime.service.RedisCache(jsonCodec()));
     }
 
     @Override
@@ -537,7 +549,13 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Http http() {
-        return new com.yuier.yuni.plugin.runtime.service.RestTemplateHttp(jsonCodec());
+        /*
+         * 同 cache()：优先复用注册表里的共享实例。
+         * 现行 PluginUtils.simpleGet/simplePost 每次调用都 new RestTemplate()，
+         * 不复用连接池——这正是本设计要修掉的问题之一。
+         */
+        return services.resolve(Http.class)
+                .orElseGet(() -> new com.yuier.yuni.plugin.runtime.service.RestTemplateHttp(jsonCodec()));
     }
 
     @Override
