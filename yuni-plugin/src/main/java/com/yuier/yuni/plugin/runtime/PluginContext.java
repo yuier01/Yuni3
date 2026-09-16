@@ -291,12 +291,17 @@ public final class PluginContext implements YuniContext {
         if (cron == null || cron.isBlank()) {
             throw new IllegalArgumentException("cron 表达式不能为空");
         }
-        // 任务 ID 需要全局唯一：用 Fiber 标识 + 自增序号，
-        // 因为同一插件可以注册多个定时任务（现行系统用 pluginFullId 作 ID，
-        // 导致一个插件只能有一个定时任务）
-        String taskId = taskIdOf("cron");
-        taskManager.addCronTask(taskId, cron, wrapTask(task));
-        return registerDisposable(() -> taskManager.cancelTask(taskId));
+        if (task == null) {
+            throw new IllegalArgumentException("任务不能为 null");
+        }
+        /*
+         * 用句柄式 API 而非字符串 taskId：
+         * 现行系统以 pluginFullId 作任务 ID，导致一个插件只能有一个定时任务；
+         * 而新系统中一个插件完全可以注册多个（例如 steam 插件既轮询状态又做日报）。
+         */
+        java.util.concurrent.ScheduledFuture<?> future =
+                taskManager.scheduleCron(cron, wrapTask(task));
+        return registerDisposable(() -> taskManager.cancelTask(future));
     }
 
     @Override
@@ -307,6 +312,9 @@ public final class PluginContext implements YuniContext {
         if (interval == null || interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("执行间隔必须为正");
         }
+        if (task == null) {
+            throw new IllegalArgumentException("任务不能为 null");
+        }
         // Spring 的 cron 最小粒度是秒，这里把间隔折算成「每 N 秒」的 cron 表达式。
         // 对亚秒级间隔无法表达，明确拒绝而不是静默降级。
         long seconds = interval.getSeconds();
@@ -314,9 +322,9 @@ public final class PluginContext implements YuniContext {
             throw new IllegalArgumentException("执行间隔至少为 1 秒（cron 最小粒度），当前: " + interval);
         }
         String cron = "0/" + seconds + " * * * * ?";
-        String taskId = taskIdOf("every");
-        taskManager.addCronTask(taskId, cron, wrapTask(task));
-        return registerDisposable(() -> taskManager.cancelTask(taskId));
+        java.util.concurrent.ScheduledFuture<?> future =
+                taskManager.scheduleCron(cron, wrapTask(task));
+        return registerDisposable(() -> taskManager.cancelTask(future));
     }
 
     @Override
@@ -375,17 +383,6 @@ public final class PluginContext implements YuniContext {
                 log.error("[{}] 定时任务执行失败", self().name(), t);
             }
         };
-    }
-
-    /**
-     * 生成一个该 Fiber 内唯一的任务 ID。
-     *
-     * @param prefix 前缀，用于区分 cron / every
-     * @return 任务 ID
-     */
-    private String taskIdOf(String prefix) {
-        String owner = fiber == null ? "anonymous" : fiber.id();
-        return "plugin:" + owner + ":" + prefix + ":" + System.nanoTime();
     }
 
     /**
