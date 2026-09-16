@@ -1,0 +1,493 @@
+package com.yuier.yuni.plugin.runtime;
+
+import com.yuier.yuni.plugin.api.Disposable;
+import com.yuier.yuni.plugin.api.PluginMetadata;
+import com.yuier.yuni.plugin.api.YuniContext;
+import com.yuier.yuni.plugin.api.YuniPlugin;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * {@link PluginRuntime} 的单元测试——覆盖「加载 → 依赖检查 → apply → 卸载」闭环。
+ *
+ * <p>这些测试是设计文档 §9「生命周期」与 §14.7「测试策略」中
+ * <b>集成层</b>要求的核心断言：</p>
+ * <ul>
+ *   <li>加载后 Effect 被登记，卸载后<b>归零</b>；</li>
+ *   <li>{@code apply} 抛异常时插件进入 FAILED 且已建立的 Effect 被回滚；</li>
+ *   <li>依赖未满足时停在 PENDING 且 {@code apply} <b>不被调用</b>；</li>
+ *   <li>重复加载同 ID 插件被拒绝（不静默覆盖）。</li>
+ * </ul>
+ */
+class PluginRuntimeTest {
+
+    /**
+     * 构造一个不注入定时任务管理器的运行时。
+     *
+     * <p>调度类能力在本测试中不覆盖——它需要 {@code DynamicTaskManager}，
+     * 而那是一个依赖 Spring {@code TaskScheduler} 的组件，属 P2 的接线范围。</p>
+     *
+     * @return 运行时实例
+     */
+    private static PluginRuntime runtime() {
+        return new PluginRuntime(null);
+    }
+
+    @Test
+    @DisplayName("加载一个注册了能力的插件后处于 ACTIVE，且 Effect 数正确")
+    void loadsPluginAndRegistersEffects() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin plugin = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("测试插件").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.onMessage((ev, reply) -> { });
+                ctx.onNotice("poke", (ev, reply) -> { });
+                ctx.effect(() -> () -> { });
+            }
+        };
+
+        PluginFiber fiber = runtime.load(plugin, "test-module", null, null);
+
+        assertEquals(FiberState.ACTIVE, fiber.state());
+        // 两个事件注册 + 一个自定义 Effect
+        assertEquals(3, fiber.effectCount());
+        // 注册表也应看到这三条（自定义 Effect 不进注册表，故为 2）
+        assertEquals(2, runtime.registrations().totalSize());
+        assertEquals(1, runtime.fibers().pluginCount());
+    }
+
+    @Test
+    @DisplayName("卸载后 Effect 归零，注册表清空——这是热重载允许关 ClassLoader 的前提")
+    void unloadZeroesEffectsAndRegistrations() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin plugin = YuniPlugin.of("卸载测试", ctx -> {
+            ctx.onMessage((ev, reply) -> { });
+            ctx.onMessage((ev, reply) -> { });
+            ctx.effect(() -> () -> { });
+        });
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        assertEquals(3, fiber.effectCount());
+        assertTrue(runtime.registrations().totalSize() > 0);
+
+        List<String> failures = runtime.unload(fiber.id());
+
+        assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
+        assertEquals(0, fiber.effectCount(), "Effect 必须归零");
+        assertEquals(FiberState.DISPOSED, fiber.state());
+        assertEquals(0, runtime.fibers().pluginCount());
+        assertEquals(0, runtime.registrations().totalSize(), "注册表必须清空");
+        assertEquals(0, runtime.fibers().totalEffectCount());
+    }
+
+    @Test
+    @DisplayName("apply 抛异常：插件进入 FAILED，且已建立的 Effect 被回滚")
+    void failedApplyRollsBackEffects() {
+        PluginRuntime runtime = runtime();
+        AtomicInteger disposed = new AtomicInteger();
+
+        YuniPlugin plugin = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("半初始化插件").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                // 先注册两个 Effect，再抛异常——模拟「注册到一半失败」
+                ctx.onMessage((ev, reply) -> { });
+                ctx.effect(() -> disposed::incrementAndGet);
+                throw new IllegalStateException("apply 中途失败");
+            }
+        };
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+
+        assertEquals(FiberState.FAILED, fiber.state());
+        assertTrue(fiber.failureCause().isPresent());
+        assertTrue(fiber.failureCause().get().getMessage().contains("apply 中途失败"));
+
+        // 回滚是关键：不回滚会出现「标记为失败但监听器仍在工作」的半初始化状态
+        assertEquals(0, fiber.effectCount(), "失败后 Effect 必须回滚");
+        assertEquals(1, disposed.get(), "自定义 Effect 的 Disposer 应被调用");
+        assertEquals(0, runtime.registrations().totalSize(), "注册表不应残留半初始化条目");
+    }
+
+    @Test
+    @DisplayName("apply 抛出 Error（类加载失败场景）同样被捕获并回滚")
+    void failedApplyCatchesError() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin plugin = YuniPlugin.of("抛 Error 的插件", ctx -> {
+            ctx.onMessage((ev, reply) -> { });
+            throw new NoClassDefFoundError("simulated missing framework class");
+        });
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+
+        // 只 catch Exception 会让这里静默通过并把注册残留下来
+        assertEquals(FiberState.FAILED, fiber.state());
+        assertEquals(0, fiber.effectCount());
+        assertEquals(0, runtime.registrations().totalSize());
+    }
+
+    @Test
+    @DisplayName("依赖未满足：停在 PENDING，且 apply 不被调用")
+    void pendingWhenDependencyMissing() {
+        PluginRuntime runtime = runtime();
+        AtomicInteger applyCount = new AtomicInteger();
+
+        YuniPlugin plugin = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("缺依赖插件").build();
+            }
+
+            @Override
+            public List<Class<?>> inject() {
+                return List.of(CharSequence.class);
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                applyCount.incrementAndGet();
+            }
+        };
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+
+        assertEquals(FiberState.PENDING, fiber.state());
+        assertEquals(0, applyCount.get(), "依赖未满足时不能执行 apply");
+        assertEquals(List.of(CharSequence.class), fiber.pendingDependencies());
+
+        // PENDING 必须在启动收尾时被显式报出，而不是静默
+        List<String> report = runtime.reportPendingPlugins();
+        assertEquals(1, report.size());
+        assertTrue(report.get(0).contains("缺依赖插件"), report.toString());
+        assertTrue(report.get(0).contains("CharSequence"), report.toString());
+    }
+
+    @Test
+    @DisplayName("依赖就绪后推进 PENDING 插件并转为 ACTIVE")
+    void activatesPendingOnceDependencyProvided() {
+        PluginRuntime runtime = runtime();
+        AtomicInteger applyCount = new AtomicInteger();
+
+        YuniPlugin plugin = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("等待服务").build();
+            }
+
+            @Override
+            public List<Class<?>> inject() {
+                return List.of(CharSequence.class);
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                applyCount.incrementAndGet();
+            }
+        };
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        assertEquals(FiberState.PENDING, fiber.state());
+
+        // 注入依赖
+        runtime.registerService(CharSequence.class, "我来了");
+
+        int activated = runtime.activatePending();
+
+        assertEquals(1, activated);
+        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(1, applyCount.get());
+        assertTrue(runtime.reportPendingPlugins().isEmpty());
+    }
+
+    @Test
+    @DisplayName("插件提供服务后，等待该服务的插件被自动推进")
+    void providingServiceActivatesWaiter() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin consumer = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("消费者").build();
+            }
+
+            @Override
+            public List<Class<?>> inject() {
+                return List.of(Runnable.class);
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                // 依赖由 inject 保证就绪
+                assertNotNull(ctx.service(Runnable.class));
+            }
+        };
+
+        PluginFiber consumerFiber = runtime.load(consumer, null, null, null);
+        assertEquals(FiberState.PENDING, consumerFiber.state());
+
+        // 提供者插件在 apply 中注册服务——消费者应被自动推进，无需手动调用 activatePending
+        YuniPlugin provider = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("提供者").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                // 显式转型：provide 的第二个参数是 Object，
+                // 裸 lambda 在此处无法被编译器推断为 Runnable
+                ctx.provide(Runnable.class, (Runnable) () -> { });
+            }
+        };
+        runtime.load(provider, null, null, null);
+        assertEquals(FiberState.ACTIVE, consumerFiber.state(),
+                "provide 之后应自动推进等待者，否则必须等下次启动才生效");
+    }
+
+    @Test
+    @DisplayName("循环依赖：双方都停在 PENDING，且被报告出来")
+    void circularDependencyStaysPendingAndIsReported() {
+        PluginRuntime runtime = runtime();
+
+        // 用两个标记接口模拟互相依赖
+        YuniPlugin a = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("A").build();
+            }
+
+            @Override
+            public List<Class<?>> inject() {
+                return List.of(Comparable.class);
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.provide(Cloneable.class, new Cloneable() { });
+            }
+        };
+        YuniPlugin b = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("B").build();
+            }
+
+            @Override
+            public List<Class<?>> inject() {
+                return List.of(Cloneable.class);
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.provide(Comparable.class, (Comparable<Object>) o -> 0);
+            }
+        };
+
+        PluginFiber fiberA = runtime.load(a, null, null, null);
+        PluginFiber fiberB = runtime.load(b, null, null, null);
+
+        // A 等 Comparable（由 B 提供），B 等 Cloneable（由 A 提供）：谁都无法先 apply
+        assertEquals(FiberState.PENDING, fiberA.state());
+        assertEquals(FiberState.PENDING, fiberB.state());
+
+        // 不动点迭代不应死循环
+        assertEquals(0, runtime.activatePending());
+
+        List<String> report = runtime.reportPendingPlugins();
+        assertEquals(2, report.size(), "循环依赖必须被显式报出，不能静默");
+    }
+
+    @Test
+    @DisplayName("重复加载同一插件被拒绝，不静默覆盖")
+    void rejectsDuplicateLoad() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin plugin = YuniPlugin.of("重复插件", ctx -> { });
+        runtime.load(plugin, "m", null, null);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> runtime.load(YuniPlugin.of("重复插件", ctx -> { }), "m", null, null));
+        assertTrue(ex.getMessage().contains("已加载"), ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("插件的服务在卸载时注销，不能拿到已卸载插件的对象")
+    void unloadUnregistersProvidedServices() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin provider = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("服务提供者").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                // 显式转型：provide 的第二个参数是 Object
+                ctx.provide(Runnable.class, (Runnable) () -> { });
+            }
+        };
+
+        PluginFiber fiber = runtime.load(provider, null, null, null);
+        assertTrue(runtime.services().contains(Runnable.class));
+
+        runtime.unload(fiber.id());
+
+        assertFalse(runtime.services().contains(Runnable.class), "卸载后服务必须注销");
+    }
+
+    @Test
+    @DisplayName("作用域状态按类型懒创建，同一类型返回同一实例")
+    void scopeStateIsLazyAndShared() {
+        PluginRuntime runtime = runtime();
+        List<Object> captured = new ArrayList<>();
+
+        YuniPlugin plugin = YuniPlugin.of("带状态的插件", ctx -> {
+            captured.add(ctx.state(StateHolder.class));
+            captured.add(ctx.state(StateHolder.class));
+        });
+
+        runtime.load(plugin, null, null, null);
+
+        assertEquals(2, captured.size());
+        assertSame(captured.get(0), captured.get(1), "同一类型应返回同一实例");
+        assertNotNull(captured.get(0));
+    }
+
+    @Test
+    @DisplayName("作用域状态类型缺少无参构造器时给出明确错误")
+    void scopeStateRequiresNoArgConstructor() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin plugin = YuniPlugin.of("状态类型不合法", ctx -> ctx.state(NoDefaultCtor.class));
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+
+        // 插件应进入 FAILED，且失败原因里说明是构造器问题
+        assertEquals(FiberState.FAILED, fiber.state());
+        Throwable cause = fiber.failureCause().orElseThrow();
+        assertEquals(IllegalStateException.class, cause.getClass());
+        assertTrue(cause.getMessage().contains("无参构造器"), cause.getMessage());
+    }
+
+    @Test
+    @DisplayName("子插件随父插件一同卸载")
+    void childPluginDisposedWithParent() {
+        PluginRuntime runtime = runtime();
+
+        YuniPlugin child = YuniPlugin.of("子插件", ctx -> ctx.onMessage((ev, reply) -> { }));
+        YuniPlugin parent = YuniPlugin.of("父插件", ctx -> {
+            ctx.onMessage((ev, reply) -> { });
+            ctx.plugin(child);
+        });
+
+        PluginFiber parentFiber = runtime.load(parent, null, null, null);
+
+        assertEquals(FiberState.ACTIVE, parentFiber.state());
+        assertEquals(1, parentFiber.children().size(), "子插件应挂到父 Fiber 下");
+        PluginFiber childFiber = parentFiber.children().get(0);
+        assertEquals(FiberState.ACTIVE, childFiber.state());
+
+        runtime.unload(parentFiber.id());
+
+        // 子随父卸载：父插件卸载后，子插件的注册项也必须消失
+        assertEquals(FiberState.DISPOSED, childFiber.state());
+        assertEquals(0, runtime.registrations().totalSize(), "父子注册项都应清空");
+    }
+
+    @Test
+    @DisplayName("全量卸载后全局 Effect 归零")
+    void unloadAllLeavesNoResidue() {
+        PluginRuntime runtime = runtime();
+
+        for (int i = 0; i < 5; i++) {
+            final int n = i;
+            runtime.load(YuniPlugin.of("插件" + n, ctx -> {
+                ctx.onMessage((ev, reply) -> { });
+                ctx.onNotice("poke", (ev, reply) -> { });
+                ctx.effect(() -> () -> { });
+            }), "m" + n, null, null);
+        }
+
+        assertEquals(5, runtime.fibers().pluginCount());
+        assertEquals(15, runtime.fibers().totalEffectCount());
+
+        List<String> failures = runtime.unloadAll();
+
+        assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
+        assertEquals(0, runtime.fibers().pluginCount());
+        assertEquals(0, runtime.fibers().totalEffectCount());
+        assertEquals(0, runtime.registrations().totalSize());
+    }
+
+    @Test
+    @DisplayName("关闭后再注册：拒收并就地撤销，不留悬挂引用")
+    void registrationAfterDisposeIsRejectedAndRolledBack() {
+        PluginRuntime runtime = runtime();
+        List<Disposable> lateHandles = new ArrayList<>();
+
+        // 保留 ctx 引用并在卸载后再注册——模拟「异步回调在插件卸载后才触发」
+        YuniPlugin plugin = new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("延迟注册").build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                lateHandles.add(ctx.onMessage((ev, reply) -> { }));
+            }
+        };
+
+        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        assertEquals(1, runtime.registrations().totalSize());
+
+        runtime.unload(fiber.id());
+        assertEquals(0, runtime.registrations().totalSize());
+
+        // 已经不在注册表里，再次撤销是幂等的
+        lateHandles.get(0).dispose();
+        assertEquals(0, runtime.registrations().totalSize());
+    }
+
+    /**
+     * 无参构造器可访问的状态类型——用于验证作用域状态的正常路径。
+     */
+    public static final class StateHolder {
+        /** 可变计数，用于验证状态确实被共享。 */
+        public int counter;
+    }
+
+    /**
+     * 缺少无参构造器的状态类型——用于验证错误路径。
+     */
+    public static final class NoDefaultCtor {
+        /** 唯一构造器带参数，反射实例化应失败。 */
+        public NoDefaultCtor(String required) {
+            // 故意要求参数
+        }
+    }
+}

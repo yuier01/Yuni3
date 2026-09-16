@@ -1,0 +1,354 @@
+package com.yuier.yuni.plugin.runtime;
+
+import com.yuier.yuni.plugin.api.ScopeFilter;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+/**
+ * 能力注册总表——框架侧持有「所有插件注册了什么能力」的唯一索引。
+ *
+ * <h2>取代了什么</h2>
+ * <p>现行 {@code PluginContainer} 按插件<b>类型</b>维护了八条独立的 ID 列表：</p>
+ * <pre>
+ * private final List&lt;String&gt; scheduledPluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; immediatePluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; commandPluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; patternPluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; noticePluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; requestPluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; metaPluginFullIds = new ArrayList&lt;&gt;();
+ * private final List&lt;String&gt; messageSentPluginFullIds = new ArrayList&lt;&gt;();
+ * private final Map&lt;YuniPluginType, List&lt;String&gt;&gt; pluginTypeToFullIdListMap = ...;
+ * </pre>
+ * <p>这八条列表的存在理由只有一个：让 {@code PassivePluginMatcher} 能按类型取到
+ * 插件列表。但「类型」本身是注册的结果而非原因——这里改为按<b>能力种类</b>
+ * 分组，且存的是注册项本身而非插件 ID，分发表因此不需要二次查表。
+ * 热重载时也不再需要手工维护八条列表 + 修正 index 偏移。</p>
+ *
+ * <h2>分组维度</h2>
+ * <p>{@link Entry} 携带 {@link Kind}，表按 Kind 分桶。这与「8 种插件类型」的区别在于：
+ * Kind 是<b>注册动作的种类</b>（注册了一条消息处理器 / 一个定时任务），
+ * 一个插件可以同时出现在多个桶里，不需要插件类型来做互斥分类。</p>
+ *
+ * <h2>顺序语义</h2>
+ * <p>同桶内的条目按注册顺序保存。分发时框架要求「命令优先于模式」，这是
+ * {@code EventPipeline} 的<b>阶段</b>语义（见设计文档 §10.2），不依赖桶内顺序；
+ * 桶内顺序仅影响同类处理器之间的调用先后。</p>
+ *
+ * <h2>线程安全</h2>
+ * <p>注册发生在插件加载期，分发发生在运行期，且热重载会并发增删。使用
+ * {@link CopyOnWriteArrayList} 保证遍历期间不需要加锁——分发是高频路径，
+ * 读取零同步开销比写入性能更重要。</p>
+ */
+public final class RegistrationTable {
+
+    /** 命令树根节点的注册项。 */
+    private final List<Entry> commandEntries = new CopyOnWriteArrayList<>();
+
+    /** 消息事件处理器注册项。 */
+    private final List<Entry> messageEntries = new CopyOnWriteArrayList<>();
+
+    /** 消息发出事件处理器注册项。 */
+    private final List<Entry> messageSentEntries = new CopyOnWriteArrayList<>();
+
+    /** 通知事件处理器注册项。 */
+    private final List<Entry> noticeEntries = new CopyOnWriteArrayList<>();
+
+    /** 请求事件处理器注册项。 */
+    private final List<Entry> requestEntries = new CopyOnWriteArrayList<>();
+
+    /** 元事件处理器注册项。 */
+    private final List<Entry> metaEntries = new CopyOnWriteArrayList<>();
+
+    /** 定时 / 周期 / 立即执行任务的注册项。 */
+    private final List<Entry> scheduleEntries = new CopyOnWriteArrayList<>();
+
+    /** 服务提供者注册项。 */
+    private final List<Entry> serviceEntries = new CopyOnWriteArrayList<>();
+
+    /**
+     * 注册项的能力种类。
+     *
+     * <p>与现行 {@code YuniPluginType} 的本质区别：枚举值描述的是
+     * <b>注册动作</b>而非插件本身，因此不存在「一个插件只能属于一个类型」的限制。</p>
+     */
+    public enum Kind {
+        /** 命令树。 */
+        COMMAND("命令"),
+        /** 消息事件处理器。 */
+        MESSAGE("消息"),
+        /** 机器人自身发出消息的事件处理器。 */
+        MESSAGE_SENT("消息发出"),
+        /** 通知事件处理器。 */
+        NOTICE("通知"),
+        /** 请求事件处理器。 */
+        REQUEST("请求"),
+        /** 元事件处理器。 */
+        META("元事件"),
+        /** 定时 / 周期 / 立即执行任务。 */
+        SCHEDULE("定时"),
+        /** 对外提供的服务。 */
+        SERVICE("服务");
+
+        private final String displayName;
+
+        Kind(String displayName) {
+            this.displayName = displayName;
+        }
+
+        /**
+         * 面向管理端的中文显示名。
+         *
+         * @return 显示名
+         */
+        public String displayName() {
+            return displayName;
+        }
+    }
+
+    /**
+     * 一条注册项。
+     *
+     * @param kind      能力种类
+     * @param owner     注册者（插件 Fiber），用于状态检查、日志与失败归因
+     * @param filter    作用域过滤器；{@code null} 视为 {@link ScopeFilter#ALL}
+     * @param predicate 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）
+     * @param subType   子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤
+     * @param payload   实际载荷：处理器、命令树根节点或 Runnable
+     */
+    public record Entry(
+            Kind kind,
+            PluginFiber owner,
+            ScopeFilter filter,
+            java.util.function.Predicate<Object> predicate,
+            String subType,
+            Object payload
+    ) {
+
+        /**
+         * 紧凑构造器：规范化空值。
+         */
+        public Entry {
+            filter = filter == null ? ScopeFilter.ALL : filter;
+        }
+
+        /**
+         * 判定本注册项是否应在指定群生效。
+         *
+         * @param groupId 事件群号；{@code null} 表示非群事件
+         * @return 生效返回 {@code true}
+         */
+        public boolean scopeMatches(Long groupId) {
+            return filter.matches(groupId);
+        }
+
+        /**
+         * 判定子类型是否匹配。
+         *
+         * @param actualSubType 事件的子类型
+         * @return 未设置子类型过滤，或与事件子类型相等时返回 {@code true}
+         */
+        public boolean subTypeMatches(String actualSubType) {
+            if (subType == null || subType.isBlank()) {
+                return true;
+            }
+            return subType.equals(actualSubType);
+        }
+
+        /**
+         * 判定所属插件当前是否可服务。
+         *
+         * @return 插件处于 ACTIVE 状态时返回 {@code true}
+         */
+        public boolean ownerServiceable() {
+            return owner != null && owner.isServiceable();
+        }
+    }
+
+    // ==================== 注册 ====================
+
+    /**
+     * 登记一条注册项。
+     *
+     * @param entry 注册项
+     * @return 撤销句柄；调用后从对应桶中移除该条目
+     */
+    public com.yuier.yuni.plugin.api.Disposable add(Entry entry) {
+        List<Entry> bucket = bucketOf(entry.kind());
+        bucket.add(entry);
+        // 撤销时只做移除；桶是 CopyOnWriteArrayList，remove 是安全且幂等的
+        return () -> bucket.remove(entry);
+    }
+
+    /**
+     * 取指定种类的桶。
+     *
+     * @param kind 能力种类
+     * @return 对应的桶
+     */
+    private List<Entry> bucketOf(Kind kind) {
+        return switch (kind) {
+            case COMMAND -> commandEntries;
+            case MESSAGE -> messageEntries;
+            case MESSAGE_SENT -> messageSentEntries;
+            case NOTICE -> noticeEntries;
+            case REQUEST -> requestEntries;
+            case META -> metaEntries;
+            case SCHEDULE -> scheduleEntries;
+            case SERVICE -> serviceEntries;
+        };
+    }
+
+    // ==================== 查询 ====================
+
+    /**
+     * 取指定种类的全部注册项。
+     *
+     * @param kind 能力种类
+     * @return 不可变快照
+     */
+    public List<Entry> entriesOf(Kind kind) {
+        return Collections.unmodifiableList(new ArrayList<>(bucketOf(kind)));
+    }
+
+    /**
+     * 命令树注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> commandEntries() {
+        return entriesOf(Kind.COMMAND);
+    }
+
+    /**
+     * 消息事件注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> messageEntries() {
+        return entriesOf(Kind.MESSAGE);
+    }
+
+    /**
+     * 消息发出事件注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> messageSentEntries() {
+        return entriesOf(Kind.MESSAGE_SENT);
+    }
+
+    /**
+     * 通知事件注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> noticeEntries() {
+        return entriesOf(Kind.NOTICE);
+    }
+
+    /**
+     * 请求事件注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> requestEntries() {
+        return entriesOf(Kind.REQUEST);
+    }
+
+    /**
+     * 元事件注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> metaEntries() {
+        return entriesOf(Kind.META);
+    }
+
+    /**
+     * 调度类注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> scheduleEntries() {
+        return entriesOf(Kind.SCHEDULE);
+    }
+
+    /**
+     * 服务注册项（按注册顺序）。
+     *
+     * @return 不可变快照
+     */
+    public List<Entry> serviceEntries() {
+        return entriesOf(Kind.SERVICE);
+    }
+
+    /**
+     * 全部注册项总数（跨所有桶）。
+     *
+     * <p>用于泄漏检测与诊断。</p>
+     *
+     * @return 总数
+     */
+    public int totalSize() {
+        int total = 0;
+        for (Kind kind : Kind.values()) {
+            total += bucketOf(kind).size();
+        }
+        return total;
+    }
+
+    /**
+     * 各桶的条目数统计。
+     *
+     * <p>用于管理端展示「这个插件贡献了哪些能力」——即设计文档 §15.1 提到的
+     * 「把插件类型从声明改为推导」。比如一个插件若 {@code COMMAND=2, SCHEDULE=1}，
+     * 管理端就可以把它标为「命令 + 定时」。</p>
+     *
+     * @return 种类 → 条目数（全部 Kind 都有键，无条目时为 0）
+     */
+    public java.util.Map<Kind, Integer> countByKind() {
+        java.util.Map<Kind, Integer> counts = new java.util.LinkedHashMap<>();
+        for (Kind kind : Kind.values()) {
+            counts.put(kind, bucketOf(kind).size());
+        }
+        return Collections.unmodifiableMap(counts);
+    }
+
+    /**
+     * 某个插件贡献的能力种类。
+     *
+     * <p>用于管理端推导插件类型标签。</p>
+     *
+     * @param owner 插件 Fiber
+     * @return 该插件贡献的种类集合（保持 Kind 声明顺序）
+     */
+    public java.util.Set<Kind> kindsOf(PluginFiber owner) {
+        java.util.Set<Kind> kinds = java.util.EnumSet.noneOf(Kind.class);
+        for (Kind kind : Kind.values()) {
+            for (Entry entry : bucketOf(kind)) {
+                if (entry.owner() == owner) {
+                    kinds.add(kind);
+                    break;
+                }
+            }
+        }
+        return Collections.unmodifiableSet(kinds);
+    }
+
+    /**
+     * 清空全部桶。
+     *
+     * <p>注意：正常卸载流程<b>不应</b>调用本方法——Fiber 的 dispose 会通过
+     * 各自注册时返回的 {@link com.yuier.yuni.plugin.api.Disposable} 逐条移除。
+     * 本方法仅用于测试与全量重载前的兜底清理。</p>
+     */
+    public void clear() {
+        for (Kind kind : Kind.values()) {
+            bucketOf(kind).clear();
+        }
+    }
+}
