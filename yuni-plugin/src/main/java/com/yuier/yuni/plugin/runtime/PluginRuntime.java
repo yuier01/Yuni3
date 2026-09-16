@@ -79,13 +79,27 @@ public final class PluginRuntime {
     /** 定时任务管理器；由外部注入，可为 {@code null}（测试场景）。 */
     private final DynamicTaskManager taskManager;
 
+    /** JSON 编解码器；可为 {@code null}（测试场景，则依赖它的能力不可用）。 */
+    private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
+
     /**
      * 构造运行时。
      *
      * @param taskManager 定时任务管理器；{@code null} 时 {@code ctx.schedule(...)} 不可用
      */
     public PluginRuntime(DynamicTaskManager taskManager) {
+        this(taskManager, null);
+    }
+
+    /**
+     * 构造运行时（含 JSON 编解码器）。
+     *
+     * @param taskManager 定时任务管理器；{@code null} 时调度能力不可用
+     * @param jsonCodec   JSON 编解码器；{@code null} 时配置/缓存/HTTP 能力不可用
+     */
+    public PluginRuntime(DynamicTaskManager taskManager, com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
         this.taskManager = taskManager;
+        this.jsonCodec = jsonCodec;
     }
 
     // ==================== 注册基础设施 ====================
@@ -207,7 +221,7 @@ public final class PluginRuntime {
         }
 
         PluginContext ctx = PluginContext.forFiber(
-                fiber, services, registrations, taskManager, dataDir);
+                fiber, services, registrations, taskManager, dataDir, jsonCodec);
         // 让子插件挂载能回调到运行时
         ctx.bindRuntime(this);
 

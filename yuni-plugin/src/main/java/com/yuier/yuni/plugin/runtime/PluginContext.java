@@ -108,6 +108,14 @@ public final class PluginContext implements YuniContext {
     private final DynamicTaskManager taskManager;
 
     /**
+     * JSON 编解码器。
+     *
+     * <p>供 {@code config()} / {@code cache()} / {@code http()} 以及原始消息段
+     * 构造使用。为 {@code null} 时相关能力会给出明确错误（测试场景）。</p>
+     */
+    private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
+
+    /**
      * 构造根上下文。
      *
      * <p>资源目录或任务管理器为 {@code null} 时，只有访问对应能力的方会抛异常——
@@ -122,10 +130,28 @@ public final class PluginContext implements YuniContext {
                          RegistrationTable registrations,
                          DynamicTaskManager taskManager,
                          Path dataDir) {
+        this(services, registrations, taskManager, dataDir, null);
+    }
+
+    /**
+     * 构造根上下文（含 JSON 编解码器）。
+     *
+     * @param services      服务注册表
+     * @param registrations 能力注册表
+     * @param taskManager   定时任务管理器；可为 {@code null}
+     * @param dataDir       默认资源目录；可为 {@code null}
+     * @param jsonCodec     JSON 编解码器；可为 {@code null}
+     */
+    public PluginContext(ServiceRegistry services,
+                         RegistrationTable registrations,
+                         DynamicTaskManager taskManager,
+                         Path dataDir,
+                         com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
         this.services = services;
         this.registrations = registrations;
         this.taskManager = taskManager;
         this.dataDir = dataDir;
+        this.jsonCodec = jsonCodec;
         this.scopeStates = new ConcurrentHashMap<>();
     }
 
@@ -147,8 +173,9 @@ public final class PluginContext implements YuniContext {
                                          ServiceRegistry services,
                                          RegistrationTable registrations,
                                          DynamicTaskManager taskManager,
-                                         Path dataDir) {
-        PluginContext ctx = new PluginContext(services, registrations, taskManager, dataDir);
+                                         Path dataDir,
+                                         com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
+        PluginContext ctx = new PluginContext(services, registrations, taskManager, dataDir, jsonCodec);
         ctx.fiber = fiber;
         return ctx;
     }
@@ -474,7 +501,12 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Sender sender() {
-        return service(Sender.class);
+        /*
+         * 按需构造而非预注册：Sender 绑定到具体的 YuniBot 实例，而 bot 由
+         * BotManager 在启动流程中动态创建并注册为单例，时机晚于 PluginContext
+         * 的构造。因此这里在首次访问时从服务表取 bot 并即时包装。
+         */
+        return new com.yuier.yuni.plugin.runtime.service.CoreSender(bot(), jsonCodec());
     }
 
     @Override
@@ -484,17 +516,28 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Cache cache() {
-        return service(Cache.class);
+        /*
+         * 按需构造：RedisCache 是无状态包装（只依赖 JsonCodec），
+         * 不需要每插件一份，但也不值得预注册进服务表——
+         * 插件注册的服务可能覆盖同名类型，内置服务应保持独立。
+         */
+        return new com.yuier.yuni.plugin.runtime.service.RedisCache(jsonCodec());
     }
 
     @Override
     public ConfigLoader config() {
-        return service(ConfigLoader.class);
+        // 按插件构造：每个插件的资源目录不同，这是 ConfigLoader 的关键语义
+        if (dataDir == null) {
+            throw new IllegalStateException(
+                    "插件资源目录未注入，无法读取配置文件。"
+                            + "若插件不需要读取资源，请勿调用 ctx.config()。" + PHASE_NOTE);
+        }
+        return new com.yuier.yuni.plugin.runtime.service.FileConfigLoader(dataDir, jsonCodec());
     }
 
     @Override
     public Http http() {
-        return service(Http.class);
+        return new com.yuier.yuni.plugin.runtime.service.RestTemplateHttp(jsonCodec());
     }
 
     @Override
@@ -508,6 +551,23 @@ public final class PluginContext implements YuniContext {
             throw new IllegalStateException("插件资源目录未注入" + PHASE_NOTE);
         }
         return dataDir;
+    }
+
+    /**
+     * 取 JSON 编解码器。
+     *
+     * <p>由运行时注入；测试场景可能为 {@code null}，此时依赖它的能力
+     * （{@code config()} / {@code cache()} / {@code http()} / 原始段构造）
+     * 会给出明确的错误而不是 NPE。</p>
+     *
+     * @return 编解码器
+     */
+    private com.yuier.yuni.core.bot.JsonCodec jsonCodec() {
+        if (jsonCodec == null) {
+            throw new IllegalStateException(
+                    "JsonCodec 未注入，无法执行需要 JSON 编解码的操作" + PHASE_NOTE);
+        }
+        return jsonCodec;
     }
 
     // ==================== 挂载子插件 ====================
