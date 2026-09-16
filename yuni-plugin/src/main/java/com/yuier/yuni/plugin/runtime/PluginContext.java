@@ -96,6 +96,9 @@ public final class PluginContext implements YuniContext {
     /** 所属运行时；由 {@code PluginRuntime} 在构造后回填，用于挂载子插件。 */
     private PluginRuntime runtime;
 
+    /** 作用域查询的缓存实例（惰性构造）。 */
+    private volatile com.yuier.yuni.plugin.api.ScopeQuery scopeQuery;
+
     /**
      * 作用域状态表，键为「状态类型 + 作用域标识」。
      *
@@ -479,6 +482,64 @@ public final class PluginContext implements YuniContext {
             throw new IllegalStateException("服务工厂未返回实现: " + type.getName());
         }
         return provide(type, (Object) impl);
+    }
+
+    @Override
+    public com.yuier.yuni.plugin.api.ScopeQuery scope() {
+        // 惰性构造并缓存：作用域查询在广播场景下会被反复调用（每个群一次）
+        com.yuier.yuni.plugin.api.ScopeQuery cached = this.scopeQuery;
+        if (cached != null) {
+            return cached;
+        }
+        com.yuier.yuni.plugin.api.ScopeQuery created = new DefaultScopeQuery();
+        this.scopeQuery = created;
+        return created;
+    }
+
+    /**
+     * 作用域查询的默认实现。
+     *
+     * <p>判定来源按优先级：</p>
+     * <ol>
+     *   <li>{@code PluginRuntime} 里该插件注册项的 {@code ScopeFilter}
+     *       （即管理端配置的群例外）；</li>
+     *   <li>无注册项可查时，回落为「按插件元数据的 {@code defaultEnable} 全局生效」。</li>
+     * </ol>
+     *
+     * <p>本实现只做「按当前配置查询」，不写库——写库属管理端职责（见设计文档 §10.5）。</p>
+     */
+    private final class DefaultScopeQuery implements com.yuier.yuni.plugin.api.ScopeQuery {
+
+        @Override
+        public boolean isEnabledIn(long groupId) {
+            if (fiber == null || runtime == null) {
+                return true;
+            }
+            // 询问运行时：该插件的作用域过滤器是否覆盖这个群
+            Boolean enabled = runtime.isPluginEnabledIn(fiber.id(), groupId);
+            if (enabled != null) {
+                return enabled;
+            }
+            // 没有显式配置：按元数据的默认值
+            return fiber.metadata().defaultEnable();
+        }
+
+        @Override
+        public java.util.List<Long> enabledGroups() {
+            if (runtime == null) {
+                return java.util.List.of();
+            }
+            return runtime.groupsWhereEnabled(fiber == null ? null : fiber.id());
+        }
+
+        @Override
+        public boolean isGloballyEnabled() {
+            if (fiber == null) {
+                return true;
+            }
+            // 全局生效 = 未配置任何群例外（ScopeFilter 为 ALL）
+            return runtime.isGloballyEnabled(fiber.id());
+        }
     }
 
     // ==================== 作用域状态 ====================

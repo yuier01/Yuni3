@@ -385,6 +385,26 @@ public interface YuniContext {
      */
     <T> Disposable provide(Class<T> type, java.util.function.Function<Class<T>, T> factory);
 
+    /**
+     * 作用域查询——「本插件在某个群是否生效」。
+     *
+     * <p>主动插件（定时任务）需要它：这类插件不由事件触发，因此没有「当前群号」
+     * 上下文，框架无法自动施加 {@link ScopeFilter} 过滤。插件在向一批群广播时
+     * 需要自己尊重群粒度启停，而本服务提供了稳定的查询入口——
+     * 取代现行插件直接依赖框架内部的 {@code PluginEnableProcessor}。</p>
+     *
+     * <pre>{@code
+     * ScopeQuery scope = ctx.scope();
+     * for (BotGroupInfo group : bot.getGroupList().orElse(List.of())) {
+     *     if (!scope.isEnabledIn(group.getGroupId())) continue;
+     *     ctx.sender().group(group.getGroupId()).text("...").send();
+     * }
+     * }</pre>
+     *
+     * @return 作用域查询服务，永不为 {@code null}
+     */
+    ScopeQuery scope();
+
     // ==================== 作用域状态 ====================
 
     /**

@@ -77,6 +77,17 @@ public final class PluginRuntime {
     private final java.util.Map<String, Path> pluginDataDirs = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
+     * 插件标识 → 作用域过滤器。
+     *
+     * <p>记录每个插件注册时的 {@link com.yuier.yuni.plugin.api.ScopeFilter}，
+     * 供 {@code ctx.scope()} 回答「本插件在某群是否生效」。
+     * 主动插件（定时任务）没有事件上下文，框架无法替它施加过滤，
+     * 只能由插件主动查询——这是该映射存在的唯一理由。</p>
+     */
+    private final java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter> pluginScopeFilters =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
      * 机器人实例供应函数。
      *
      * <p>由启动流程在 bot 创建完毕后设置（见 {@link #bindBot}）。用供应函数
@@ -225,6 +236,10 @@ public final class PluginRuntime {
             // 记录资源目录：依赖未满足而停在 PENDING 的插件，后续推进时
             // 需要用同一个目录重建上下文
             pluginDataDirs.put(id, dataDir);
+        }
+        if (filter != null) {
+            // 记录作用域过滤器：供主动插件经 ctx.scope() 查询群粒度启停
+            pluginScopeFilters.put(id, filter);
         }
         if (parent != null) {
             parent.addChild(fiber);
@@ -439,6 +454,7 @@ public final class PluginRuntime {
         // 否则会出现「已卸载却仍在分发表里」的悬挂引用
         fibers.remove(fiber);
         pluginDataDirs.remove(pluginId);
+        pluginScopeFilters.remove(pluginId);
 
         if (failures.isEmpty()) {
             log.info("插件已卸载: {}", pluginId);
@@ -548,6 +564,103 @@ public final class PluginRuntime {
             }
             return this.pipeline;
         }
+    }
+
+    /**
+     * 取插件的作用域过滤器。
+     *
+     * @param pluginId 插件标识
+     * @return 过滤器；未记录时为空
+     */
+    public java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter> scopeFilterOf(String pluginId) {
+        return java.util.Optional.ofNullable(pluginScopeFilters.get(pluginId));
+    }
+
+    /**
+     * 判定插件是否在指定群生效（供主动插件经 {@code ctx.scope()} 查询）。
+     *
+     * @param pluginId 插件标识
+     * @param groupId  群号
+     * @return 生效返回 {@code true}；无过滤器记录时返回 {@code null}，由调用方回落默认值
+     */
+    public Boolean isPluginEnabledIn(String pluginId, long groupId) {
+        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
+        return filter == null ? null : filter.matches(groupId);
+    }
+
+    /**
+     * 判定插件是否在全局作用域生效。
+     *
+     * @param pluginId 插件标识
+     * @return 无过滤器记录或过滤器覆盖全部群时返回 {@code true}
+     */
+    public boolean isGloballyEnabled(String pluginId) {
+        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
+        if (filter == null) {
+            return true;
+        }
+        // 无显式群例外即视为全局生效（只对具名实现可判定）
+        java.util.Optional<java.util.Set<Long>> whitelist = filter.explicitGroupWhitelist();
+        java.util.Optional<java.util.Set<Long>> blacklist = filter.explicitGroupBlacklist();
+        if (whitelist.isPresent()) {
+            // 白名单语义：只有列出的群生效，不算全局
+            return false;
+        }
+        if (blacklist.isPresent()) {
+            // 黑名单语义：全局开启 + 个别群关闭
+            return true;
+        }
+        // 无法反向解析的过滤器（lambda 组合）：按「覆盖全部」处理
+        return true;
+    }
+
+    /**
+     * 取「插件生效的全部群号」。
+     *
+     * <p>用于主动插件只向启用了它的群广播。需要向机器人查询群列表——
+     * 若 bot 未就绪或查询失败，返回空列表（宁可少发也不误发）。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 群号列表，不可变；无法判定时为空列表
+     */
+    public java.util.List<Long> groupsWhereEnabled(String pluginId) {
+        com.yuier.yuni.core.bot.YuniBot bot = resolveBot();
+        if (bot == null || pluginId == null) {
+            return java.util.List.of();
+        }
+        try {
+            java.util.List<com.yuier.yuni.core.bot.BotGroupInfo> groups =
+                    bot.getGroupList().orElse(java.util.List.of());
+            java.util.List<Long> enabled = new java.util.ArrayList<>();
+            for (com.yuier.yuni.core.bot.BotGroupInfo group : groups) {
+                Boolean hit = isPluginEnabledIn(pluginId, group.getGroupId());
+                // 无过滤器记录时按「全局生效」处理——与 isGloballyEnabled 一致
+                if (hit == null || hit) {
+                    enabled.add(group.getGroupId());
+                }
+            }
+            return java.util.Collections.unmodifiableList(enabled);
+        } catch (Exception e) {
+            log.warn("查询启用群列表失败: pluginId={}", pluginId, e);
+            return java.util.List.of();
+        }
+    }
+
+    /**
+     * 取插件的作用域状态对象（供外部诊断）。
+     *
+     * @param pluginId 插件标识
+     * @return 过滤器描述；未记录时返回 {@code "(未记录)"}
+     */
+    public String describeScope(String pluginId) {
+        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
+        if (filter == null) {
+            return "(未记录)";
+        }
+        return filter.explicitGroupWhitelist()
+                .map(set -> "仅限群 " + set)
+                .or(() -> filter.explicitGroupBlacklist().map(set -> "排除群 " + set))
+                .orElse("全部群");
     }
 
     /**
