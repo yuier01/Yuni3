@@ -119,18 +119,23 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @Override
     public List<Long> enabledGroups(String pluginId) {
         /*
-         * 语义选择：只返回「显式配置了例外的群」。
+         * 语义选择：只返回「被显式**开启**的群」。
          *
          * 为什么不返回「全部生效群」：那需要向机器人查询群列表（一次网络调用），
          * 而本方法在管理端列表渲染时会被每个插件调用一次——N 个插件就是 N 次
          * 群列表查询。需要全部生效群时应当用 ctx.scope().enabledGroups()，
          * 那个方法与「本插件」绑定，调用次数天然受控。
+         *
+         * 三态模型下「显式开启」有两种来源：白名单里的群（默认关闭 + 该群开启），
+         * 以及黑名单<b>之外</b>的群——后者无法枚举（是无限集），
+         * 因此这里只返回白名单里的群。这与旧 group_plugin_ability 表
+         * 「ability = true 的行」语义一致。
          */
-        return runtime.scopeFilterOf(pluginId)
-                .flatMap(filter -> filter.explicitGroupWhitelist()
-                        .or(() -> filter.explicitGroupBlacklist()))
-                .map(set -> List.copyOf(set))
-                .orElse(List.of());
+        java.util.LinkedHashSet<Long> enabled = new java.util.LinkedHashSet<>();
+        for (com.yuier.yuni.plugin.api.ScopeFilter filter : runtime.scopeExceptionsOf(pluginId)) {
+            filter.explicitGroupWhitelist().ifPresent(enabled::addAll);
+        }
+        return List.copyOf(enabled);
     }
 
     @Override
@@ -153,10 +158,9 @@ public final class PluginAdminRuntime implements PluginAdmin {
         if (runtime.fibers().byId(pluginId).isEmpty()) {
             throw new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。");
         }
-        runtime.resetPluginScope(pluginId)
-                .ifPresentOrElse(
-                        old -> log.info("插件 {} 的作用域配置已清除（原为 {}）", pluginId, old),
-                        () -> log.debug("插件 {} 本来就没有作用域配置", pluginId));
+        if (!runtime.resetPluginScope(pluginId)) {
+            log.debug("插件 {} 本来就没有群例外配置", pluginId);
+        }
     }
 
     // ==================== 生命周期 ====================

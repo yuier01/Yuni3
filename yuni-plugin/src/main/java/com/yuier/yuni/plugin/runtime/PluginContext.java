@@ -538,7 +538,7 @@ public final class PluginContext implements YuniContext {
             if (fiber == null || runtime == null) {
                 return true;
             }
-            // 询问运行时：该插件的作用域过滤器是否覆盖这个群
+            // 询问运行时：该插件是否<b>显式</b>设置过这个群
             Boolean enabled = runtime.isPluginEnabledIn(fiber.id(), groupId);
             if (enabled != null) {
                 return enabled;
@@ -552,6 +552,18 @@ public final class PluginContext implements YuniContext {
             if (runtime == null) {
                 return java.util.List.of();
             }
+            /*
+             * 语义：只返回「机器人当前所在、且本插件在这些群里生效」的群。
+             *
+             * 两个约束都是必要的：
+             *   - 与实际群列表取交集，避免向不存在的群发送（白名单里可能残留
+             *     已退出的群号）；
+             *   - 按本插件的 defaultEnable 与群例外判定，而不是「有例外才算生效」。
+             *
+             * 实现上直接复用 runtime.groupsWhereEnabled：它内部已经做了这两件事，
+             * 且与 PluginAdmin.isEnabledIn 走同一条判定链，因此不会出现
+             * 「ctx.scope() 说启用、管理端说关闭」的不一致。
+             */
             return runtime.groupsWhereEnabled(fiber == null ? null : fiber.id());
         }
 

@@ -203,7 +203,9 @@ class PluginAdminTest {
         assertFalse(admin.isEnabledIn("p/P", 100L));
         // 其他群不受影响
         assertTrue(admin.isEnabledIn("p/P", 200L));
-        assertEquals(List.of(100L), admin.enabledGroups("p/P"));
+        // enabledGroups 的语义是「被显式开启的群」。该群被显式关闭，
+        // 因此不在其中——与旧 group_plugin_ability 表「ability = true 的行」一致
+        assertTrue(admin.enabledGroups("p/P").isEmpty());
 
         admin.setEnabled("p/P", 100L, true, false);
         assertTrue(admin.isEnabledIn("p/P", 100L));

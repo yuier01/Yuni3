@@ -77,15 +77,60 @@ public final class PluginRuntime {
     private final java.util.Map<String, Path> pluginDataDirs = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * 插件标识 → 作用域过滤器。
+     * 插件作用域配置表——「每个插件在哪些群被显式开启 / 关闭」。
      *
-     * <p>记录每个插件注册时的 {@link com.yuier.yuni.plugin.api.ScopeFilter}，
-     * 供 {@code ctx.scope()} 回答「本插件在某群是否生效」。
-     * 主动插件（定时任务）没有事件上下文，框架无法替它施加过滤，
-     * 只能由插件主动查询——这是该映射存在的唯一理由。</p>
+     * <p>记录每个插件的群粒度启停例外，供三处使用：</p>
+     * <ol>
+     *   <li>{@code ctx.scope()} 回答「本插件在某群是否生效」——
+     *       主动插件（定时任务）没有事件上下文，框架无法替它施加过滤；</li>
+     *   <li>事件分发给每个注册项合成一个过滤器；</li>
+     *   <li>{@code PluginAdmin} 读写并在重启后从数据库恢复。</li>
+     * </ol>
+     *
+     * <p>P6 之前这里是一个 {@code Map<String, ScopeFilter>}。换成
+     * {@link com.yuier.yuni.plugin.runtime.PluginScopes} 的原因是表达力：
+     * 单个过滤器无法同时表达「一部分群显式开启、另一部分显式关闭」，
+     * 而管理端的实际配置正是这个三态模型（见该类的说明）。</p>
      */
-    private final java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter> pluginScopeFilters =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final com.yuier.yuni.plugin.runtime.PluginScopes pluginScopes =
+            new com.yuier.yuni.plugin.runtime.PluginScopes();
+
+    /**
+     * 插件标识 → 该插件注册时自带的基线作用域配置（可为 {@code null}）。
+     *
+     * <p>与 {@link #pluginScopes}（用户配置的群例外）分工明确：</p>
+     * <ul>
+     *   <li><b>基线</b>来自插件作者的代码（{@code ctx.plugin(child, filter)}），
+     *       提供「默认值 + 例外集合」；</li>
+     *   <li><b>例外表</b>来自用户的显式操作，优先于基线。</li>
+     * </ul>
+     * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
+     */
+    private final java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope>
+            baseScopeFilters = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * 「基线是白名单形态」的插件标识集合。
+     *
+     * <p>需要单独记录的原因：{@link com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope}
+     * 只表达「默认值 + 例外群集合」，而
+     * {@code onlyGroups({a,b})}（默认关闭 + 例外为开启）
+     * 与「用户把 a,b 设为开启」在数据上完全一样。</p>
+     *
+     * <p>但两者的<b>全局性</b>不同：白名单是「限定在这几个群」，本质上不是全局；
+     * 而「默认关闭 + 用户逐个开启」的插件在语义上仍然是「默认关闭的插件」。
+     * {@link #isGloballyEnabled} 需要区分二者，因此把形态单独记下来。</p>
+     */
+    private final java.util.Set<String> whitelistBaselines =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * 作用域持久化端口。
+     *
+     * <p>为 {@code null} 时作用域配置仅存在于内存——测试场景与未装配数据库的
+     * 集成场景都是这样，因此不视为错误。</p>
+     */
+    private volatile com.yuier.yuni.plugin.runtime.PluginScopeStore scopeStore;
 
     /**
      * 机器人实例供应函数。
@@ -247,8 +292,24 @@ public final class PluginRuntime {
             pluginDataDirs.put(id, dataDir);
         }
         if (filter != null) {
-            // 记录作用域过滤器：供主动插件经 ctx.scope() 查询群粒度启停
-            pluginScopeFilters.put(id, filter);
+            /*
+             * 记录「插件注册时自带的基线过滤器」。
+             *
+             * 它表达的是插件作者写下的建议（例如 ctx.plugin(child, onlyGroups(a,b))），
+             * 语义上等价于一个默认值 + 例外集合。因此这里把它解析成
+             * PersistedScope 作为该插件的基线，而不是成员判断表——
+             * 两者看起来相近，但后者会把「未列出的群」当成显式关闭，
+             * 从而干扰 PluginAdmin.setEnabled 的默认值推导。
+             */
+            com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope baseline =
+                    toBaseline(id, filter, metadata.defaultEnable());
+            if (baseline != null) {
+                baseScopeFilters.put(id, baseline);
+                if (filter.explicitGroupWhitelist().isPresent()) {
+                    // 记下白名单形态：仅用于 isGloballyEnabled 的判定
+                    whitelistBaselines.add(id);
+                }
+            }
         }
         if (parent != null) {
             parent.addChild(fiber);
@@ -363,6 +424,47 @@ public final class PluginRuntime {
      * 后者是低频的重操作，用一把粗锁会拖长启动时间。</p>
      */
     private final Object moduleHandles = new Object();
+
+    /**
+     * 把一个注册时传入的 {@link com.yuier.yuni.plugin.api.ScopeFilter} 解析为基线配置。
+     *
+     * <p>语义映射：</p>
+     * <ul>
+     *   <li>白名单 {@code onlyGroups(S)}：<b>默认关闭</b> + 例外群 S。这是白名单的
+     *       本义——「只有列出的群生效」；</li>
+     *   <li>黑名单 {@code excludeGroups(S)}：默认开启 + 例外群 S；</li>
+     *   <li>{@code ALL} / {@code NONE} / 无法反向解析的 lambda：不产生基线，
+     *       完全按 {@code defaultEnable} 处理。</li>
+     * </ul>
+     *
+     * <p>为什么白名单要映射成「默认关闭」而不是「默认开启 + 这些群显式开启」：
+     * 后者在语义上与前者不同——它会让<b>未列出的群</b>落回 {@code defaultEnable}，
+     * 而白名单的含义恰恰是「未列出的群一律不生效」，与默认值无关。</p>
+     *
+     * @param pluginId       插件标识（仅用于日志）
+     * @param filter         注册时传入的过滤器
+     * @param defaultEnabled 插件元数据的默认启用值
+     * @return 基线配置；过滤器不携带基线信息时返回 {@code null}
+     */
+    private static com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope toBaseline(
+            String pluginId,
+            com.yuier.yuni.plugin.api.ScopeFilter filter,
+            boolean defaultEnabled) {
+        java.util.Optional<java.util.Set<Long>> whitelist = filter.explicitGroupWhitelist();
+        if (whitelist.isPresent()) {
+            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(false, whitelist.get());
+        }
+        java.util.Optional<java.util.Set<Long>> blacklist = filter.explicitGroupBlacklist();
+        if (blacklist.isPresent()) {
+            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(true, blacklist.get());
+        }
+        if (filter == com.yuier.yuni.plugin.api.ScopeFilter.NONE) {
+            // 显式「全部不生效」：默认关闭且无例外
+            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(false, java.util.Set.of());
+        }
+        // ALL 或 lambda 组合：不携带可持久化信息
+        return null;
+    }
 
     /**
      * 执行 {@code apply(ctx)} 并处理成功 / 失败。
@@ -556,7 +658,19 @@ public final class PluginRuntime {
         // 否则会出现「已卸载却仍在分发表里」的悬挂引用
         fibers.remove(fiber);
         pluginDataDirs.remove(pluginId);
-        pluginScopeFilters.remove(pluginId);
+        /*
+         * 移除基线过滤器。
+         *
+         * 基线来自「插件注册时代码里传的 filter」，生命周期与插件实例一致；
+         * 卸载后必须清掉，否则热重载会留下旧类的配置、并且旧插件标识会持续
+         * 占用这张表（{@link #scopeFilterOf} 依赖 Fiber 存在，但这些条目是泄漏）。
+         *
+         * 注意：用户配置的群例外表（{@link #pluginScopes}）<b>不</b>在这里清除
+         * ——重载会先 unload 再 load，清掉就等于重载丢配置。
+         * 需要真正清除用户配置时走 resetPluginScope。
+         */
+        baseScopeFilters.remove(pluginId);
+        whitelistBaselines.remove(pluginId);
 
         if (failures.isEmpty()) {
             log.info("插件已卸载: {}", pluginId);
@@ -600,9 +714,10 @@ public final class PluginRuntime {
      * <h2>执行的六步</h2>
      * <ol>
      *   <li>取模块句柄（拿到 jar 文件名与所在目录）；</li>
-     *   <li><b>先把作用域配置快照下来</b>——卸载会清掉
-     *       {@code pluginScopeFilters}，而重载的语义是「换实现」不是「重新安装」，
-     *       群粒度启停配置必须保留；</li>
+     *   <li><b>先把作用域配置快照下来</b>——虽然
+     *       {@link #unload} 现在不再清除例外表，但重新 {@code load} 时
+     *       会按新实例的 {@code defaultEnable} 重算，因此仍以快照为准回填，
+     *       保证「换实现不换配置」；</li>
      *   <li>逐个 {@link #unload} 该模块的插件（逆序撤销 Effect、注销服务）；</li>
      *   <li>移除模块索引，并关闭其 ClassLoader——这一步是 Windows 下能覆盖 jar
      *       的前提；</li>
@@ -642,14 +757,14 @@ public final class PluginRuntime {
                             + (jarFile == null ? "" : ": " + jarFile.getAbsolutePath()));
         }
 
-        // 第 2 步：快照作用域配置。必须在 unload 之前——unload 会清掉这张表，
-        // 而「重载」的语义是替换实现，不是重置用户的群启停配置。
-        java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter> scopeSnapshot =
+        // 第 2 步：快照作用域例外。重启加载时新实例的 defaultEnable 可能与旧实例
+        // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
+        java.util.Map<String, java.util.List<com.yuier.yuni.plugin.api.ScopeFilter>> scopeSnapshot =
                 new java.util.LinkedHashMap<>();
         for (String pluginId : handle.pluginIds()) {
-            com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
-            if (filter != null) {
-                scopeSnapshot.put(pluginId, filter);
+            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = pluginScopes.all(pluginId);
+            if (!filters.isEmpty()) {
+                scopeSnapshot.put(pluginId, filters);
             }
         }
 
@@ -671,13 +786,13 @@ public final class PluginRuntime {
         List<PluginFiber> loaded = moduleLoader.loadModule(jarFile, moduleDir);
 
         // 第 6 步：回填作用域配置。
-        // 按插件标识匹配而不是按位置——插件标识由「模块 + 插件类名」构成，
+        // 按插件标识匹配而不是按位置——插件标识由「模块 + 插件显示名」构成，
         // 只要模块没有增删插件，标识就保持一致。
         int restored = 0;
         for (PluginFiber fiber : loaded) {
-            com.yuier.yuni.plugin.api.ScopeFilter filter = scopeSnapshot.get(fiber.id());
-            if (filter != null) {
-                pluginScopeFilters.put(fiber.id(), filter);
+            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = scopeSnapshot.get(fiber.id());
+            if (filters != null) {
+                pluginScopes.putAll(fiber.id(), filters);
                 restored++;
             }
         }
@@ -765,51 +880,112 @@ public final class PluginRuntime {
     }
 
     /**
-     * 取插件的作用域过滤器。
+     * 取插件的作用域过滤器（合成后的谓词）。
+     *
+     * <p>用于事件分发：分发路径只需要回答「这个群是否生效」，
+     * 因此把多个例外折叠成一个谓词。需要区分「显式设置」与「回落默认值」
+     * 的调用方（例如 {@code PluginAdmin}）应当用
+     * {@link #isPluginEnabledIn} 而不是本方法。</p>
      *
      * @param pluginId 插件标识
-     * @return 过滤器；未记录时为空
+     * @return 过滤器；插件不存在或从未注册时为空
      */
     public java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter> scopeFilterOf(String pluginId) {
-        return java.util.Optional.ofNullable(pluginScopeFilters.get(pluginId));
+        return fibers.byId(pluginId).map(fiber ->
+                pluginScopes.composite(pluginId, effectiveDefaultEnabled(pluginId)));
+    }
+
+    /**
+     * 取插件的显式作用域例外列表。
+     *
+     * @param pluginId 插件标识
+     * @return 例外列表；无例外时为空列表
+     */
+    public java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> scopeExceptionsOf(String pluginId) {
+        return pluginScopes.all(pluginId);
     }
 
     /**
      * 判定插件是否在指定群生效（供主动插件经 {@code ctx.scope()} 查询）。
      *
+     * <p>判定链：用户显式例外 → 插件注册时的基线过滤器 → 元数据的
+     * {@code defaultEnable}。</p>
+     *
      * @param pluginId 插件标识
      * @param groupId  群号
-     * @return 生效返回 {@code true}；无过滤器记录时返回 {@code null}，由调用方回落默认值
+     * @return 生效返回 {@code true}；<b>无任何配置信息时返回 {@code null}</b>，
+     *         由调用方回落到插件的 {@code defaultEnable}
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
-        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
-        return filter == null ? null : filter.matches(groupId);
+        java.util.Optional<Boolean> explicit = pluginScopes.explicitValue(pluginId, groupId);
+        if (explicit.isPresent()) {
+            return explicit.get();
+        }
+        // 用户没有为这个群设置例外 → 看插件注册时自带的基线
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        if (base == null) {
+            return null;
+        }
+        if (base.enabledByDefault()) {
+            // 基线默认开启：显式列出的群是「关闭」例外
+            return !base.exceptionGroups().contains(groupId);
+        }
+        // 基线默认关闭：显式列出的群是「开启」例外
+        return base.exceptionGroups().contains(groupId);
+    }
+
+    /**
+     * 取插件的有效默认启用值——基线优先，否则看元数据。
+     *
+     * @param pluginId 插件标识
+     * @return 默认启用返回 {@code true}
+     */
+    private boolean effectiveDefaultEnabled(String pluginId) {
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        if (base != null) {
+            return base.enabledByDefault();
+        }
+        // 插件不存在时保守返回 false：配置损坏时「不放行」比「误放行」安全
+        return fibers.byId(pluginId)
+                .map(fiber -> fiber.metadata().defaultEnable())
+                .orElse(false);
+    }
+
+    /**
+     * 取插件注册时的基线配置。
+     *
+     * @param pluginId 插件标识
+     * @return 基线配置；没有时为 {@code null}
+     */
+    private com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope baseScopeOf(String pluginId) {
+        return pluginId == null ? null : baseScopeFilters.get(pluginId);
     }
 
     /**
      * 判定插件是否在全局作用域生效。
      *
+     * <h2>语义</h2>
+     * <p>「全局生效」= 未配置任何群例外，或全部例外都是「黑名单」形态
+     * （即默认开启、个别群关闭）。白名单形态（默认关闭、个别群开启）
+     * 不算全局生效。</p>
+     *
      * @param pluginId 插件标识
-     * @return 无过滤器记录或过滤器覆盖全部群时返回 {@code true}
+     * @return 全局生效返回 {@code true}
      */
     public boolean isGloballyEnabled(String pluginId) {
-        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
-        if (filter == null) {
-            return true;
-        }
-        // 无显式群例外即视为全局生效（只对具名实现可判定）
-        java.util.Optional<java.util.Set<Long>> whitelist = filter.explicitGroupWhitelist();
-        java.util.Optional<java.util.Set<Long>> blacklist = filter.explicitGroupBlacklist();
-        if (whitelist.isPresent()) {
-            // 白名单语义：只有列出的群生效，不算全局
+        /*
+         * 判定顺序：先看插件注册时的基线形态，再看用户的例外形态。
+         *
+         * 「全局生效」的含义是「不限定群」。因此只要出现白名单形态就不再是全局：
+         *   - 基线为 onlyGroups(...)  → 限定在这几个群 → 不是全局；
+         *   - 用户显式开启了某些群（白名单例外） → 同样限定 → 不是全局；
+         *   - 只有黑名单形态（默认开启 + 个别群关闭）或无例外 → 全局生效。
+         */
+        if (whitelistBaselines.contains(pluginId)) {
             return false;
         }
-        if (blacklist.isPresent()) {
-            // 黑名单语义：全局开启 + 个别群关闭
-            return true;
-        }
-        // 无法反向解析的过滤器（lambda 组合）：按「覆盖全部」处理
-        return true;
+        return pluginScopes.all(pluginId).stream()
+                .noneMatch(item -> item.explicitGroupWhitelist().isPresent());
     }
 
     /**
@@ -832,8 +1008,9 @@ public final class PluginRuntime {
             java.util.List<Long> enabled = new java.util.ArrayList<>();
             for (com.yuier.yuni.core.bot.BotGroupInfo group : groups) {
                 Boolean hit = isPluginEnabledIn(pluginId, group.getGroupId());
-                // 无过滤器记录时按「全局生效」处理——与 isGloballyEnabled 一致
-                if (hit == null || hit) {
+                // 无显式设置时回落到插件的 defaultEnable——与 ctx.scope() 一致
+                boolean effective = hit != null ? hit : defaultEnabledOf(pluginId);
+                if (effective) {
                     enabled.add(group.getGroupId());
                 }
             }
@@ -851,98 +1028,182 @@ public final class PluginRuntime {
      * @return 过滤器描述；未记录时返回 {@code "(未记录)"}
      */
     public String describeScope(String pluginId) {
-        com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
-        if (filter == null) {
-            return "(未记录)";
+        /*
+         * 优先描述基线：插件注册时传的 filter 是更强的意图表达
+         * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
+         */
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        if (base != null) {
+            if (whitelistBaselines.contains(pluginId)) {
+                return "仅限群 " + base.exceptionGroups();
+            }
+            if (!base.exceptionGroups().isEmpty()) {
+                return "排除群 " + base.exceptionGroups();
+            }
         }
-        return filter.explicitGroupWhitelist()
-                .map(set -> "仅限群 " + set)
-                .or(() -> filter.explicitGroupBlacklist().map(set -> "排除群 " + set))
-                .orElse("全部群");
+
+        // 再看用户配置的群例外
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted =
+                pluginScopes.toPersisted(pluginId, effectiveDefaultEnabled(pluginId));
+        if (persisted.exceptionGroups().isEmpty()) {
+            return persisted.enabledByDefault() ? "全部群" : "未记录";
+        }
+        // 与旧实现保持同样的措辞，便于日志检索与既有文档对照
+        return persisted.enabledByDefault()
+                ? "排除群 " + persisted.exceptionGroups()
+                : "仅限群 " + persisted.exceptionGroups();
+    }
+
+    /**
+     * 取插件的默认启用值。
+     *
+     * <p>插件不存在时保守地返回 {@code false}——「默认不生效」比
+     * 「默认生效」更安全，避免配置损坏时意外放行。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 默认启用返回 {@code true}
+     */
+    private boolean defaultEnabledOf(String pluginId) {
+        return effectiveDefaultEnabled(pluginId);
     }
 
     // ==================== 作用域写入 ====================
 
     /**
-     * 修改「插件在某群是否生效」，并返回修改后的过滤器。
+     * 修改「插件在某群是否生效」，并返回是否真的改变了配置。
      *
      * <h2>为什么放在运行时而不是 PluginAdmin 实现里</h2>
-     * <p>{@code pluginScopeFilters} 是运行时的私有状态，而分发给插件看的
-     * {@link #isPluginEnabledIn} 也从它读取。写入与读取必须在同一个类里，
-     * 否则会出现「管理端改了 A、分发读的是 B」这类问题。</p>
+     * <p>{@link com.yuier.yuni.plugin.runtime.PluginScopes} 是运行时的私有状态，
+     * 而分发给插件看的 {@link #isPluginEnabledIn} 也从它读取。写入与读取必须在
+     * 同一个类里，否则会出现「管理端改了 A、分发读的是 B」这类问题。</p>
      *
-     * <h2>三层回落的写入语义</h2>
-     * <p>读侧的三层回落是「群例外 → 全局例外 → {@code defaultEnable}」。
-     * 写侧的等价操作是：先取当前持久化形态（无记录时用
-     * {@code defaultEnable} 合成一个），修改其中一项，再还原成过滤器。</p>
+     * <h2>三态写入语义</h2>
+     * <p>每个群有三个状态：<b>未设置</b>（按 {@code defaultEnable}）、
+     * 显式开启、显式关闭。写入的值与默认值一致时<b>删除</b>该群的记录，
+     * 使操作可逆——「关闭再开启」会回到「未设置」而不是留下一条无意义的记录。
+     * 具体实现在 {@link com.yuier.yuni.plugin.runtime.PluginScopes#set}。</p>
      *
-     * <p>具体地，令 {@code P = (enabledByDefault, exceptionGroups)}：</p>
-     * <ul>
-     *   <li>写入「该群<b>开启</b>」：{@code enabledByDefault} 为真时从例外中
-     *       移除该群（它本来就该开），为假时加入例外；</li>
-     *   <li>写入「该群<b>关闭</b>」：{@code enabledByDefault} 为真时加入例外，
-     *       为假时从例外中移除。</li>
-     * </ul>
-     * <p>这样「开启 + 关闭」同一群两次会回到原状，操作是可逆的。</p>
-     *
-     * <h2>不写库</h2>
-     * <p>本方法只改内存。持久化由调用方（管理端 / webapi）负责——与
-     * {@code ScopeQuery} 的分工一致（见设计文档 §10.5）。重载时内存态会
-     * 随模块重建而丢失，因此<b>需要跨重载保留的配置必须落库</b>。</p>
+     * <h2>写库</h2>
+     * <p>本方法在改完内存后立即调用 {@link com.yuier.yuni.plugin.runtime.PluginScopeStore}
+     * 落库（若已装配）。落库失败<b>不回滚内存</b>：当前进程内的行为已经按新配置
+     * 生效，回滚只会让内存与用户刚看到的反馈不一致。失败会记 error 日志，
+     * 下一次成功写入会覆盖它。</p>
      *
      * @param pluginId 插件标识
      * @param groupId  群号
      * @param enabled  该群是否生效
-     * @return 修改后的过滤器
-     * @throws IllegalArgumentException 插件不存在或从未记录过作用域
+     * @throws IllegalArgumentException 插件不存在
      */
-    public com.yuier.yuni.plugin.api.ScopeFilter setPluginEnabledIn(String pluginId,
-                                                                    long groupId,
-                                                                    boolean enabled) {
+    public void setPluginEnabledIn(String pluginId, long groupId, boolean enabled) {
         PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
                 new IllegalArgumentException("插件不存在: " + pluginId));
 
-        com.yuier.yuni.plugin.api.ScopeFilter current = pluginScopeFilters.get(pluginId);
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted = current == null
-                ? null
-                : current.toPersisted().orElse(null);
-        if (persisted == null) {
-            // 未记录，或过滤器是 lambda 组合（无法反向解析）：
-            // 以插件元数据的 defaultEnable 为基准重建一份可持久化的描述
-            persisted = new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(
-                    fiber.metadata().defaultEnable(), java.util.Set.of());
-        }
-
-        java.util.Set<Long> groups = new java.util.HashSet<>(persisted.exceptionGroups());
-        if (persisted.enabledByDefault() == enabled) {
-            // 默认值已经等于目标值 → 该群不需要作为例外存在
-            groups.remove(groupId);
-        } else {
-            groups.add(groupId);
-        }
-
-        com.yuier.yuni.plugin.api.ScopeFilter updated =
-                com.yuier.yuni.plugin.api.ScopeFilter.fromPersisted(
-                        new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(
-                                persisted.enabledByDefault(), groups));
-        pluginScopeFilters.put(pluginId, updated);
-        log.info("插件 {} 在群 {} 的生效状态改为 {}（当前过滤器: {}）",
+        pluginScopes.set(pluginId, groupId, enabled, fiber.metadata().defaultEnable());
+        log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
                 pluginId, groupId, enabled, describeScope(pluginId));
-        return updated;
+        persistScope(pluginId);
     }
 
     /**
-     * 清除某插件的全部作用域配置，回到元数据声明的默认值。
-     *
-     * <p>与 {@link #setPluginEnabledIn} 对称：后者是写一个群例外，本方法是
-     * 把例外清空。清空后 {@link #isPluginEnabledIn} 会返回 {@code null}，
-     * 由 {@code ctx.scope()} 回落到 {@code defaultEnable}。</p>
+     * 清除某插件的全部群例外，回到元数据声明的默认值。
      *
      * @param pluginId 插件标识
-     * @return 被清除的过滤器；本来就没有记录时为空
+     * @return 本来是否有例外可清
      */
-    public java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter> resetPluginScope(String pluginId) {
-        return java.util.Optional.ofNullable(pluginScopeFilters.remove(pluginId));
+    public boolean resetPluginScope(String pluginId) {
+        boolean had = pluginScopes.clear(pluginId).isPresent();
+        if (had) {
+            persistScope(pluginId);
+            log.info("插件 {} 的群例外已清除", pluginId);
+        }
+        return had;
+    }
+
+    // ==================== 作用域装载与持久化 ====================
+
+    /**
+     * 绑定作用域持久化端口。
+     *
+     * @param store 持久化实现；{@code null} 表示仅内存（测试场景）
+     * @return {@code this}，便于链式配置
+     */
+    public PluginRuntime bindScopeStore(
+            com.yuier.yuni.plugin.runtime.PluginScopeStore store) {
+        this.scopeStore = store;
+        return this;
+    }
+
+    /**
+     * 在插件加载<b>之后</b>从持久化存储恢复作用域配置。
+     *
+     * <h2>为什么必须在插件加载之后</h2>
+     * <p>恢复时需要用每个插件的 {@code defaultEnable} 判断「这条记录算不算例外」，
+     * 而 {@code defaultEnable} 在代码里（{@code PluginMetadata}），
+     * 只有插件实例化后才能读到。因此本方法由
+     * {@code PluginBootstrap.initialize()} 在全部模块加载完之后调用。</p>
+     *
+     * <h2>与插件自己声明的 {@code ScopeFilter} 的关系</h2>
+     * <p>持久化配置<b>覆盖</b>运行期显式传入的过滤器。理由：持久化的是用户的
+     * 显式选择，而过滤器是插件作者写的默认建议——用户选择应当胜出。
+     * （与旧系统一致：{@code group_plugin_ability} 记录优先于
+     * {@code metadata.defaultEnable}。）</p>
+     *
+     * @return 恢复了配置的插件数量；未装配存储时返回 0
+     */
+    public int restoreScopes() {
+        com.yuier.yuni.plugin.runtime.PluginScopeStore store = this.scopeStore;
+        if (store == null) {
+            return 0;
+        }
+        java.util.Map<String, java.util.Map<Long, Boolean>> stored;
+        try {
+            stored = store.loadAll();
+        } catch (Exception e) {
+            // 读配置失败不应阻止启动——退化为「全部按默认值」
+            log.error("读取插件作用域配置失败，将全部按插件默认值处理", e);
+            return 0;
+        }
+        if (stored == null || stored.isEmpty()) {
+            return 0;
+        }
+
+        int restored = 0;
+        for (PluginFiber fiber : fibers.all()) {
+            java.util.Map<Long, Boolean> records = stored.get(fiber.id());
+            if (records == null || records.isEmpty()) {
+                continue;
+            }
+            pluginScopes.putAll(fiber.id(), com.yuier.yuni.plugin.runtime.PluginScopes.fromRecords(
+                    records, fiber.metadata().defaultEnable()));
+            restored++;
+        }
+        log.info("已从存储恢复 {} 个插件的群粒度启停配置", restored);
+        return restored;
+    }
+
+    /**
+     * 把一个插件当前的作用域配置落库。
+     *
+     * <p>写的是「该插件的全部群记录」，因此实现可以是
+     * 「先删后插」——这样与用户的三态配置完全一致，不会留下旧群的残留记录。</p>
+     *
+     * @param pluginId 插件标识
+     */
+    private void persistScope(String pluginId) {
+        com.yuier.yuni.plugin.runtime.PluginScopeStore store = this.scopeStore;
+        if (store == null) {
+            return;
+        }
+        try {
+            com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted =
+                    pluginScopes.toPersisted(pluginId, defaultEnabledOf(pluginId));
+            store.save(pluginId, persisted);
+        } catch (Exception e) {
+            // 不回滚内存：用户已经看到操作成功，回滚只会让内存与实际反馈不一致。
+            // 下一次成功写入会覆盖这次失败的记录。
+            log.error("保存插件 {} 的作用域配置失败（当前进程内配置已生效，重启后会丢失）",
+                    pluginId, e);
+        }
     }
 
     // ==================== 模块与插件的反向查询 ====================

@@ -278,6 +278,7 @@ class ScopeQueryTest {
         loadPluginCapturingScope(ScopeFilter.onlyGroups(100L, 200L));
         assertTrue(runtime.describeScope("主动插件").contains("仅限群"));
 
+        // 未知插件（无 Fiber、无配置）按默认值处理，因此描述里不带群例外
         assertTrue(runtime.describeScope("不存在的插件").contains("未记录"));
     }
 }
