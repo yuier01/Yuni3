@@ -8,21 +8,34 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
+/*
+ * 标签与配色的键是「运行状态」而不是旧的插件类型。
+ *
+ * P6 之前这里映射的是 SCHEDULED / IMMEDIATE / COMMAND / PATTERN / ... 八种
+ * 插件类型。新系统取消了插件类型这一声明——它不再是元数据里的字段，
+ * 而是「插件在 apply 里注册了什么能力」的推论。后端因此改为返回运行状态。
+ */
 const typeLabel = {
-  SCHEDULED: '定时', IMMEDIATE: '即时', COMMAND: '命令',
-  PATTERN: '模式', NOTICE: '通知', REQUEST: '请求',
-  META: '元事件', MESSAGE_SENT: '消息发送',
+  ACTIVE: '运行中', FAILED: '加载失败', PENDING: '等待依赖',
+  LOADING: '加载中', UNLOADING: '卸载中', DISPOSED: '已卸载',
 }
 
 const typeColor = {
-  SCHEDULED: 'bg-amber-50 text-amber-600',
-  IMMEDIATE: 'bg-emerald-50 text-emerald-600',
-  COMMAND: 'bg-blue-50 text-blue-600',
-  PATTERN: 'bg-violet-50 text-violet-600',
-  NOTICE: 'bg-cyan-50 text-cyan-600',
-  REQUEST: 'bg-orange-50 text-orange-600',
-  META: 'bg-rose-50 text-rose-600',
-  MESSAGE_SENT: 'bg-teal-50 text-teal-600',
+  ACTIVE: 'bg-emerald-50 text-emerald-600',
+  FAILED: 'bg-rose-50 text-rose-600',
+  PENDING: 'bg-amber-50 text-amber-600',
+  LOADING: 'bg-blue-50 text-blue-600',
+  UNLOADING: 'bg-gray-50 text-gray-500',
+  DISPOSED: 'bg-gray-100 text-gray-400',
+}
+
+/** 状态标签；未知值原样显示，后端新增状态时前端不会变成空白。 */
+function stateLabel(state) {
+  return typeLabel[state] || state || '未知'
+}
+
+function stateColor(state) {
+  return typeColor[state] || 'bg-gray-50 text-gray-500'
 }
 
 function onKeydown(e) {
@@ -76,9 +89,9 @@ watch(() => props.visible, (v) => {
                 </span>
                 <span
                   class="text-xs px-2 py-0.5 rounded-full font-medium"
-                  :class="typeColor[plugin.type] || 'bg-gray-50 text-gray-500'"
+                  :class="stateColor(plugin.type)"
                 >
-                  {{ typeLabel[plugin.type] || plugin.type }}
+                  {{ stateLabel(plugin.type) }}
                 </span>
               </div>
             </div>

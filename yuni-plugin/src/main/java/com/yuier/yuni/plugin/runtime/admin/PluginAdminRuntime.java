@@ -103,6 +103,15 @@ public final class PluginAdminRuntime implements PluginAdmin {
     // ==================== 群粒度启停 ====================
 
     @Override
+    public boolean isGloballyEnabled(String pluginId) {
+        // 插件不存在时返回 false：与 isEnabledIn 的「可以问出一个否定的答案」一致
+        if (runtime.fibers().byId(pluginId).isEmpty()) {
+            return false;
+        }
+        return runtime.isGloballyEnabled(pluginId);
+    }
+
+    @Override
     public boolean isEnabledIn(String pluginId, long groupId) {
         Optional<PluginFiber> fiber = runtime.fibers().byId(pluginId);
         if (fiber.isEmpty()) {

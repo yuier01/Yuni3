@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -97,7 +98,11 @@ public class PluginService {
                         plugin.author(),
                         plugin.moduleId(),
                         plugin.buildIn(),
-                        plugin.state().name()));
+                        plugin.state().name(),
+                        admin.isGloballyEnabled(plugin.id()),
+                        new LinkedHashSet<>(admin.enabledGroups(plugin.id())),
+                        plugin.failureSummary().orElse(null),
+                        plugin.missingServices()));
             }
             result.add(new PluginModuleInfo(module.id(), module.name(), plugins));
         }
