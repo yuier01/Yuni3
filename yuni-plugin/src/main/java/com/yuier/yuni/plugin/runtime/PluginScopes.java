@@ -59,6 +59,25 @@ public final class PluginScopes {
     private final Map<String, List<ScopeFilter>> exceptions = new ConcurrentHashMap<>();
 
     /**
+     * 插件标识 → 用户显式设置的<b>全局默认启用值</b>。
+     *
+     * <h2>为什么需要它</h2>
+     * <p>没有这一层时，「全局开关」与「默认值」是同一个东西，于是
+     * 「把插件从默认关闭改为全局开启」这个操作无法表达——它是
+     * {@code PersistedScope} 里的 {@code enabledByDefault} 位，
+     * 而那个位在没有例外群时<b>没有任何载体</b>（例外列表是空的）。</p>
+     *
+     * <p>具体后果：一个 {@code defaultEnable = false} 的插件，用户想全局开启，
+     * 若只存例外列表则必须写成「白名单 = 全部群」，而群是无限集、无法枚举。</p>
+     *
+     * <h2>优先级</h2>
+     * <p>用户显式全局默认值 &gt; 插件注册时的基线默认值 &gt; 元数据
+     * {@code defaultEnable}。因此本表只存「用户显式设置过」的项，
+     * 未设置时不出现（{@link #explicitGlobalDefault} 返回空）。</p>
+     */
+    private final Map<String, Boolean> explicitGlobalDefaults = new ConcurrentHashMap<>();
+
+    /**
      * 记录一个插件的完整例外列表（用于启动时从数据库装载）。
      *
      * <p>会<b>覆盖</b>已有配置。装载发生在插件加载之前，因此不会有并发问题；
@@ -106,6 +125,41 @@ public final class PluginScopes {
         return removed == null ? Optional.empty() : Optional.of(List.copyOf(removed));
     }
 
+    // ==================== 全局默认值 ====================
+
+    /**
+     * 读取用户显式设置的全局默认启用值。
+     *
+     * @param pluginId 插件标识
+     * @return 显式设置的值；用户从未设置过时为空
+     */
+    public Optional<Boolean> explicitGlobalDefault(String pluginId) {
+        return Optional.ofNullable(explicitGlobalDefaults.get(pluginId));
+    }
+
+    /**
+     * 设置全局默认启用值。
+     *
+     * @param pluginId 插件标识
+     * @param enabled  全局是否生效
+     */
+    public void setGlobalDefault(String pluginId, boolean enabled) {
+        if (pluginId == null) {
+            return;
+        }
+        explicitGlobalDefaults.put(pluginId, enabled);
+    }
+
+    /**
+     * 清除用户设置的全局默认值（回到插件自身的默认）。
+     *
+     * @param pluginId 插件标识
+     * @return 原本是否有显式设置
+     */
+    public boolean clearGlobalDefault(String pluginId) {
+        return pluginId != null && explicitGlobalDefaults.remove(pluginId) != null;
+    }
+
     /**
      * 从表中移除一个插件（卸载时调用）。
      *
@@ -113,6 +167,20 @@ public final class PluginScopes {
      */
     public void remove(String pluginId) {
         exceptions.remove(pluginId);
+        // 全局默认值不在这里清除：卸载可能是重载的第一步，
+        // 而重载必须保留用户的配置。需要清除时走 clearAll。
+    }
+
+    /**
+     * 彻底清除一个插件的全部配置（例外 + 全局默认值）。
+     *
+     * <p>仅用于「重置为插件默认」这类显式操作。</p>
+     *
+     * @param pluginId 插件标识
+     */
+    public void clearAll(String pluginId) {
+        exceptions.remove(pluginId);
+        explicitGlobalDefaults.remove(pluginId);
     }
 
     /**

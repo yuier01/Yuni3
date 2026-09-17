@@ -142,15 +142,37 @@ public final class PluginAdminRuntime implements PluginAdmin {
     public void setEnabled(String pluginId, long groupId, boolean enabled, boolean callerIsMaster) {
         PluginFiber fiber = runtime.fibers().byId(pluginId).orElseThrow(() ->
                 new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。"));
+        requireMasterForBuiltIn(pluginId, fiber, callerIsMaster);
+        runtime.setPluginEnabledIn(pluginId, groupId, enabled);
+    }
 
+    @Override
+    public void setGlobalEnabled(String pluginId, boolean enabled, boolean callerIsMaster) {
+        PluginFiber fiber = runtime.fibers().byId(pluginId).orElseThrow(() ->
+                new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。"));
+        requireMasterForBuiltIn(pluginId, fiber, callerIsMaster);
+        runtime.setPluginGlobalEnabled(pluginId, enabled);
+    }
+
+    /**
+     * 校验「内置插件只能由 bot 拥有者操作」。
+     *
+     * <p>抽成方法而不是两处各写一遍：这条规则同时适用于群粒度启停与全局启停，
+     * 而它恰好是旧 {@code PluginEnable} 里那段
+     * {@code isBuiltIn() && permission < MASTER} 的新家——只此一处。</p>
+     *
+     * @param pluginId       插件标识
+     * @param fiber          目标 Fiber
+     * @param callerIsMaster 调用者是否为 bot 拥有者
+     * @throws PluginAdminException 内置插件被非拥有者操作
+     */
+    private static void requireMasterForBuiltIn(String pluginId, PluginFiber fiber, boolean callerIsMaster) {
         if (fiber.metadata().buildIn() && !callerIsMaster) {
             // 结构性保护：内置插件随框架发布，误关会让管理端自己失效
             // （plugin-manage 与 help 都是内置插件）
             throw new PluginAdminException(pluginId,
                     "插件「" + fiber.metadata().name() + "」为内置插件，只有 bot 拥有者有权开启或关闭。");
         }
-
-        runtime.setPluginEnabledIn(pluginId, groupId, enabled);
     }
 
     @Override
@@ -159,7 +181,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
             throw new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。");
         }
         if (!runtime.resetPluginScope(pluginId)) {
-            log.debug("插件 {} 本来就没有群例外配置", pluginId);
+            log.debug("插件 {} 本来就没有作用域配置", pluginId);
         }
     }
 

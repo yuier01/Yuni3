@@ -184,6 +184,23 @@ public class PluginSystemConfig {
     }
 
     /**
+     * 插件作用域配置的持久化实现。
+     *
+     * <p>复用旧的 {@code group_plugin_ability} 表——它的
+     * {@code (groupId, pluginId, ability)} 结构正是群粒度启停所需的完整三态数据，
+     * 且已在实际部署中积累配置。见实现类的「升级影响」说明。</p>
+     *
+     * @param abilityService 群插件启停表的数据访问
+     * @return 持久化端口
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public com.yuier.yuni.plugin.runtime.PluginScopeStore pluginScopeStore(
+            com.yuier.yuni.plugin.service.GroupPluginAbilityService abilityService) {
+        return new com.yuier.yuni.plugin.runtime.service.MybatisPluginScopeStore(abilityService);
+    }
+
+    /**
      * 插件系统启动器——在 Spring 容器就绪后加载插件目录下的全部模块。
      *
      * <p>用 {@link Lazy} 标注是为了确保它<b>不</b>在 Bean 装配期就被实例化：
@@ -198,17 +215,19 @@ public class PluginSystemConfig {
     @Bean
     @Lazy
     @ConditionalOnMissingBean
-    public PluginBootstrap pluginBootstrap(PluginModuleLoader loader, PluginRuntime runtime) {
+    public PluginBootstrap pluginBootstrap(PluginModuleLoader loader,
+                                          PluginRuntime runtime,
+                                          com.yuier.yuni.plugin.runtime.PluginScopeStore scopeStore) {
         /*
-         * 顺手把加载器绑到运行时上。
+         * 顺手把加载器与作用域存储绑到运行时上。
          *
          * 热重载需要「重新读 jar」，而读 jar 的逻辑在 PluginModuleLoader 里；
-         * 该对象与本 Bean 同时装配（都晚于 PluginRuntime 的构造），
-         * 因此用后置绑定而不是在 pluginRuntime(...) 里加参数——
-         * 那会让运行时 Bean 与加载器 Bean 形成循环依赖
-         * （加载器依赖运行时，运行时又依赖加载器）。
+         * 作用域配置需要在插件加载后从数据库恢复。两者都晚于 PluginRuntime 的
+         * 构造时机，因此用后置绑定而不是在 pluginRuntime(...) 里加参数——
+         * 那会让运行时 Bean 与它们形成循环依赖。
          */
         runtime.bindModuleLoader(loader);
+        runtime.bindScopeStore(scopeStore);
         return new PluginBootstrap(loader, runtime, pluginDirectory);
     }
 
@@ -267,6 +286,18 @@ public class PluginSystemConfig {
             if (activated > 0) {
                 log.info("依赖推进使 {} 个插件从 PENDING 转为 ACTIVE", activated);
             }
+
+            /*
+             * 恢复持久化的群粒度启停配置。
+             *
+             * 必须在全部模块加载之后：判断「数据库里的一条记录算不算例外」
+             * 需要该插件的 defaultEnable，而它只有插件实例化后才读得到。
+             *
+             * 恢复的配置会覆盖插件代码里声明的基线过滤器——持久化的是用户的
+             * 显式选择，而基线是插件作者写的默认建议，用户选择应当胜出
+             * （与旧系统一致：group_plugin_ability 优先于 metadata.defaultEnable）。
+             */
+            runtime.restoreScopes();
 
             reportUnhealthy();
 

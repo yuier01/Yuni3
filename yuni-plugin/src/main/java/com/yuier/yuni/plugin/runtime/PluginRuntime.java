@@ -917,21 +917,38 @@ public final class PluginRuntime {
      *         由调用方回落到插件的 {@code defaultEnable}
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
+        // ① 用户显式配置的群例外优先级最高
         java.util.Optional<Boolean> explicit = pluginScopes.explicitValue(pluginId, groupId);
         if (explicit.isPresent()) {
             return explicit.get();
         }
-        // 用户没有为这个群设置例外 → 看插件注册时自带的基线
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
-        if (base == null) {
+        if (!fiberExists(pluginId)) {
             return null;
         }
-        if (base.enabledByDefault()) {
-            // 基线默认开启：显式列出的群是「关闭」例外
-            return !base.exceptionGroups().contains(groupId);
+        /*
+         * ② 插件注册时自带的基线例外。
+         *
+         * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
+         * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
+         */
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        if (base != null && !base.exceptionGroups().isEmpty()) {
+            boolean listed = base.exceptionGroups().contains(groupId);
+            // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
+            return base.enabledByDefault() ? !listed : listed;
         }
-        // 基线默认关闭：显式列出的群是「开启」例外
-        return base.exceptionGroups().contains(groupId);
+        // ③ 没有任何例外信息 → 按有效默认值（用户全局开关 > 基线 > 元数据）
+        return effectiveDefaultEnabled(pluginId);
+    }
+
+    /**
+     * 判定插件是否已被加载。
+     *
+     * @param pluginId 插件标识
+     * @return 已加载返回 {@code true}
+     */
+    private boolean fiberExists(String pluginId) {
+        return pluginId != null && fibers.byId(pluginId).isPresent();
     }
 
     /**
@@ -941,11 +958,18 @@ public final class PluginRuntime {
      * @return 默认启用返回 {@code true}
      */
     private boolean effectiveDefaultEnabled(String pluginId) {
+        // 用户显式设置过全局开关 → 以它为准
+        java.util.Optional<Boolean> userGlobal = pluginScopes.explicitGlobalDefault(pluginId);
+        if (userGlobal.isPresent()) {
+            return userGlobal.get();
+        }
+        // 其次看插件注册时的基线
         com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
         if (base != null) {
             return base.enabledByDefault();
         }
-        // 插件不存在时保守返回 false：配置损坏时「不放行」比「误放行」安全
+        // 最后回落到元数据。插件不存在时保守返回 false：
+        // 配置损坏时「不放行」比「误放行」安全
         return fibers.byId(pluginId)
                 .map(fiber -> fiber.metadata().defaultEnable())
                 .orElse(false);
@@ -1105,18 +1129,43 @@ public final class PluginRuntime {
     }
 
     /**
+     * 设置插件的全局启停（不限群）。
+     *
+     * <p>语义：把「默认启用值」改为 {@code enabled}，<b>保留</b>已有的群例外。
+     * 这是管理端「全局开关」的实现。</p>
+     *
+     * <h3>为什么不复用 setPluginEnabledIn</h3>
+     * <p>群例外与全局开关是三态模型里的两个正交维度：前者是「这个群与默认值
+     * 相反」，后者是「默认值是什么」。{@code setPluginEnabledIn} 只改前者，
+     * 无法表达「整体打开一个默认关闭的插件」——那需要改默认值本身。</p>
+     *
+     * @param pluginId 插件标识
+     * @param enabled  全局是否生效
+     * @throws IllegalArgumentException 插件不存在
+     */
+    public void setPluginGlobalEnabled(String pluginId, boolean enabled) {
+        if (!fiberExists(pluginId)) {
+            throw new IllegalArgumentException("插件不存在: " + pluginId);
+        }
+        pluginScopes.setGlobalDefault(pluginId, enabled);
+        log.info("插件 {} 的全局启停改为 {}（当前: {}）", pluginId, enabled, describeScope(pluginId));
+        persistScope(pluginId);
+    }
+
+    /**
      * 清除某插件的全部群例外，回到元数据声明的默认值。
      *
      * @param pluginId 插件标识
-     * @return 本来是否有例外可清
+     * @return 本来是否有配置可清
      */
     public boolean resetPluginScope(String pluginId) {
-        boolean had = pluginScopes.clear(pluginId).isPresent();
-        if (had) {
+        boolean hadExceptions = pluginScopes.clear(pluginId).isPresent();
+        boolean hadGlobal = pluginScopes.clearGlobalDefault(pluginId);
+        if (hadExceptions || hadGlobal) {
             persistScope(pluginId);
-            log.info("插件 {} 的群例外已清除", pluginId);
+            log.info("插件 {} 的群例外与全局开关已重置为插件默认值", pluginId);
         }
-        return had;
+        return hadExceptions || hadGlobal;
     }
 
     // ==================== 作用域装载与持久化 ====================
@@ -1155,7 +1204,7 @@ public final class PluginRuntime {
         if (store == null) {
             return 0;
         }
-        java.util.Map<String, java.util.Map<Long, Boolean>> stored;
+        java.util.Map<String, com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord> stored;
         try {
             stored = store.loadAll();
         } catch (Exception e) {
@@ -1169,12 +1218,19 @@ public final class PluginRuntime {
 
         int restored = 0;
         for (PluginFiber fiber : fibers.all()) {
-            java.util.Map<Long, Boolean> records = stored.get(fiber.id());
-            if (records == null || records.isEmpty()) {
+            com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord record =
+                    stored.get(fiber.id());
+            if (record == null || record.isEmpty()) {
                 continue;
             }
-            pluginScopes.putAll(fiber.id(), com.yuier.yuni.plugin.runtime.PluginScopes.fromRecords(
-                    records, fiber.metadata().defaultEnable()));
+            boolean pluginDefault = fiber.metadata().defaultEnable();
+            // 全局开关：用户设置过就用它，否则用插件默认值。
+            // 例外群的「相反值」判定以全局开关为基准，因此必须先定下它
+            boolean global = record.globalEnabled() != null ? record.globalEnabled() : pluginDefault;
+            pluginScopes.setGlobalDefault(fiber.id(), global);
+            pluginScopes.putAll(fiber.id(),
+                    com.yuier.yuni.plugin.runtime.PluginScopes.fromRecords(
+                            toValueMap(record.exceptionGroups(), global), global));
             restored++;
         }
         log.info("已从存储恢复 {} 个插件的群粒度启停配置", restored);
@@ -1182,10 +1238,27 @@ public final class PluginRuntime {
     }
 
     /**
+     * 把「与全局开关相反的例外群集合」还原成「群号 → 该群是否生效」。
+     *
+     * @param exceptionGroups 例外群集合
+     * @param globalEnabled   全局是否生效
+     * @return 群号 → 是否生效
+     */
+    private static java.util.Map<Long, Boolean> toValueMap(java.util.Set<Long> exceptionGroups,
+                                                           boolean globalEnabled) {
+        java.util.Map<Long, Boolean> values = new java.util.LinkedHashMap<>();
+        for (Long groupId : exceptionGroups) {
+            // 例外群的值与全局开关相反——这正是「例外」的定义
+            values.put(groupId, !globalEnabled);
+        }
+        return values;
+    }
+
+    /**
      * 把一个插件当前的作用域配置落库。
      *
-     * <p>写的是「该插件的全部群记录」，因此实现可以是
-     * 「先删后插」——这样与用户的三态配置完全一致，不会留下旧群的残留记录。</p>
+     * <p>写的是「该插件的完整配置」，因此实现应当是「先删后插」——
+     * 这样与用户的三态配置完全一致，不会留下旧群的残留记录。</p>
      *
      * @param pluginId 插件标识
      */
@@ -1195,9 +1268,22 @@ public final class PluginRuntime {
             return;
         }
         try {
-            com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted =
-                    pluginScopes.toPersisted(pluginId, defaultEnabledOf(pluginId));
-            store.save(pluginId, persisted);
+            boolean pluginDefault = fibers.byId(pluginId)
+                    .map(fiber -> fiber.metadata().defaultEnable())
+                    .orElse(false);
+            // 只持久化「用户显式设置过」的全局开关；
+            // 未设置时存 null，让下次启动重新回落到插件元数据
+            Boolean global = pluginScopes.explicitGlobalDefault(pluginId).orElse(null);
+            boolean effectiveGlobal = global != null ? global : pluginDefault;
+            // 例外群 = 与有效全局值相反的那些群
+            java.util.Set<Long> exceptionGroups = new java.util.LinkedHashSet<>();
+            pluginScopes.all(pluginId).forEach(filter -> {
+                filter.explicitGroupWhitelist().ifPresent(exceptionGroups::addAll);
+                filter.explicitGroupBlacklist().ifPresent(exceptionGroups::addAll);
+            });
+            store.save(pluginId,
+                    new com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord(
+                            global, exceptionGroups));
         } catch (Exception e) {
             // 不回滚内存：用户已经看到操作成功，回滚只会让内存与实际反馈不一致。
             // 下一次成功写入会覆盖这次失败的记录。

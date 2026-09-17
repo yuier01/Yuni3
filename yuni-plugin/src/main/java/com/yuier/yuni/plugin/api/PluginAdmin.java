@@ -149,6 +149,34 @@ public interface PluginAdmin {
     void setEnabled(String pluginId, long groupId, boolean enabled, boolean callerIsMaster);
 
     /**
+     * 设置插件的<b>全局</b>启停（不限群），并保留已有的群例外。
+     *
+     * <h3>与 {@link #setEnabled} 的分工</h3>
+     * <p>这是三态模型里两个正交的维度：</p>
+     * <ul>
+     *   <li>{@link #setEnabled} 改的是「<b>这个群</b>与默认值相反」——
+     *       即群例外；</li>
+     *   <li>本方法改的是「<b>默认值本身</b>」——即全局开关。</li>
+     * </ul>
+     * <p>两者不可互相替代。特别是「整体打开一个 {@code defaultEnable = false}
+     * 的插件」只能靠本方法：若用 {@code setEnabled} 逐个群开启，等于枚举全部群，
+     * 而群是无限集。</p>
+     *
+     * <p>本方法<b>不改动</b>已有群例外。因此「全局关闭 + 某群开启」这类配置在
+     * 全局开关被改回开启后，那个「某群开启」的例外会自动变成「与全局一致」
+     * 并被 {@link PluginRuntime} 侧的三态写入规范化清除。</p>
+     *
+     * <h3>内置插件保护</h3>
+     * <p>与 {@link #setEnabled} 相同。</p>
+     *
+     * @param pluginId       插件标识
+     * @param enabled        全局是否生效
+     * @param callerIsMaster 调用者是否为 bot 拥有者
+     * @throws PluginAdminException 插件不存在，或内置插件被非拥有者操作
+     */
+    void setGlobalEnabled(String pluginId, boolean enabled, boolean callerIsMaster);
+
+    /**
      * 清除某插件的全部群例外，回到元数据声明的 {@link PluginView#defaultEnable()}。
      *
      * <p>与 {@link #setEnabled} 的分工：后者调整个别群的开关，本方法是
