@@ -405,6 +405,35 @@ public interface YuniContext {
      */
     ScopeQuery scope();
 
+    /**
+     * 插件管理服务——枚举、启停与重载插件。
+     *
+     * <p>供<b>管理类插件</b>使用。Yuni 内置的 {@code plugin-manage} 模块本身就是
+     * 一个插件，它需要在聊天里展示与操作插件列表；webapi 的管理接口同样需要。
+     * 本方法取代的是现行插件直接依赖 {@code PluginContainer} /
+     * {@code PluginEnableProcessor} / {@code PluginReloadProcessor} 这些框架内部类
+     * 的做法。</p>
+     *
+     * <p>普通插件<b>不应</b>使用本服务——它与 {@link #service(Class)} 的区别是：
+     * 服务用于「我需要某个能力」，而本方法用于「我要管理别的插件」。
+     * 后者是管理端职责，不是插件间协作。</p>
+     *
+     * <pre>{@code
+     * PluginAdmin admin = ctx.plugins();
+     * for (PluginModuleView module : admin.modules()) {
+     *     for (PluginView plugin : module.plugins()) {
+     *         log.info("{} [{}] 在群 {} 生效={}",
+     *                 plugin.name(), plugin.state().displayName(),
+     *                 groupId, admin.isEnabledIn(plugin.id(), groupId));
+     *     }
+     * }
+     * }</pre>
+     *
+     * @return 插件管理服务，永不为 {@code null}
+     * @see PluginAdmin
+     */
+    PluginAdmin plugins();
+
     // ==================== 作用域状态 ====================
 
     /**

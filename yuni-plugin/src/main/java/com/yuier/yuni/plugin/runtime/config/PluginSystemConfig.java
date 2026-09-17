@@ -199,6 +199,16 @@ public class PluginSystemConfig {
     @Lazy
     @ConditionalOnMissingBean
     public PluginBootstrap pluginBootstrap(PluginModuleLoader loader, PluginRuntime runtime) {
+        /*
+         * 顺手把加载器绑到运行时上。
+         *
+         * 热重载需要「重新读 jar」，而读 jar 的逻辑在 PluginModuleLoader 里；
+         * 该对象与本 Bean 同时装配（都晚于 PluginRuntime 的构造），
+         * 因此用后置绑定而不是在 pluginRuntime(...) 里加参数——
+         * 那会让运行时 Bean 与加载器 Bean 形成循环依赖
+         * （加载器依赖运行时，运行时又依赖加载器）。
+         */
+        runtime.bindModuleLoader(loader);
         return new PluginBootstrap(loader, runtime, pluginDirectory);
     }
 

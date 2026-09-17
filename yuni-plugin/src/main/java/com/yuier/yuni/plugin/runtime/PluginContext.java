@@ -496,6 +496,29 @@ public final class PluginContext implements YuniContext {
         return created;
     }
 
+    @Override
+    public com.yuier.yuni.plugin.api.PluginAdmin plugins() {
+        /*
+         * 不缓存，每次新建。
+         *
+         * 与 scope() 的惰性缓存形成对比，原因是两者的使用模式不同：
+         * scope() 在广播场景下按群调用（可能几百次），必须避免重复构造；
+         * plugins() 是管理操作，调用频率是「用户敲一条命令」量级，
+         * 而它返回的适配器本身不持有状态（全部状态在运行时里），
+         * 构造一个的开销只是几次字段赋值。
+         *
+         * 不缓存还有一个正确性收益：适配器持有一个 PluginModuleLoader 引用，
+         * 而该引用是在运行时装配完成后才绑定的（bindModuleLoader）。
+         * 缓存会导致「第一次访问时加载器还没绑上」的适配器被一直复用。
+         */
+        if (runtime == null) {
+            throw new IllegalStateException(
+                    "插件管理服务不可用：本上下文未绑定 PluginRuntime。"
+                            + "这通常意味着插件在框架之外被手动构造（测试场景）。");
+        }
+        return runtime.admin();
+    }
+
     /**
      * 作用域查询的默认实现。
      *

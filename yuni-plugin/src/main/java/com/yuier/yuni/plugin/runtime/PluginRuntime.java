@@ -115,6 +115,14 @@ public final class PluginRuntime {
     private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
 
     /**
+     * 模块加载器；用于热重载时重新读取 jar。
+     *
+     * <p>为 {@code null} 时 {@link #reload} 会抛出可读的错误而不是 NPE——
+     * 测试场景通常不装配它，因此这是常见情况而非异常情况。</p>
+     */
+    private volatile com.yuier.yuni.plugin.runtime.load.PluginModuleLoader moduleLoader;
+
+    /**
      * 构造运行时。
      *
      * @param taskManager 定时任务管理器；{@code null} 时 {@code ctx.schedule(...)} 不可用
@@ -232,6 +240,7 @@ public final class PluginRuntime {
 
         PluginFiber fiber = new PluginFiber(id, plugin, metadata, classLoader);
         fibers.add(fiber, moduleId, parent == null);
+        ensureModuleHandle(moduleId, classLoader);
         if (dataDir != null) {
             // 记录资源目录：依赖未满足而停在 PENDING 的插件，后续推进时
             // 需要用同一个目录重建上下文
@@ -261,6 +270,99 @@ public final class PluginRuntime {
         applyTo(fiber, dataDir, filter);
         return fiber;
     }
+
+    /**
+     * 保证某个模块在索引里存在。
+     *
+     * <h2>为什么 {@code load} 也要管模块索引</h2>
+     * <p>模块句柄（{@code ModuleHandle}）本来只由
+     * {@code PluginModuleLoader.loadModule} 登记，因为它掌握 jar 文件名与资源目录。
+     * 但 {@link #load} 是一个公开入口——测试、集成场景、以及「用代码直接装一个插件」
+     * 都会走它。若此时不登记模块，就会出现两种不一致：</p>
+     * <ul>
+     *   <li>{@code PluginAdmin.moduleIdOf} 查不到插件所属模块，
+     *       于是管理视图里的 {@code moduleId} 是空的；</li>
+     *   <li>模块分组视图（{@code admin.modules()}）看不到这些插件——
+     *       它们明明已加载，却在「按模块看」的视角下消失。</li>
+     * </ul>
+     * <p>因此这里补一个「最小可用」的模块句柄。之后若
+     * {@code PluginModuleLoader.loadModule} 用完整信息覆盖它，
+     * 那正是我们想要的结果（它知道 jar 名与目录）。</p>
+     *
+     * @param moduleId    模块 ID；{@code null} 或空白时不登记
+     * @param classLoader 类加载器；可为 {@code null}
+     */
+    private void ensureModuleHandle(String moduleId, ClassLoader classLoader) {
+        if (moduleId == null || moduleId.isBlank()) {
+            return;
+        }
+        synchronized (moduleHandles) {
+            com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle existing =
+                    fibers.module(moduleId).orElse(null);
+            if (existing != null && existing.jarFileName() != null) {
+                // 已经有携带完整信息（jar 名）的句柄——它由 loadModule 建立，不要覆盖
+                return;
+            }
+
+            /*
+             * 收集本模块下的全部插件 ID。
+             *
+             * 句柄的 pluginIds 决定 admin.modules() 能列出哪些插件
+             * （见 FiberRegistry.ofModule），因此必须带上，不能留空——
+             * 留空会让「按模块看」的视角漏掉该插件。
+             *
+             * 直接按模块 ID 过滤全部 Fiber：这一步不经过 moduleIdOf，
+             * 因为 moduleIdOf 本身依赖模块句柄，此时可能还没建好（会死循环）。
+             */
+            java.util.List<String> pluginIds = new java.util.ArrayList<>();
+            for (PluginFiber fiber : fibers.all()) {
+                if (moduleId.equals(moduleIdOfRaw(fiber.id()))) {
+                    pluginIds.add(fiber.id());
+                }
+            }
+
+            fibers.addModule(new com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle(
+                    moduleId,
+                    // 显示名暂用模块 ID：真正的名字在 metadata.json 里，
+                    // 由 loadModule 覆盖。这里不能瞎猜，只能如实填 ID
+                    moduleId,
+                    null,
+                    null,
+                    classLoader,
+                    pluginIds));
+            log.debug("为直接 load 的插件补建模块句柄: {}（{} 个插件）", moduleId, pluginIds.size());
+        }
+    }
+
+    /**
+     * 取插件所属模块 ID（不依赖模块句柄的版本）。
+     *
+     * <p>与公开的 {@link #moduleIdOf} 的区别：本方法只查「插件标识里是否以
+     * {@code moduleId/} 开头」这一条路径，因此<b>可以在模块句柄尚未建立时使用</b>。
+     * {@code ensureModuleHandle} 需要它，否则会形成
+     * 「建句柄 → 查句柄 → 句柄还没有」的死循环。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 模块 ID；无法判定时返回 {@code null}
+     */
+    private String moduleIdOfRaw(String pluginId) {
+        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.allModules()) {
+            if (handle.pluginIds().contains(pluginId)) {
+                return handle.moduleId();
+            }
+        }
+        // 退化为「标识前缀」判定：标识格式为 moduleId/name，因此前缀即模块
+        int slash = pluginId == null ? -1 : pluginId.indexOf('/');
+        return slash > 0 ? pluginId.substring(0, slash) : null;
+    }
+
+    /**
+     * 模块句柄补建用的锁对象。
+     *
+     * <p>只保护「检查是否存在 + 写入」这一段，不覆盖加载流程本身——
+     * 后者是低频的重操作，用一把粗锁会拖长启动时间。</p>
+     */
+    private final Object moduleHandles = new Object();
 
     /**
      * 执行 {@code apply(ctx)} 并处理成功 / 失败。
@@ -495,16 +597,112 @@ public final class PluginRuntime {
      *   <tr><td>修正后续模块的 index 偏移</td><td><b>不存在</b>——树结构没有全局序号</td></tr>
      * </table>
      *
-     * <p><b>P1 阶段未实现</b>：本方法需要 jar 扫描与 ClassLoader 生命周期管理，
-     * 属 P2/P3 范围。</p>
+     * <h2>执行的六步</h2>
+     * <ol>
+     *   <li>取模块句柄（拿到 jar 文件名与所在目录）；</li>
+     *   <li><b>先把作用域配置快照下来</b>——卸载会清掉
+     *       {@code pluginScopeFilters}，而重载的语义是「换实现」不是「重新安装」，
+     *       群粒度启停配置必须保留；</li>
+     *   <li>逐个 {@link #unload} 该模块的插件（逆序撤销 Effect、注销服务）；</li>
+     *   <li>移除模块索引，并关闭其 ClassLoader——这一步是 Windows 下能覆盖 jar
+     *       的前提；</li>
+     *   <li>交给 {@link com.yuier.yuni.plugin.runtime.load.PluginModuleLoader}
+     *       重新扫描并按新 ClassLoader 加载；</li>
+     *   <li>把第 2 步快照的作用域配置按插件名回填。</li>
+     * </ol>
+     *
+     * <h2>调用时机约束（重要）</h2>
+     * <p>本方法是<b>同步</b>的，且会在调用线程上卸载并重新加载目标模块的类。
+     * 因此<b>不要从目标模块自己的处理器里调用它</b>——那会在一次命令处理尚未
+     * 返回时就卸载掉正在执行的类。正确做法是由调用方在
+     * {@code ctx.plugin(...)} 之外的独立插件、或由 webapi 的请求线程触发。</p>
+     *
+     * <p>框架选择「不做延迟调度」而非「静默地异步卸载」，是因为后者会让
+     * 「重载成功了吗」变成一个无法回答的问题（调用返回时插件还没装好）。
+     * 把约束显式写在这里，让调用方自己选择在哪里触发。</p>
      *
      * @param moduleId 模块 ID
-     * @throws UnsupportedOperationException 当前阶段未实现
+     * @return 重载后该模块的插件 Fiber 列表
+     * @throws IllegalStateException 模块不存在、jar 缺失，或运行时未装配模块加载器
      */
-    public void reload(String moduleId) {
-        throw new UnsupportedOperationException(
-                "reload 需要 jar 扫描与 ClassLoader 生命周期管理" + PHASE_NOTE
-                        + "。当前可用 PluginRuntime.unload + load 手动完成重载。");
+    public List<PluginFiber> reload(String moduleId) {
+        if (moduleLoader == null) {
+            throw new IllegalStateException(
+                    "热重载需要 PluginModuleLoader，但本运行时未装配它"
+                            + "（集成场景应调用 bindModuleLoader）。");
+        }
+        com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle = fibers.module(moduleId)
+                .orElseThrow(() -> new IllegalStateException("模块不存在: " + moduleId));
+
+        Path moduleDir = handle.jarParentPath() == null ? null : Path.of(handle.jarParentPath());
+        java.io.File jarFile = moduleDir == null ? null : moduleDir.resolve(handle.jarFileName()).toFile();
+        if (jarFile == null || !jarFile.isFile()) {
+            throw new IllegalStateException(
+                    "找不到模块 " + moduleId + " 的 jar 文件"
+                            + (jarFile == null ? "" : ": " + jarFile.getAbsolutePath()));
+        }
+
+        // 第 2 步：快照作用域配置。必须在 unload 之前——unload 会清掉这张表，
+        // 而「重载」的语义是替换实现，不是重置用户的群启停配置。
+        java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter> scopeSnapshot =
+                new java.util.LinkedHashMap<>();
+        for (String pluginId : handle.pluginIds()) {
+            com.yuier.yuni.plugin.api.ScopeFilter filter = pluginScopeFilters.get(pluginId);
+            if (filter != null) {
+                scopeSnapshot.put(pluginId, filter);
+            }
+        }
+
+        // 第 3 步：逐个卸载。逆序，与加载顺序对称（子插件先于父插件消失）
+        List<String> pluginIds = new java.util.ArrayList<>(handle.pluginIds());
+        for (int i = pluginIds.size() - 1; i >= 0; i--) {
+            unload(pluginIds.get(i));
+        }
+
+        // 第 4 步：移除模块索引并关闭类加载器。
+        // 关闭是必须的：Windows 下 jar 文件句柄不释放就无法覆盖同名文件，
+        // 而「换了 jar 再重载」正是热重载最常见的用法。
+        fibers.removeModule(moduleId);
+        closeQuietly(handle.classLoader());
+
+        log.info("模块 {} 已卸载，开始重新加载 {}", moduleId, jarFile.getName());
+
+        // 第 5 步：重新扫描加载
+        List<PluginFiber> loaded = moduleLoader.loadModule(jarFile, moduleDir);
+
+        // 第 6 步：回填作用域配置。
+        // 按插件标识匹配而不是按位置——插件标识由「模块 + 插件类名」构成，
+        // 只要模块没有增删插件，标识就保持一致。
+        int restored = 0;
+        for (PluginFiber fiber : loaded) {
+            com.yuier.yuni.plugin.api.ScopeFilter filter = scopeSnapshot.get(fiber.id());
+            if (filter != null) {
+                pluginScopeFilters.put(fiber.id(), filter);
+                restored++;
+            }
+        }
+
+        log.info("模块 {} 重载完成：{} 个插件，恢复 {} 项作用域配置",
+                moduleId, loaded.size(), restored);
+        return loaded;
+    }
+
+    /**
+     * 安静地关闭一个类加载器。
+     *
+     * <p>关闭失败不应中断重载流程——jar 句柄没释放最多导致下一次覆盖失败，
+     * 而抛异常会让「卸载已完成、加载未开始」成为一个无法恢复的中间态。</p>
+     *
+     * @param classLoader 类加载器；可为 {@code null}
+     */
+    private static void closeQuietly(ClassLoader classLoader) {
+        if (classLoader instanceof java.io.Closeable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                log.warn("关闭插件类加载器失败（jar 句柄可能未释放）: {}", e.getMessage());
+            }
+        }
     }
 
     /**
@@ -661,6 +859,135 @@ public final class PluginRuntime {
                 .map(set -> "仅限群 " + set)
                 .or(() -> filter.explicitGroupBlacklist().map(set -> "排除群 " + set))
                 .orElse("全部群");
+    }
+
+    // ==================== 作用域写入 ====================
+
+    /**
+     * 修改「插件在某群是否生效」，并返回修改后的过滤器。
+     *
+     * <h2>为什么放在运行时而不是 PluginAdmin 实现里</h2>
+     * <p>{@code pluginScopeFilters} 是运行时的私有状态，而分发给插件看的
+     * {@link #isPluginEnabledIn} 也从它读取。写入与读取必须在同一个类里，
+     * 否则会出现「管理端改了 A、分发读的是 B」这类问题。</p>
+     *
+     * <h2>三层回落的写入语义</h2>
+     * <p>读侧的三层回落是「群例外 → 全局例外 → {@code defaultEnable}」。
+     * 写侧的等价操作是：先取当前持久化形态（无记录时用
+     * {@code defaultEnable} 合成一个），修改其中一项，再还原成过滤器。</p>
+     *
+     * <p>具体地，令 {@code P = (enabledByDefault, exceptionGroups)}：</p>
+     * <ul>
+     *   <li>写入「该群<b>开启</b>」：{@code enabledByDefault} 为真时从例外中
+     *       移除该群（它本来就该开），为假时加入例外；</li>
+     *   <li>写入「该群<b>关闭</b>」：{@code enabledByDefault} 为真时加入例外，
+     *       为假时从例外中移除。</li>
+     * </ul>
+     * <p>这样「开启 + 关闭」同一群两次会回到原状，操作是可逆的。</p>
+     *
+     * <h2>不写库</h2>
+     * <p>本方法只改内存。持久化由调用方（管理端 / webapi）负责——与
+     * {@code ScopeQuery} 的分工一致（见设计文档 §10.5）。重载时内存态会
+     * 随模块重建而丢失，因此<b>需要跨重载保留的配置必须落库</b>。</p>
+     *
+     * @param pluginId 插件标识
+     * @param groupId  群号
+     * @param enabled  该群是否生效
+     * @return 修改后的过滤器
+     * @throws IllegalArgumentException 插件不存在或从未记录过作用域
+     */
+    public com.yuier.yuni.plugin.api.ScopeFilter setPluginEnabledIn(String pluginId,
+                                                                    long groupId,
+                                                                    boolean enabled) {
+        PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
+                new IllegalArgumentException("插件不存在: " + pluginId));
+
+        com.yuier.yuni.plugin.api.ScopeFilter current = pluginScopeFilters.get(pluginId);
+        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted = current == null
+                ? null
+                : current.toPersisted().orElse(null);
+        if (persisted == null) {
+            // 未记录，或过滤器是 lambda 组合（无法反向解析）：
+            // 以插件元数据的 defaultEnable 为基准重建一份可持久化的描述
+            persisted = new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(
+                    fiber.metadata().defaultEnable(), java.util.Set.of());
+        }
+
+        java.util.Set<Long> groups = new java.util.HashSet<>(persisted.exceptionGroups());
+        if (persisted.enabledByDefault() == enabled) {
+            // 默认值已经等于目标值 → 该群不需要作为例外存在
+            groups.remove(groupId);
+        } else {
+            groups.add(groupId);
+        }
+
+        com.yuier.yuni.plugin.api.ScopeFilter updated =
+                com.yuier.yuni.plugin.api.ScopeFilter.fromPersisted(
+                        new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(
+                                persisted.enabledByDefault(), groups));
+        pluginScopeFilters.put(pluginId, updated);
+        log.info("插件 {} 在群 {} 的生效状态改为 {}（当前过滤器: {}）",
+                pluginId, groupId, enabled, describeScope(pluginId));
+        return updated;
+    }
+
+    /**
+     * 清除某插件的全部作用域配置，回到元数据声明的默认值。
+     *
+     * <p>与 {@link #setPluginEnabledIn} 对称：后者是写一个群例外，本方法是
+     * 把例外清空。清空后 {@link #isPluginEnabledIn} 会返回 {@code null}，
+     * 由 {@code ctx.scope()} 回落到 {@code defaultEnable}。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 被清除的过滤器；本来就没有记录时为空
+     */
+    public java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter> resetPluginScope(String pluginId) {
+        return java.util.Optional.ofNullable(pluginScopeFilters.remove(pluginId));
+    }
+
+    // ==================== 模块与插件的反向查询 ====================
+
+    /**
+     * 取某插件所属的模块 ID。
+     *
+     * @param pluginId 插件标识
+     * @return 模块 ID；插件不属于任何模块或不存在时为空
+     */
+    public java.util.Optional<String> moduleIdOf(String pluginId) {
+        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.allModules()) {
+            if (handle.pluginIds().contains(pluginId)) {
+                return java.util.Optional.of(handle.moduleId());
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 取可用的插件管理服务。
+     *
+     * <p>返回的实例是<b>每次新建的轻量适配器</b>，它不持有状态（全部状态都在
+     * 本运行时里）。因此不需要缓存，也不存在「同一运行时的两个管理视图不一致」
+     * 的问题。</p>
+     *
+     * @return 插件管理服务
+     */
+    public com.yuier.yuni.plugin.api.PluginAdmin admin() {
+        return new com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime(this, moduleLoader);
+    }
+
+    /**
+     * 绑定模块加载器。
+     *
+     * <p>热重载需要重新读 jar，而读 jar 的逻辑在 {@code PluginModuleLoader} 里。
+     * 该对象由 Spring 装配，晚于运行时的构造时机，因此用后置绑定而非构造器注入。</p>
+     *
+     * @param moduleLoader 模块加载器；可为 {@code null}（测试场景，则 reload 不可用）
+     * @return {@code this}，便于链式配置
+     */
+    public PluginRuntime bindModuleLoader(
+            com.yuier.yuni.plugin.runtime.load.PluginModuleLoader moduleLoader) {
+        this.moduleLoader = moduleLoader;
+        return this;
     }
 
     /**
