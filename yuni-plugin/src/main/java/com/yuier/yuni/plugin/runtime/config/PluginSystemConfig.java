@@ -102,6 +102,22 @@ public class PluginSystemConfig {
             runtime.registerService(PermissionService.class, permissionBean);
         }
 
+        /*
+         * JSON 编解码器也登记为内置服务。
+         *
+         * 为什么需要：协议适配器类插件（maimai）必须处理「框架不理解的结构化数据」——
+         * 它接收 OneBot 客户端发来的任意 action 请求（形如 Map），并返回任意响应。
+         * 这类插件用一个中间层（yuni-plugin）无法预知的 JSON 结构，
+         * 因此需要一个明确的 JSON 编解码入口。
+         *
+         * 为何不放进 YuniContext 的快捷方法：那会让 JsonCodec（core 的类型）
+         * 出现在插件 API 的显式契约里，而只有极少数协议适配器需要它。
+         * 经 ctx.service(JsonCodec.class) 解析既满足需求，又不扩大 API 面。
+         * 这也修掉了旧实现里 PluginUtils.getBean(ObjectMapper.class) 那种
+         * 「从 Spring 容器里随手捞一个工具类」的隐式依赖。
+         */
+        runtime.registerService(JsonCodec.class, jsonCodec);
+
         log.info("插件运行时已创建，插件目录: {}", pluginDirectory);
         return runtime;
     }
