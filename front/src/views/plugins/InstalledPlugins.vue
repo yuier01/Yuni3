@@ -68,7 +68,8 @@ function toggleExpand(moduleId) {
  */
 async function toggleGlobal(plugin) {
   if (togglingIds.value.has(plugin.full_id)) return
-  const next = !plugin.global_enabled
+  // 字段名是 default_enabled（全局默认值），不是「对所有群都生效」
+  const next = !plugin.default_enabled
   togglingIds.value = new Set(togglingIds.value).add(plugin.full_id)
   try {
     if (next) {
@@ -76,8 +77,10 @@ async function toggleGlobal(plugin) {
     } else {
       await disablePlugin(plugin.full_id, null)
     }
-    plugin.global_enabled = next
-    showToast(next ? `已全局启用「${plugin.name}」` : `已全局禁用「${plugin.name}」`)
+    plugin.default_enabled = next
+    showToast(next
+      ? `已全局启用「${plugin.name}」（已有群例外不受影响）`
+      : `已全局禁用「${plugin.name}」（已有群例外不受影响）`)
   } catch (e) {
     showToast(e.message || '操作失败', false)
   } finally {
@@ -246,13 +249,15 @@ function closeDetail() {
               <button
                 class="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium border transition-colors
                        disabled:opacity-40 disabled:cursor-not-allowed"
-                :class="p.global_enabled
+                :class="p.default_enabled
                   ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
                   : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'"
                 :disabled="togglingIds.has(p.full_id)"
-                :title="p.global_enabled ? '全局启用中，点击禁用' : '全局已禁用，点击启用'"
+                :title="p.default_enabled
+                  ? '全局默认启用中，点击设为默认禁用（不影响已有群例外）'
+                  : '全局默认已禁用，点击设为默认启用（不影响已有群例外）'"
                 @click="toggleGlobal(p)"
-              >{{ p.global_enabled ? '全局开' : '全局关' }}</button>
+              >{{ p.default_enabled ? '全局开' : '全局关' }}</button>
               <button
                 class="shrink-0 text-xs px-2.5 py-1 rounded-lg bg-pink-100 text-pink-600
                        font-medium hover:bg-pink-200 hover:text-pink-700

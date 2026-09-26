@@ -51,9 +51,17 @@ public interface ScopeQuery {
     List<Long> enabledGroups();
 
     /**
-     * 当前插件是否在全局作用域生效（即不限群）。
+     * 当前插件的<b>全局开关</b>是否处于开启状态（不考虑群例外）。
      *
-     * @return 全局生效返回 {@code true}
+     * <p>与 {@link PluginAdmin#isGloballyEnabled(String)} 同一口径：
+     * 「有效全局默认值是否生效」。群例外不影响它。</p>
+     *
+     * <p>典型用途：主动插件要决定「是按群逐个判断，还是可以一次广播到所有群」。</p>
+     * <p><b>注意</b>：返回 {@code true} 不等于「每个群都生效」——可能仍有群例外。
+     * 要拿到「实际在哪些群生效」请用 {@link #enabledGroups()}；
+     * 要对单个群下结论请用 {@link #isEnabledIn(long)}。</p>
+     *
+     * @return 全局默认生效时返回 {@code true}
      */
     boolean isGloballyEnabled();
 }

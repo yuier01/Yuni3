@@ -117,9 +117,10 @@ public final class PluginRuntime {
      * {@code onlyGroups({a,b})}（默认关闭 + 例外为开启）
      * 与「用户把 a,b 设为开启」在数据上完全一样。</p>
      *
-     * <p>但两者的<b>全局性</b>不同：白名单是「限定在这几个群」，本质上不是全局；
-     * 而「默认关闭 + 用户逐个开启」的插件在语义上仍然是「默认关闭的插件」。
-     * {@link #isGloballyEnabled} 需要区分二者，因此把形态单独记下来。</p>
+     * <p><b>唯一用途</b>是 {@link #describeScope} 的措辞——「仅限群 [a, b]」
+     * 与「排除群 [a, b]」是两种相反的意图，日志里必须说清楚。
+     * 判定逻辑（{@link #isPluginEnabledIn} / {@link #isGloballyEnabled}）
+     * 不依赖它，只看默认值与例外集合本身。</p>
      */
     private final java.util.Set<String> whitelistBaselines =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -306,7 +307,7 @@ public final class PluginRuntime {
             if (baseline != null) {
                 baseScopeFilters.put(id, baseline);
                 if (filter.explicitGroupWhitelist().isPresent()) {
-                    // 记下白名单形态：仅用于 isGloballyEnabled 的判定
+                    // 记下白名单形态：仅用于 describeScope 的措辞
                     whitelistBaselines.add(id);
                 }
             }
@@ -1001,26 +1002,33 @@ public final class PluginRuntime {
      */
     public boolean isGloballyEnabled(String pluginId) {
         /*
-         * 判定顺序：先看插件注册时的基线形态，再看用户的例外形态，
-         * 最后回落到「有效全局默认值」。
+         * 契约（见 PluginAdmin.isGloballyEnabled）：返回「有效全局默认值是否生效」。
          *
-         * 「全局生效」的含义是「不限定群」。因此只要出现白名单形态就不再是全局：
-         *   - 基线为 onlyGroups(...)  → 限定在这几个群 → 不是全局；
-         *   - 用户显式开启了某些群（白名单例外） → 同样限定 → 不是全局；
-         *   - 只有黑名单形态（默认开启 + 个别群关闭）或无例外 → 看默认值本身。
+         * ## 为什么是「默认值」而不是「是否每个群都生效」
          *
-         * 最后一步容易漏：**没有群例外不等于全局开启**。
-         * 一个 defaultEnable=false 的插件在用户把它全局打开之前，
-         * 对任何群都不生效——此时 isGloballyEnabled 必须是 false。
+         * 本方法与 setPluginGlobalEnabled 是一对读写操作，**必须对偶**：
+         *
+         *     setPluginGlobalEnabled(p, V);  isGloballyEnabled(p) == V
+         *
+         * 若把语义定义成「是否每个群都生效」，这个等式在「默认开 + 个别群关」
+         * 时就不成立了——setter 写 true，getter 读回 false。那会让管理端的
+         * 全局开关在保存后立刻显示成相反的状态，也会让「全局关闭」这个操作
+         * 无法被幂等地表达（关掉一个已经有群例外的插件时，无法区分
+         * 「本来就是关的」与「刚被关掉」）。
+         *
+         * ## 与 isPluginEnabledIn 的关系
+         *
+         *     isPluginEnabledIn(p, g)  ==  (该群有例外 ? 例外的值 : isGloballyEnabled(p))
+         *
+         * 也就是说：本方法是「群例外之外的那个底座」，
+         * 而 isPluginEnabledIn 是「底座 + 该群的覆盖」。
+         *
+         * ## 群例外不影响本方法
+         *
+         * 「默认开 + 个别群关」应返回 true——它整体是开的，只是有几个例外。
+         * 管理端应当把它展示为「全局开 + 3 个群例外」，
+         * 而不是含糊的「全局关」。
          */
-        if (whitelistBaselines.contains(pluginId)) {
-            return false;
-        }
-        boolean hasWhitelistException = pluginScopes.all(pluginId).stream()
-                .anyMatch(item -> item.explicitGroupWhitelist().isPresent());
-        if (hasWhitelistException) {
-            return false;
-        }
         return effectiveDefaultEnabled(pluginId);
     }
 
@@ -1045,7 +1053,7 @@ public final class PluginRuntime {
             for (com.yuier.yuni.core.bot.BotGroupInfo group : groups) {
                 Boolean hit = isPluginEnabledIn(pluginId, group.getGroupId());
                 // 无显式设置时回落到插件的 defaultEnable——与 ctx.scope() 一致
-                boolean effective = hit != null ? hit : defaultEnabledOf(pluginId);
+                boolean effective = hit != null ? hit : effectiveDefaultEnabled(pluginId);
                 if (effective) {
                     enabled.add(group.getGroupId());
                 }
@@ -1088,19 +1096,6 @@ public final class PluginRuntime {
         return persisted.enabledByDefault()
                 ? "排除群 " + persisted.exceptionGroups()
                 : "仅限群 " + persisted.exceptionGroups();
-    }
-
-    /**
-     * 取插件的默认启用值。
-     *
-     * <p>插件不存在时保守地返回 {@code false}——「默认不生效」比
-     * 「默认生效」更安全，避免配置损坏时意外放行。</p>
-     *
-     * @param pluginId 插件标识
-     * @return 默认启用返回 {@code true}
-     */
-    private boolean defaultEnabledOf(String pluginId) {
-        return effectiveDefaultEnabled(pluginId);
     }
 
     // ==================== 作用域写入 ====================

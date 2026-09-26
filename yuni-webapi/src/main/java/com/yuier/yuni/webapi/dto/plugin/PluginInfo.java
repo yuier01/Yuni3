@@ -67,16 +67,21 @@ public class PluginInfo {
     private String type;
 
     /**
-     * 当前<b>全局</b>是否启用。
+     * 全局开关的当前状态：<b>不考虑群例外时</b>该插件是否生效。
      *
      * <p>没有它时管理端无法渲染「全局开关」控件——而「整体打开一个默认关闭的
      * 插件」只能靠全局开关，逐个群开启等于枚举无限集。</p>
      *
-     * <p>注意语义：这是「不限群时是否生效」，不是「当前是否对所有群生效」。
-     * 某个群可能有例外，因此管理端应当把它与
-     * {@code /admin/group/plugin-status} 的按群结果分别展示。</p>
+     * <p><b>字段名刻意用 {@code defaultEnabled} 而不是 {@code globalEnabled}</b>：
+     * 它表达的是「默认值」，而「全局开」这个词容易被读成「对所有群都生效」，
+     * 后者在存在群例外时不成立。精确的关系是：</p>
+     * <pre>
+     *   某个群是否生效  =  该群有例外 ? 例外的值 : defaultEnabled
+     * </pre>
+     * <p>因此管理端应当把它与 {@link #enabledGroups} 一起展示，
+     * 例如「全局开 + 3 个群例外」，而不是只给一个开关。</p>
      */
-    private boolean globalEnabled;
+    private boolean defaultEnabled;
 
     /**
      * 被显式<b>开启</b>的群（群例外）。

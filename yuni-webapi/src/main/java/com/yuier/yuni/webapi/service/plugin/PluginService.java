@@ -99,6 +99,9 @@ public class PluginService {
                         plugin.moduleId(),
                         plugin.buildIn(),
                         plugin.state().name(),
+                        // 全局默认值。注意它<b>不是</b>「对所有群都生效」——
+                        // 存在群例外时，个别群的结论由 enabledGroups 与按群接口给出。
+                        // 字段名用 defaultEnabled 就是为了避免这个误读。
                         admin.isGloballyEnabled(plugin.id()),
                         new LinkedHashSet<>(admin.enabledGroups(plugin.id())),
                         plugin.failureSummary().orElse(null),

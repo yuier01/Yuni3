@@ -100,19 +100,50 @@ public interface PluginAdmin {
     // ==================== 群粒度启停 ====================
 
     /**
-     * 判定某插件是否<b>全局</b>生效（不限群）。
+     * 判定某插件的<b>全局开关</b>是否处于开启状态。
      *
-     * <p>与 {@link #isEnabledIn} 的区别：后者回答「这个插件在<b>某个群</b>是否生效」，
-     * 本方法回答「<b>不限群</b>时是否生效」。管理端渲染「全局开关」控件需要后者。</p>
+     * <h2>它回答的确切问题</h2>
+     * <p>「这个插件的<b>有效全局默认值</b>是否生效」——也就是
+     * <b>不考虑群例外时</b>它是否开启。群例外由 {@link #isEnabledIn} 回答。</p>
      *
-     * <p>语义：没有任何群例外，或全部例外都是「默认开启 + 个别群关闭」形态时返回
-     * {@code true}；出现「默认关闭 + 个别群开启」的白名单形态时返回 {@code false}
-     * ——因为那本质上是「限定在这几个群」。</p>
+     * <p>与 {@link #setGlobalEnabled} 是一对读写操作，两者<b>对偶</b>：</p>
+     * <pre>{@code
+     * admin.setGlobalEnabled(p, V);
+     * admin.isGloballyEnabled(p) == V;      // 恒成立
+     * }</pre>
+     *
+     * <h2>群例外不影响本方法</h2>
+     * <table border="1">
+     *   <caption>判定规则</caption>
+     *   <tr><th>情形</th><th>返回</th><th>说明</th></tr>
+     *   <tr><td>默认生效，无群例外</td><td>{@code true}</td><td>对所有群生效</td></tr>
+     *   <tr><td>默认生效，有群例外</td><td>{@code true}</td>
+     *       <td>整体是开的，只是有几个群被单独覆盖——
+     *           管理端应展示为「全局开 + N 个群例外」</td></tr>
+     *   <tr><td>默认不生效，无群例外</td><td>{@code false}</td>
+     *       <td>任何群都不生效</td></tr>
+     *   <tr><td>默认不生效，有群例外（白名单）</td><td>{@code false}</td>
+     *       <td>整体是关的，只在列出的群生效——
+     *           管理端应展示为「全局关 + N 个群例外」</td></tr>
+     * </table>
+     *
+     * <p>换句话说：<b>本方法只看「底座」，不看覆盖</b>。
+     * 判定依据是「有效默认值」——依次取「用户显式设置的全局开关」→
+     * 「插件基线自带的默认值」→「元数据的 {@code defaultEnable}」。</p>
+     *
+     * <h3>为什么不是「是否每个群都生效」</h3>
+     * <p>那个读法在「默认开 + 个别群关」时返回 {@code false}，
+     * 于是 setter 写 {@code true} 而 getter 读回 {@code false}——
+     * 管理端的开关保存后会立刻显示成相反状态，且「全局关闭」无法被幂等表达。
+     * 管理端要展示「是不是每个群都生效」，应当把它与 {@link #enabledGroups}
+     * 一起渲染，而不是指望本方法承载那个含义。</p>
      *
      * <p>插件不存在时返回 {@code false}。</p>
      *
      * @param pluginId 插件标识
-     * @return 全局生效返回 {@code true}
+     * @return 全局默认生效时返回 {@code true}
+     * @see #setGlobalEnabled
+     * @see #isEnabledIn
      */
     boolean isGloballyEnabled(String pluginId);
 

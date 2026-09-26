@@ -192,26 +192,32 @@ class ScopeQueryTest {
     }
 
     @Test
-    @DisplayName("白名单：只在列出的群生效")
+    @DisplayName("白名单：只在列出的群生效；全局开关是「关」")
     void whitelistScope() {
         ScopeQuery scope = loadPluginCapturingScope(ScopeFilter.onlyGroups(200L))[0];
 
         assertFalse(scope.isEnabledIn(100L));
         assertTrue(scope.isEnabledIn(200L));
         assertFalse(scope.isEnabledIn(300L));
-        // 白名单语义不算「全局生效」
+        // 白名单 = 全局关 + 个别群开
         assertFalse(scope.isGloballyEnabled());
     }
 
     @Test
-    @DisplayName("黑名单：除列出的群外都生效")
+    @DisplayName("黑名单：除列出的群外都生效；全局开关仍是「开」")
     void blacklistScope() {
         ScopeQuery scope = loadPluginCapturingScope(ScopeFilter.excludeGroups(300L))[0];
 
         assertTrue(scope.isEnabledIn(100L));
         assertTrue(scope.isEnabledIn(200L));
         assertFalse(scope.isEnabledIn(300L));
-        // 黑名单语义是「全局开启 + 个别群关闭」
+        /*
+         * 黑名单 = 全局开 + 个别群关，因此 isGloballyEnabled 为 true。
+         *
+         * isGloballyEnabled 回答「底座（全局默认值）是否生效」，
+         * 群例外不影响它——否则 setGlobalEnabled(true) 之后
+         * isGloballyEnabled() 会读回 false，读写不对偶。
+         */
         assertTrue(scope.isGloballyEnabled());
     }
 

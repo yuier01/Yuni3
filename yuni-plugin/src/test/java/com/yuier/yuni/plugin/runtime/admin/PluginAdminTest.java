@@ -263,6 +263,62 @@ class PluginAdminTest {
         assertEquals("nope/Nope", e.pluginId());
     }
 
+    @Test
+    @DisplayName("全局开关与群例外正交：群例外不影响 isGloballyEnabled")
+    void globalSwitchIsOrthogonalToGroupExceptions() {
+        load("p", "P", false, true, ScopeFilter.ALL);
+        assertTrue(admin.isGloballyEnabled("p/P"), "默认开启 → 全局开");
+
+        // 关掉一个群：这是「群例外」，不是「全局关闭」
+        admin.setEnabled("p/P", 100L, false, false);
+        assertTrue(admin.isGloballyEnabled("p/P"),
+                "「全局开 + 个别群关」仍是全局开；若这里返回 false，"
+                        + "管理端的开关会在保存后立刻显示成相反状态");
+        assertFalse(admin.isEnabledIn("p/P", 100L), "该群本身确实被关掉了");
+        assertTrue(admin.isEnabledIn("p/P", 200L), "其他群不受影响");
+
+        // 全局关闭：不改动已有群例外
+        admin.setGlobalEnabled("p/P", false, false);
+        assertFalse(admin.isGloballyEnabled("p/P"));
+
+        // 全局重新打开
+        admin.setGlobalEnabled("p/P", true, false);
+        assertTrue(admin.isGloballyEnabled("p/P"));
+        // 群例外仍在——全局开关不动例外
+        assertFalse(admin.isEnabledIn("p/P", 100L));
+    }
+
+    @Test
+    @DisplayName("全局开关读写对偶：setGlobalEnabled(V) 之后 isGloballyEnabled 恒等于 V")
+    void globalSwitchReadWriteAreDual() {
+        load("p", "P", false, true, ScopeFilter.ALL);
+
+        for (boolean value : new boolean[] {false, true, false}) {
+            admin.setGlobalEnabled("p/P", value, false);
+            assertEquals(value, admin.isGloballyEnabled("p/P"),
+                    "setGlobalEnabled(" + value + ") 之后读回的值必须相同");
+        }
+
+        // 存在群例外时也必须对偶——这是本次语义定性的核心依据
+        admin.setEnabled("p/P", 100L, false, false);
+        admin.setGlobalEnabled("p/P", true, false);
+        assertTrue(admin.isGloballyEnabled("p/P"),
+                "有群例外时 setGlobalEnabled(true) 仍必须读回 true");
+    }
+
+    @Test
+    @DisplayName("默认关闭的插件在全局打开之前 isGloballyEnabled 为 false")
+    void defaultDisabledPluginIsNotGloballyEnabled() {
+        load("p", "P", false, false, null);
+        assertFalse(admin.isGloballyEnabled("p/P"),
+                "从未启用过的插件不应显示为「全局开」");
+
+        admin.setGlobalEnabled("p/P", true, false);
+        assertTrue(admin.isGloballyEnabled("p/P"));
+        // 全局打开后，未设置例外的群都生效
+        assertTrue(admin.isEnabledIn("p/P", 999L));
+    }
+
     // ==================== 卸载与重载 ====================
 
     @Test
