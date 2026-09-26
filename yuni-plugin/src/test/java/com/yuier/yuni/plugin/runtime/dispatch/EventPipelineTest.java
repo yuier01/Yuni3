@@ -197,8 +197,12 @@ class EventPipelineTest {
 
         // 两个插件，唯一的区别是注册项上的 ScopeFilter：
         // 前者只在群 999 生效，后者排除群 999。
-        // 通过直接构造注册项来设定过滤器——插件侧目前没有「运行时改 filter」的公开 API，
-        // 管理端要走 PluginRuntime 的 enable/disable 路径（见 §10.5）。
+        //
+        // 这里直接构造注册项来设定过滤器，而不是走 PluginAdmin.setEnabled —— 后者
+        // 走的是「三态例外表 → 合成过滤器」的路径（见设计文档 §8.11），
+        // 而本用例要验证的是 EventPipeline 对注册项上过滤器的处理，
+        // 因此需要绕过合成、直接给一个确定形态的过滤器。
+        // 管理端的写入路径由 PluginAdminTest 覆盖。
         PluginFiber inScope = runtime.load(
                 YuniPlugin.of("限定群插件", ctx -> { }), null, null, null);
         PluginFiber outOfScope = runtime.load(
@@ -245,6 +249,100 @@ class EventPipelineTest {
         await(() -> inScopeHits.get() > 0, 2000);
         assertEquals(1, inScopeHits.get(), "群 999 在白名单，应被调用");
         assertEquals(1, outOfScopeHits.get(), "群 999 在黑名单，不应再被调用");
+    }
+
+    // ==================== 管理端配置必须真的生效（P6 回归）====================
+
+    @Test
+    @DisplayName("管理端关闭某个群的插件后，该群的事件不再投递给它（P6 回归）")
+    void adminScopeChangeTakesEffectOnDispatch() {
+        AtomicInteger hits = new AtomicInteger();
+
+        // 插件通过正常的 ctx API 注册处理器——不手工构造注册项
+        PluginFiber fiber = runtime.load(new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("可启停插件").defaultEnable(true).build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.onNotice("group_ban", (ev, reply) -> hits.incrementAndGet());
+            }
+        }, "mymod", null, null);
+
+        String pluginId = fiber.id();
+        long groupId = 123L;
+
+        // 配置前：默认启用，事件应当被投递
+        pipeline.onNotice(groupBanNotice(groupId));
+        await(() -> hits.get() > 0, 2000);
+        assertEquals(1, hits.get(), "默认启用时应收到事件");
+
+        // 管理端关闭这个群
+        runtime.admin().setEnabled(pluginId, groupId, false, true);
+        assertFalse(runtime.admin().isEnabledIn(pluginId, groupId));
+
+        // 配置后：同一群的事件不应再投递。
+        // 这一条曾经失败——PluginContext 注册时把 ScopeFilter 写死为 ALL，
+        // 而 EventPipeline 只查注册项上的过滤器，于是管理端的启停配置
+        // 完全不生效（见本用例的注释与 §8.11）。
+        pipeline.onNotice(groupBanNotice(groupId));
+        await(() -> false, 300);
+        assertEquals(1, hits.get(), "关闭后不应再收到该群的事件");
+
+        // 另一个群不受影响
+        pipeline.onNotice(groupBanNotice(999L));
+        await(() -> hits.get() > 1, 2000);
+        assertEquals(2, hits.get(), "其他群的投递不应受影响");
+
+        // 重新开启后恢复投递
+        runtime.admin().setEnabled(pluginId, groupId, true, true);
+        pipeline.onNotice(groupBanNotice(groupId));
+        await(() -> hits.get() > 2, 2000);
+        assertEquals(3, hits.get(), "重新开启后应恢复投递");
+    }
+
+    @Test
+    @DisplayName("管理端全局关闭插件后，任何群的事件都不再投递（P6 回归）")
+    void adminGlobalDisableTakesEffectOnDispatch() {
+        AtomicInteger hits = new AtomicInteger();
+
+        PluginFiber fiber = runtime.load(new YuniPlugin() {
+            @Override
+            public PluginMetadata metadata() {
+                return PluginMetadata.of("全局可关插件").defaultEnable(true).build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                ctx.onNotice("group_ban", (ev, reply) -> hits.incrementAndGet());
+            }
+        }, "mymod", null, null);
+
+        runtime.admin().setGlobalEnabled(fiber.id(), false, true);
+        assertFalse(runtime.admin().isGloballyEnabled(fiber.id()));
+
+        pipeline.onNotice(groupBanNotice(123L));
+        pipeline.onNotice(groupBanNotice(999L));
+        await(() -> false, 300);
+        assertEquals(0, hits.get(), "全局关闭后任何群都不应投递");
+    }
+
+    /**
+     * 构造一个群禁言通知事件。
+     *
+     * @param groupId 群号
+     * @return 核心通知事件
+     */
+    private static YuniNoticeEvent groupBanNotice(long groupId) {
+        YuniNoticeEvent notice = new YuniNoticeEvent();
+        notice.setTime(1L);
+        notice.setSelfId(10000L);
+        notice.setNoticeType("group_ban");
+        notice.setUserId(10001L);
+        notice.setGroupId(groupId);
+        return notice;
     }
 
     // ==================== 插件状态关卡 ====================

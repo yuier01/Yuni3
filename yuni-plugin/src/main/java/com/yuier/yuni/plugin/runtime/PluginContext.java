@@ -59,18 +59,24 @@ import java.util.function.Predicate;
  * 未使用的组合不占内存——这是「单一插件实例 + 作用域过滤」方案
  * （设计文档 §8.3）中状态隔离的落地点。</p>
  *
- * <h2>P1 阶段的实现边界</h2>
- * <p>本阶段先完成：事件注册、命令注册、调度、Effect、服务、作用域状态。
- * 以下部分<b>尚未接线</b>，当前抛出 {@link UnsupportedOperationException}
- * 并带上阶段标记，避免迁移期间被误当成「已可用」：</p>
+ * <h2>全部能力已接线</h2>
+ * <p>重构 P1–P6 已完成，{@link YuniContext} 上的每一个方法都有实现，
+ * 不存在「待接线」的占位方法。</p>
+ *
+ * <p>下面这些方法在<b>依赖未注入</b>时会抛 {@link IllegalStateException}
+ * 并在消息里带上说明，这<b>不是</b>「功能还没做」，而是「这份上下文缺少对应部件」。
+ * 最常见的场景是单元测试：测试常常只想验证「注册 → 撤销 → 资源归零」
+ * 这条最小闭环，于是 {@code new PluginRuntime(null, null)} 就够了，
+ * 此时 {@code ctx.schedule(...)} / {@code ctx.http()} 之类的调用自然不可用。</p>
  * <ul>
- *   <li>{@link #bot()} / {@link #sender()} —— 待 P3（内置服务的委托实现）；</li>
- *   <li>{@link #command(CommandNode)} 的<b>分发</b> —— 注册可用，
- *       匹配由 P4 的 {@code EventPipeline} 接入；</li>
- *   <li>{@link #http()} / {@link #config()} / {@link #cache()} —— 待 P3。</li>
+ *   <li>{@link #bot()} / {@link #sender()} —— 需要运行时持有 bot 供应函数；</li>
+ *   <li>{@link #schedule} / {@link #every} / {@link #runNow} —— 需要
+ *       {@code DynamicTaskManager}；</li>
+ *   <li>{@link #http()} / {@link #cache()} / {@link #config()} —— 需要
+ *       {@code JsonCodec}（未注册共享实例时按需构造）；</li>
+ *   <li>{@link #plugin(YuniPlugin)} —— 需要上下文已绑定运行时。</li>
  * </ul>
- * <p>这样做的目的是让 P1 的单元测试可以独立验证「注册 → 撤销 → 资源归零」
- * 这条最小闭环，而不必等待整条链路打通。</p>
+ * <p>生产环境下这些依赖由 {@code PluginSystemConfig} 在启动时全部装配。</p>
  *
  * @see YuniContext
  * @see PluginRuntime
@@ -78,8 +84,14 @@ import java.util.function.Predicate;
 @Slf4j
 public final class PluginContext implements YuniContext {
 
-    /** 当前实现阶段标记，用于未接线方法的报错信息。 */
-    private static final String PHASE_NOTE = "（当前为重构 P1 阶段，该方法待后续阶段接线）";
+    /**
+     * 依赖未注入时的统一错误后缀。
+     *
+     * <p>用一段共享文案而不是给每个方法各写一句，是为了让这类错误的
+     * <b>可检索性</b>一致——日志里搜这一句就能找出全部「上下文缺部件」的失败。</p>
+     */
+    private static final String MISSING_DEPENDENCY_NOTE =
+            "（该能力需要框架在启动时注入对应部件；若这是单元测试，请显式构造所需依赖）";
 
     /** 服务注册表；子上下文与父上下文共享同一实例。 */
     private final ServiceRegistry services;
@@ -185,6 +197,25 @@ public final class PluginContext implements YuniContext {
 
     // ==================== 元信息 ====================
 
+    /**
+     * 本插件专属的日志器。
+     *
+     * <h2>为什么不能用 {@code @Slf4j} 生成的那个 {@code log}</h2>
+     * <p>类上的 {@code @Slf4j} 生成的是 {@code LoggerFactory.getLogger(PluginContext.class)}——
+     * 一个<b>所有插件共享</b>的 logger。那样日志里只会看到
+     * {@code c.y.y.plugin.runtime.PluginContext}，无法区分是哪个插件输出的，
+     * 与 {@link YuniContext#logger()} 承诺的「已带上插件名前缀」直接矛盾。</p>
+     *
+     * <p>因此这里按 Fiber 标识取一个独立 logger，名字形如
+     * {@code plugin.steam/MemberSteamStatus}。它在日志配置里可以被单独
+     * 设置级别，也便于按插件检索。</p>
+     *
+     * <p>惰性构造并缓存：{@code logger()} 在日志密集的插件里会被频繁调用，
+     * 而 {@code LoggerFactory.getLogger} 虽然内部有缓存，仍有一次 map 查找。
+     * 字段是 {@code volatile}，因为上下文可能被多个工作线程同时访问。</p>
+     */
+    private volatile Logger pluginLogger;
+
     @Override
     public String scopeId() {
         return "default";
@@ -192,7 +223,21 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Logger logger() {
-        return log;
+        Logger cached = this.pluginLogger;
+        if (cached != null) {
+            return cached;
+        }
+        /*
+         * fiber 为 null 只出现在「尚未绑定 Fiber 的根上下文」这一瞬时状态
+         * （测试手工构造时也会遇到）。此时回落到框架自身的 logger，
+         * 而不是抛异常——日志不该成为插件加载的失败原因。
+         */
+        String name = fiber == null
+                ? "plugin.unknown"
+                : "plugin." + fiber.id();
+        Logger created = org.slf4j.LoggerFactory.getLogger(name);
+        this.pluginLogger = created;
+        return created;
     }
 
     @Override
@@ -316,7 +361,7 @@ public final class PluginContext implements YuniContext {
     @Override
     public Disposable schedule(String cron, Runnable task) {
         if (taskManager == null) {
-            throw new IllegalStateException("定时任务管理器未注入，无法注册 cron 任务" + PHASE_NOTE);
+            throw new IllegalStateException("定时任务管理器未注入，无法注册 cron 任务" + MISSING_DEPENDENCY_NOTE);
         }
         if (cron == null || cron.isBlank()) {
             throw new IllegalArgumentException("cron 表达式不能为空");
@@ -337,7 +382,7 @@ public final class PluginContext implements YuniContext {
     @Override
     public Disposable every(Duration interval, Runnable task) {
         if (taskManager == null) {
-            throw new IllegalStateException("定时任务管理器未注入，无法注册周期任务" + PHASE_NOTE);
+            throw new IllegalStateException("定时任务管理器未注入，无法注册周期任务" + MISSING_DEPENDENCY_NOTE);
         }
         if (interval == null || interval.isZero() || interval.isNegative()) {
             throw new IllegalArgumentException("执行间隔必须为正");
@@ -522,28 +567,43 @@ public final class PluginContext implements YuniContext {
     /**
      * 作用域查询的默认实现。
      *
-     * <p>判定来源按优先级：</p>
+     * <h2>判定链（与 {@code PluginAdmin.isEnabledIn} 完全一致）</h2>
+     * <p>顺序由强到弱：</p>
      * <ol>
-     *   <li>{@code PluginRuntime} 里该插件注册项的 {@code ScopeFilter}
-     *       （即管理端配置的群例外）；</li>
-     *   <li>无注册项可查时，回落为「按插件元数据的 {@code defaultEnable} 全局生效」。</li>
+     *   <li><b>用户显式群例外</b>——管理端或 {@code /插件 开启} 写下的配置；</li>
+     *   <li><b>插件注册时的基线例外</b>——插件作者写的
+     *       {@code ctx.plugin(child, onlyGroups(a,b))}；</li>
+     *   <li><b>有效全局默认值</b>——依次为「用户显式设置的全局开关」→
+     *       「插件基线自带的默认值」→「元数据的 {@code defaultEnable}」。</li>
      * </ol>
+     * <p>本方法把①②的合并交给 {@code PluginRuntime.isPluginEnabledIn}，
+     * 它在「没有任何例外信息」时返回 {@code null}；此时才回落到③。</p>
      *
-     * <p>本实现只做「按当前配置查询」，不写库——写库属管理端职责（见设计文档 §10.5）。</p>
+     * <p><b>注意</b>：这里回落到的是<b>元数据</b>的 {@code defaultEnable}，
+     * 而不是「有效全局默认值」。两者的差别只在
+     * 「用户显式改过全局开关」这一种情况下出现——运行时已经在那之前
+     * 返回了非 {@code null} 的结论，因此本分支不会再被那种情况命中。
+     * 详见设计文档 §8.11 的三态模型。</p>
+     *
+     * <h2>不写库</h2>
+     * <p>本实现只做查询。写入（以及随之而来的持久化）走
+     * {@link #plugins()} 的 {@code setEnabled} / {@code setGlobalEnabled}——
+     * 那是管理端职责（见设计文档 §10.5）。</p>
      */
     private final class DefaultScopeQuery implements com.yuier.yuni.plugin.api.ScopeQuery {
 
         @Override
         public boolean isEnabledIn(long groupId) {
             if (fiber == null || runtime == null) {
+                // 未绑定运行时（测试场景）：保守地放行，避免插件在测试里静默失效
                 return true;
             }
-            // 询问运行时：该插件是否<b>显式</b>设置过这个群
+            // ①+② 由运行时合并判定；「无任何例外信息」时返回 null
             Boolean enabled = runtime.isPluginEnabledIn(fiber.id(), groupId);
             if (enabled != null) {
                 return enabled;
             }
-            // 没有显式配置：按元数据的默认值
+            // ③ 回落到元数据默认值
             return fiber.metadata().defaultEnable();
         }
 
@@ -650,7 +710,7 @@ public final class PluginContext implements YuniContext {
         if (dataDir == null) {
             throw new IllegalStateException(
                     "插件资源目录未注入，无法读取配置文件。"
-                            + "若插件不需要读取资源，请勿调用 ctx.config()。" + PHASE_NOTE);
+                            + "若插件不需要读取资源，请勿调用 ctx.config()。" + MISSING_DEPENDENCY_NOTE);
         }
         return new com.yuier.yuni.plugin.runtime.service.FileConfigLoader(dataDir, jsonCodec());
     }
@@ -674,7 +734,7 @@ public final class PluginContext implements YuniContext {
     @Override
     public Path dataDir() {
         if (dataDir == null) {
-            throw new IllegalStateException("插件资源目录未注入" + PHASE_NOTE);
+            throw new IllegalStateException("插件资源目录未注入" + MISSING_DEPENDENCY_NOTE);
         }
         return dataDir;
     }
@@ -691,7 +751,7 @@ public final class PluginContext implements YuniContext {
     private com.yuier.yuni.core.bot.JsonCodec jsonCodec() {
         if (jsonCodec == null) {
             throw new IllegalStateException(
-                    "JsonCodec 未注入，无法执行需要 JSON 编解码的操作" + PHASE_NOTE);
+                    "JsonCodec 未注入，无法执行需要 JSON 编解码的操作" + MISSING_DEPENDENCY_NOTE);
         }
         return jsonCodec;
     }
@@ -710,7 +770,7 @@ public final class PluginContext implements YuniContext {
         }
         if (runtime == null) {
             throw new IllegalStateException(
-                    "上下文未绑定运行时，无法挂载子插件" + PHASE_NOTE
+                    "上下文未绑定运行时，无法挂载子插件" + MISSING_DEPENDENCY_NOTE
                             + "。请通过 PluginRuntime.load(...) 创建上下文。");
         }
         // 子插件继承本插件的类加载器与资源目录

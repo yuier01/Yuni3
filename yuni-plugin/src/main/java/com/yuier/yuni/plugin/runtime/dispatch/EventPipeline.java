@@ -268,9 +268,18 @@ public final class EventPipeline {
         if (!entry.subTypeMatches(event.subType())) {
             return false;
         }
-        // 关卡 3：作用域过滤。这是现行系统在 request/meta/messageSent 三条路径上
-        // 漏掉的检查，现在所有事件类型都必经此处。
-        if (!entry.scopeMatches(groupId)) {
+        // 关卡 3：作用域过滤。
+        //
+        // 两道判定：注册项自带的过滤器（插件作者的基线约束 / 测试显式构造）
+        // + 运行时的当前作用域（用户的群粒度启停配置）。
+        //
+        // 后者是必需的：注册项在插件加载时就固定了，而用户随时可以在管理端
+        // 改配置。此前只查注册项，导致管理端的启停完全不生效——见
+        // RegistrationTable.Entry#scopeMatches 的说明。
+        //
+        // 顺带说明：现行系统在 request/meta/messageSent 三条路径上漏掉了
+        // 这个检查，现在所有事件类型都必经此处。
+        if (!entry.scopeMatches(groupId, runtime::scopeFilterOf)) {
             return false;
         }
         // 关卡 4：附加条件

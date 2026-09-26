@@ -114,7 +114,11 @@ public final class RegistrationTable {
      *
      * @param kind      能力种类
      * @param owner     注册者（插件 Fiber），用于状态检查、日志与失败归因
-     * @param filter    作用域过滤器；{@code null} 视为 {@link ScopeFilter#ALL}
+     * @param filter    <b>注册项自带</b>的作用域过滤器；{@code null} 视为
+     *                  {@link ScopeFilter#ALL}。注意它不是「该插件在哪些群生效」的
+     *                  权威来源——那个随管理端配置变化，只能向运行时查询。
+     *                  分发路径必须用
+     *                  {@link #scopeMatches(Long, java.util.function.Function)}
      * @param predicate 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）
      * @param subType   子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤
      * @param payload   实际载荷：处理器、命令树根节点或 Runnable
@@ -136,13 +140,47 @@ public final class RegistrationTable {
         }
 
         /**
-         * 判定本注册项是否应在指定群生效。
+         * 判定本注册项是否应在指定群生效——必须结合运行时的当前作用域。
          *
-         * @param groupId 事件群号；{@code null} 表示非群事件
-         * @return 生效返回 {@code true}
+         * <h2>为什么必须有运行时那一路</h2>
+         * <p>插件的群粒度启停由用户随时通过管理端配置，而注册项是插件加载时建立的。
+         * 只看注册项上的 {@code filter} 会导致：用户在管理端关掉某个群的插件后，
+         * 事件仍被投递过去。</p>
+         *
+         * <p><b>这不是理论问题。</b>P6 上线前确实如此：
+         * {@code PluginContext} 注册时把 filter 写死为 {@link ScopeFilter#ALL}，
+         * 而分发只查注册项，于是整套群粒度启停对分发路径完全无效。
+         * 该缺陷由 {@code EventPipelineTest#adminScopeChangeTakesEffectOnDispatch}
+         * 回归覆盖。</p>
+         *
+         * <h2>两道判定都要过</h2>
+         * <p>保留注册项自带的那道，是为了让
+         * {@code ctx.plugin(child, onlyGroups(a,b))} 这类<b>插件作者写的基线约束</b>
+         * 以及测试里显式构造的过滤器仍然生效；运行时那一路负责用户配置。</p>
+         *
+         * <h2>为什么没有「只查自己」的单参重载</h2>
+         * <p>那个重载曾经存在，而它的存在本身就是缺陷的温床——调用方很容易
+         * 「顺手」用它，得到的是<b>看起来正确但忽略用户配置</b>的结果。
+         * 删掉之后，编译器会强制每个调用点显式提供运行时解析函数。</p>
+         *
+         * @param groupId       事件群号；{@code null} 表示非群事件
+         * @param runtimeScopes 由插件标识取「该插件当前生效的过滤器」；
+         *                      {@code null} 或返回空表示运行时未装配，此时只用注册项过滤器
+         * @return 两道判定都通过时返回 {@code true}
          */
-        public boolean scopeMatches(Long groupId) {
-            return filter.matches(groupId);
+        public boolean scopeMatches(Long groupId,
+                                    java.util.function.Function<String, java.util.Optional<ScopeFilter>> runtimeScopes) {
+            if (!filter.matches(groupId)) {
+                return false;
+            }
+            if (runtimeScopes == null || owner == null) {
+                return true;
+            }
+            // 运行时没有该插件的记录（例如测试里直接往注册表塞条目）时放行，
+            // 与「无配置即按元数据默认值」的语义一致
+            return runtimeScopes.apply(owner.id())
+                    .map(scope -> scope.matches(groupId))
+                    .orElse(true);
         }
 
         /**

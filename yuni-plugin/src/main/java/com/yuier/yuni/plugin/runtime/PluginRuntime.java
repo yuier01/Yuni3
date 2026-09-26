@@ -45,24 +45,24 @@ import java.util.Optional;
  * 回滚是必要的——否则会出现「插件标记为失败但监听器仍在工作」的半初始化状态。</p>
  *
  * <h2>与 ClassLoader 的关系</h2>
- * <p>每个 {@link PluginFiber} 持有加载它的 ClassLoader。{@link #unload} 会断言
- * Effect 已归零；调用方只有在此之后才允许关闭 ClassLoader。这条约束来自
- * 2026-08 的 P0 事故（插件重载静默失败），见设计文档 §9.4。</p>
+ * <p>每个 {@link PluginFiber} 持有加载它的 ClassLoader。{@link #unload} 会撤销
+ * 该插件的全部 Effect 并把 Effect 计数归零，之后调用方才可以关闭 ClassLoader
+ * （{@link #reload} 就是这么做的）。这条约束来自 2026-08 的 P0 事故
+ * （插件重载静默失败），见 {@code Notes/技术报告-插件重载静默失败.md}。</p>
  *
- * <h2>P1 阶段的边界</h2>
- * <p>本类当前实现：加载、依赖检查、apply、索引登记、卸载、Effect 归零断言、
- * 子插件挂载。尚未实现：jar 扫描与 ClassLoader 管理（{@link #reload} 抛
- * {@link UnsupportedOperationException}）、事件分发（属 P4）。</p>
+ * <h2>能力范围</h2>
+ * <p>本类已实现：模块加载（经 {@code PluginModuleLoader}）、依赖检查与推进、
+ * {@code apply} 调用、索引登记、卸载、热重载、事件分发（经 {@link #pipeline()}）、
+ * 作用域查询与写入、{@link com.yuier.yuni.plugin.api.PluginAdmin} 适配。
+ * 重构 P1–P6 已全部完成，本类不再有「待接线」的方法。</p>
  *
  * @see PluginFiber
  * @see FiberRegistry
  * @see RegistrationTable
+ * @see com.yuier.yuni.plugin.runtime.PluginScopes
  */
 @Slf4j
 public final class PluginRuntime {
-
-    /** 阶段标记，用于未接线方法的报错信息。 */
-    private static final String PHASE_NOTE = "（当前为重构 P1 阶段，该方法待后续阶段接线）";
 
     /** 能力注册总表：所有插件注册的事件处理器与命令树。 */
     private final RegistrationTable registrations = new RegistrationTable();
@@ -871,7 +871,10 @@ public final class PluginRuntime {
                         // 权限判定委托给权限服务——插件可通过 ctx.permission() 覆盖注册
                         com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher.fromService(
                                 services.resolve(com.yuier.yuni.plugin.api.service.PermissionService.class)
-                                        .orElse(null)));
+                                        .orElse(null)),
+                        // 作用域判定委托给本运行时的当前配置——用户的群粒度启停
+                        // 随时可变，因此必须在分发时查而不是注册时定
+                        this::scopeFilterOf);
                 this.pipeline = new com.yuier.yuni.plugin.runtime.dispatch.EventPipeline(
                         this, eventAdapter, registrations, commandDispatcher);
             }
@@ -998,18 +1001,27 @@ public final class PluginRuntime {
      */
     public boolean isGloballyEnabled(String pluginId) {
         /*
-         * 判定顺序：先看插件注册时的基线形态，再看用户的例外形态。
+         * 判定顺序：先看插件注册时的基线形态，再看用户的例外形态，
+         * 最后回落到「有效全局默认值」。
          *
          * 「全局生效」的含义是「不限定群」。因此只要出现白名单形态就不再是全局：
          *   - 基线为 onlyGroups(...)  → 限定在这几个群 → 不是全局；
          *   - 用户显式开启了某些群（白名单例外） → 同样限定 → 不是全局；
-         *   - 只有黑名单形态（默认开启 + 个别群关闭）或无例外 → 全局生效。
+         *   - 只有黑名单形态（默认开启 + 个别群关闭）或无例外 → 看默认值本身。
+         *
+         * 最后一步容易漏：**没有群例外不等于全局开启**。
+         * 一个 defaultEnable=false 的插件在用户把它全局打开之前，
+         * 对任何群都不生效——此时 isGloballyEnabled 必须是 false。
          */
         if (whitelistBaselines.contains(pluginId)) {
             return false;
         }
-        return pluginScopes.all(pluginId).stream()
-                .noneMatch(item -> item.explicitGroupWhitelist().isPresent());
+        boolean hasWhitelistException = pluginScopes.all(pluginId).stream()
+                .anyMatch(item -> item.explicitGroupWhitelist().isPresent());
+        if (hasWhitelistException) {
+            return false;
+        }
+        return effectiveDefaultEnabled(pluginId);
     }
 
     /**

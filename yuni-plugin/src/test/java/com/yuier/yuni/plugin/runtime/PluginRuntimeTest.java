@@ -35,8 +35,10 @@ class PluginRuntimeTest {
     /**
      * 构造一个不注入定时任务管理器的运行时。
      *
-     * <p>调度类能力在本测试中不覆盖——它需要 {@code DynamicTaskManager}，
-     * 而那是一个依赖 Spring {@code TaskScheduler} 的组件，属 P2 的接线范围。</p>
+     * <p>本测试只覆盖生命周期与 Effect 语义，因此不装配调度能力——
+     * 那会让每个用例都要拉起 Spring 的 {@code TaskScheduler}。
+     * 调度能力的覆盖在 {@code PluginSchedulerTest}（8 个用例）里，
+     * 那里装配了真实的 {@code DynamicTaskManager}。</p>
      *
      * @return 运行时实例
      */

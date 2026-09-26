@@ -75,6 +75,20 @@ public final class CommandDispatcher {
     private final PermissionResolver permissionResolver;
 
     /**
+     * 作用域解析函数：给定插件标识，返回该插件<b>当前</b>生效的过滤器。
+     *
+     * <p>与 {@link #permissionResolver} 同样是「注入函数而非依赖具体类型」：
+     * 本类不需要知道运行时长什么样，只需要一个「这个插件现在在哪些群生效」的答案。
+     * 单测里传 {@code null} 即可退化为「只看注册项自带的过滤器」。</p>
+     *
+     * <p><b>为什么必须在分发时查而不是注册时定</b>：用户的群粒度启停配置随时可变，
+     * 而注册项在插件加载时就固定了。只在注册时定会导致管理端的启停不生效——
+     * 这是 P6 上线前真实存在的缺陷。</p>
+     */
+    private final java.util.function.Function<String, java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter>>
+            scopeResolver;
+
+    /**
      * 权限判定函数。
      */
     @FunctionalInterface
@@ -103,10 +117,30 @@ public final class CommandDispatcher {
                              com.yuier.yuni.core.bot.YuniBot bot,
                              com.yuier.yuni.core.model.bot.BotApp botApp,
                              PermissionResolver permissionResolver) {
+        this(registrations, bot, botApp, permissionResolver, null);
+    }
+
+    /**
+     * 构造命令分发器（含作用域解析）。
+     *
+     * @param registrations      能力注册总表
+     * @param bot                机器人实例；可为 {@code null}
+     * @param botApp             机器人业务配置；可为 {@code null}
+     * @param permissionResolver 权限判定函数；可为 {@code null}
+     * @param scopeResolver      作用域解析函数；可为 {@code null}
+     *                           （则只按注册项自带的过滤器判定，用于单测）
+     */
+    public CommandDispatcher(RegistrationTable registrations,
+                             com.yuier.yuni.core.bot.YuniBot bot,
+                             com.yuier.yuni.core.model.bot.BotApp botApp,
+                             PermissionResolver permissionResolver,
+                             java.util.function.Function<String,
+                                     java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter>> scopeResolver) {
         this.registrations = registrations;
         this.bot = bot;
         this.botApp = botApp;
         this.permissionResolver = permissionResolver;
+        this.scopeResolver = scopeResolver;
     }
 
     // ==================== 处理器查询 ====================
@@ -193,7 +227,9 @@ public final class CommandDispatcher {
         for (RegistrationTable.Entry entry : registrations.commandEntries()) {
             // 关卡：插件状态 + 作用域过滤。
             // 命令的「子类型过滤」不适用（命令靠命令树匹配，不是靠子类型）。
-            if (!entry.ownerServiceable() || !entry.scopeMatches(groupId)) {
+            // 作用域同时看「注册项自带的过滤器」与「运行时的当前作用域」——
+            // 后者承载用户的群粒度启停配置。
+            if (!entry.ownerServiceable() || !entry.scopeMatches(groupId, scopeResolver)) {
                 continue;
             }
             CommandNode tree = asCommandNode(entry);
