@@ -58,7 +58,9 @@ public class CommandMatcher {
 
         CommandResult result = new CommandResult();
         result.setMatchedKey(node.getName());
-        // 携带节点权限，供 PassivePluginMatcher 校验
+        // 携带节点权限，供分发侧校验。
+        // 新系统中由 CommandDispatcher.checkNodePermission 递归校验（旧系统中是
+        // PassivePluginMatcher，已随旧插件层删除）。
         result.setRequiredPermission(node.getPermission());
         result.setMatchSuccess(true);
 

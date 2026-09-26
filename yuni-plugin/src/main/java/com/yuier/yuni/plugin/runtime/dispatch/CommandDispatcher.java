@@ -29,22 +29,27 @@ import java.util.concurrent.CompletableFuture;
  *   <li>取「匹配到的最深节点」的处理器并异步执行。</li>
  * </ol>
  *
- * <h2>处理器绑定：为什么用注册表而不是给 CommandResult 加字段</h2>
- * <p>设计文档 §6.4 的原方案是「{@code CommandNode} 加 {@code handler} 字段 +
- * {@code CommandResult} 加 {@code handler} 字段 + {@code CommandMatcher} 加一行传递」。</p>
- * <p>实现时改为：处理器不进 {@code CommandNode}，而是由本分发器用一张
- * {@link IdentityHashMap}（节点标识 → 处理器）保存。理由：</p>
- * <ul>
- *   <li><b>避免改动 yuni-event</b>。原方案要改 {@code CommandNode}、{@code CommandResult}
- *       与 {@code CommandMatcher} 三个现有类；改法虽然小，但命令引擎是本项目
- *       刚重构完、正在稳定运行的资产，能不动就不动。</li>
- *   <li><b>关注点更干净</b>。{@code CommandNode} 是「命令的结构描述」，
- *       处理器是「插件的行为」——把它们放一起会让同一个节点树无法被复用于
- *       两个不同处理器（例如帮助系统需要遍历命令树但不需要执行）。</li>
- *   <li><b>语义等价</b>。「取最深命中节点的处理器」这一行为完全一致。</li>
- * </ul>
- * <p>代价：处理器与节点树的绑定关系不随节点树一起传递，必须经本分发器查询。
- * 这由 {@link #bindHandler} 在插件注册时建立，是可控的。</p>
+ * <h2>处理器从哪里取</h2>
+ * <p>处理器<b>存在命令节点上</b>：{@code CommandNode} 持有一个<b>不透明</b>的
+ * {@code Object handler} 字段（yuni-event 不认识它，只是保管），
+ * API 层的 {@link com.yuier.yuni.plugin.api.Commands} 提供类型安全的读写入口。
+ * 本类经 {@link Commands#handlerOf(CommandNode)} 取出并转型。</p>
+ *
+ * <h2>曾被评估并放弃的两种方案（避免后人重复推导）</h2>
+ * <ol>
+ *   <li><b>给 {@code CommandNode.Builder} 加 {@code .on(...)} 方法</b>——
+ *       写法最漂亮，但模块依赖方向不允许：{@code CommandHandler} 需要
+ *       {@code Reply}（在 yuni-plugin），而 {@code CommandNode} 在 yuni-event。
+ *       让 yuni-event 依赖 yuni-plugin 会形成循环。见设计文档 §6.3。</li>
+ *   <li><b>在本分发器里用 {@link java.util.IdentityHashMap} 保存
+ *       「节点标识 → 处理器」</b>——这样能完全不改 yuni-event。放弃原因：
+ *       处理器与节点树的绑定关系不随节点树传递，而命令树是需要被
+ *       <b>整体传递</b>的资产（例如帮助系统要遍历它）。绑定放在外部注册表里，
+ *       任何拿到节点树却拿不到本分发器的地方就取不到处理器。</li>
+ * </ol>
+ * <p>最终采用「节点持有不透明字段 + API 层门面」：既不产生循环依赖，
+ * 又让处理器随节点树一起传递。代价是 yuni-event 的 {@code CommandNode}
+ * 多了<b>一个字段</b>——这是唯一被改动的现有类，见设计文档 §6.4。</p>
  *
  * <h2>权限模型（保持现行不变式）</h2>
  * <p>权限是<b>节点级</b>的：{@code CommandNode.permission} 声明，匹配后沿

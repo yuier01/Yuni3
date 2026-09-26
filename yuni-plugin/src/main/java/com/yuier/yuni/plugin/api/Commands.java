@@ -37,25 +37,32 @@ import com.yuier.yuni.event.detector.message.command.model.CommandNode;
  * </ul>
  *
  * <h2>用法</h2>
+ * <p>给一个节点绑处理器，返回同一个节点（便于继续链式调用）：</p>
  * <pre>{@code
- * import static com.yuier.yuni.plugin.api.Commands.command;
+ * import static com.yuier.yuni.plugin.api.Commands.on;
  *
- * ctx.command(command(CommandNode.builder("安慕希")
- *     .on((ev, reply) -> MCStatus.query(ev))
- *     .build()));
- * }</pre>
- * <p>或者只在需要绑处理器的那一层包一层：</p>
- * <pre>{@code
- * CommandNode.builder("安慕希")
- *     .child(command(CommandNode.builder("添加")
+ * // 子节点各自包一层
+ * ctx.command(on(CommandNode.builder("mc")
+ *     .description("MC 服务器管理")
+ *     .child(on(CommandNode.builder("添加")
  *         .arg(ArgDef.required("服务器名称", "MC 服务器名称"))
- *         .on((ev, reply) -> MCServer.add(ev)))
- *         .build())
- *     .build()
+ *         .build(), (ev, reply) -> addServer(ev, reply)))
+ *     .build(), (ev, reply) -> queryStatus(ev, reply)));
  * }</pre>
  *
- * @see CommandHandler
- * @see com.yuier.yuni.plugin.api.YuniContext#command
+ * <p><b>括号位置很关键</b>：{@code on(...)} 返回的是已 build 好的
+ * {@link CommandNode}，它<b>没有</b> {@code .child()} 方法。
+ * 因此 {@code .child(...)} 必须写在 {@code CommandNode.builder(...)} 链上
+ * （即 {@code .build()} <b>之前</b>），只有最后一次 {@code .build()} 的结果
+ * 才交给 {@code on(...)} 包处理器：</p>
+ * <pre>{@code
+ * on(CommandNode.builder("x").build(), handler).child(...)   // ✗ 编译不过
+ * on(CommandNode.builder("x").child(...).build(), handler)   // ✓
+ * }</pre>
+ *
+ * <p>父节点<b>没有</b>自己的处理器时（例如只做 {@code requiresChild()} 分组），
+ * 直接 {@code CommandNode.builder(...).build()} 即可，不必包 {@code on}——
+ * 内置 {@code plugin-manage} 就是这么写的。</p>
  */
 public final class Commands {
 
@@ -66,9 +73,13 @@ public final class Commands {
     /**
      * 给命令节点绑定处理器，并返回该节点。
      *
+     * <p>返回值是<b>同一个节点对象</b>，但它的静态类型是 {@link CommandNode}
+     * ——一个已 build 好的节点，<b>没有</b> {@code .child()} / {@code .build()}。
+     * 因此本方法只应在节点树构造完成之后调用一次（见类注释的「括号位置」）。</p>
+     *
      * @param node    命令节点
      * @param handler 处理器
-     * @return 同一个节点（便于继续链式调用）
+     * @return 同一个节点（便于继续读取或传参，但不能再挂子节点）
      */
     public static CommandNode on(CommandNode node, CommandHandler handler) {
         if (node == null) {

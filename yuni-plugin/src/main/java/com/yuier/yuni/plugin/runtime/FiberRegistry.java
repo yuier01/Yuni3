@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <h2>模块与插件的关系</h2>
  * <p>一个 <b>模块</b>（module）对应一个 jar 包，可包含多个插件；每个插件是一个
  * Fiber。模块元数据（{@code module_id} / {@code module_name}）在
- * {@link ModuleHandle} 中保存，供管理端分组展示与热重载定位 jar 使用。</p>
+ * {@link FiberRegistry.ModuleHandle} 中保存，供管理端分组展示与热重载定位 jar 使用。</p>
  *
  * <h2>线程安全</h2>
  * <p>加载 / 卸载 / 查询可能并发。所有索引用 {@link ConcurrentHashMap}；
