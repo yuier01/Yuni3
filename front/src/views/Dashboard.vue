@@ -142,19 +142,19 @@ function diskPercent() {
           她温柔、可爱，是你群聊里最贴心的小助手 ✨
         </p>
         <div class="grid grid-cols-2 gap-3 text-sm 2xl:text-base">
-          <a href="https://github.com/liyuier/Yuni3" target="_blank"
+          <a href="https://github.com/yuier01/Yuni3" target="_blank"
             class="flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50/80
                    text-pink-600 hover:bg-pink-100 hover:text-pink-700 transition-colors">
             <span class="text-lg">📦</span>
             <span>Yuni3 后端</span>
           </a>
-          <a href="https://github.com/liyuier/Yuni3-plugin-repo" target="_blank"
+          <a href="https://github.com/yuier01/Yuni3-plugin-repo" target="_blank"
             class="flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50/80
                    text-pink-600 hover:bg-pink-100 hover:text-pink-700 transition-colors">
             <span class="text-lg">🧩</span>
             <span>插件仓库</span>
           </a>
-          <a href="https://github.com/liyuier/Yuni-front" target="_blank"
+          <a href="https://github.com/yuier01/Yuni-front" target="_blank"
             class="flex items-center gap-2 px-3 py-2 rounded-xl bg-pink-50/80
                    text-pink-600 hover:bg-pink-100 hover:text-pink-700 transition-colors">
             <span class="text-lg">🎨</span>

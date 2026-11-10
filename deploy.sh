@@ -7,7 +7,7 @@ set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 IMAGE="${1:-yuier/yuni3:latest}"
-BACKUP_IMAGE="${2:-ghcr.io/liyuier/yuni3:latest}"
+BACKUP_IMAGE="${2:-ghcr.io/yuier01/yuni3:latest}"
 PLUGINS_JSON="$DEPLOY_DIR/plugins.json"
 
 # GitHub 文件代理列表（按优先级尝试，腾讯云等国内服务器直连 GitHub 可能超时）
@@ -19,7 +19,7 @@ GHPROXIES=(
 
 # ── 可选: 更新 plugins.json ──────────────────────────────────────────
 # 如果需要每次部署都拉取最新的 plugins.json（推荐），解开下面这行：
-# curl -fsSL "https://raw.githubusercontent.com/liyuier/Yuni3/master/plugins.json" -o "$PLUGINS_JSON"
+# curl -fsSL "https://raw.githubusercontent.com/yuier01/Yuni3/master/plugins.json" -o "$PLUGINS_JSON"
 
 # ── 检查依赖 ─────────────────────────────────────────────────────────
 command -v jq   >/dev/null 2>&1 || { echo "需要安装 jq: apt install jq";   exit 1; }

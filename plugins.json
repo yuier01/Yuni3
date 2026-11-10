@@ -3,7 +3,7 @@
   "packages": [
     {
       "id": "maimai",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "maimai",
       "description": "麦麦 AI 聊天适配器",
       "author": "Yuier me@yuier.com",
@@ -29,7 +29,7 @@
     },
     {
       "id": "fortune",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "fortune",
       "description": "每日运势",
       "author": "Yuier me@yuier.com",
@@ -50,7 +50,7 @@
     },
     {
       "id": "plugin-manage",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "buildin/plugin-manage",
       "description": "插件管理模块",
       "author": "Yuier me@yuier.com",
@@ -76,7 +76,7 @@
     },
     {
       "id": "event-manage",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "buildin/eventmanage",
       "description": "通用事件处理模块",
       "author": "Yuier me@yuier.com",
@@ -103,7 +103,7 @@
     },
     {
       "id": "help",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "buildin/help",
       "description": "帮助信息模块",
       "author": "Yuier me@yuier.com",
@@ -122,7 +122,7 @@
     },
     {
       "id": "crazy-thursday",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "crazy-thursday",
       "description": "疯狂星期四文案",
       "author": "Yuier me@yuier.com",
@@ -148,7 +148,7 @@
     },
     {
       "id": "daily-news",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "daily-news",
       "description": "每日早报",
       "author": "Yuier me@yuier.com",
@@ -166,7 +166,7 @@
     },
     {
       "id": "chieru",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "chieru",
       "description": "切噜语 / 齁哦语转换",
       "author": "Yuier me@yuier.com",
@@ -198,7 +198,7 @@
     },
     {
       "id": "pig-today",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "pig-today",
       "description": "今日猪猪",
       "author": "Yuier me@yuier.com",
@@ -220,7 +220,7 @@
     },
     {
       "id": "setu",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "setu",
       "description": "色图模块",
       "author": "Yuier me@yuier.com",
@@ -241,7 +241,7 @@
     },
     {
       "id": "anti-gbf",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "anti-gbf",
       "description": "反 GBF",
       "author": "Yuier me@yuier.com",
@@ -259,7 +259,7 @@
     },
     {
       "id": "yizhi",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "yizhi",
       "description": "要我一直 IMAGE 吗",
       "author": "Yuier me@yuier.com",
@@ -277,7 +277,7 @@
     },
     {
       "id": "example",
-      "repo": "liyuier/Yuni3-plugin-repo",
+      "repo": "yuier01/Yuni3-plugin-repo",
       "module": "example",
       "description": "示例模块",
       "author": "Yuier me@yuier.com",

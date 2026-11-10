@@ -11,7 +11,7 @@
     <name>yuni3</name>
     <description>Yuni3 chat-bot app framework</description>
 
-    <url>https://github.com/liyuier/Yuni3</url>
+    <url>https://github.com/yuier01/Yuni3</url>
 
     <licenses>
         <license>
@@ -21,16 +21,16 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git://github.com/liyuier/Yuni3.git</connection>
-        <developerConnection>scm:git:ssh://github.com:liyuier/Yuni3.git</developerConnection>
-        <url>https://github.com/liyuier/Yuni3</url>
+        <connection>scm:git:git://github.com/yuier01/Yuni3.git</connection>
+        <developerConnection>scm:git:ssh://github.com:yuier01/Yuni3.git</developerConnection>
+        <url>https://github.com/yuier01/Yuni3</url>
     </scm>
 
     <developers>
         <developer>
             <name>Yuier</name>
             <email>me@yuier.com</email>
-            <url>https://github.com/liyuier</url>
+            <url>https://github.com/yuier01</url>
         </developer>
     </developers>
 
