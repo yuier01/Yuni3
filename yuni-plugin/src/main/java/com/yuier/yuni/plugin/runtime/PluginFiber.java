@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -88,7 +89,22 @@ public final class PluginFiber {
     /** 父 Fiber；根插件为 {@code null}。 */
     private volatile PluginFiber parent;
 
-    /** 是否已被显式 dispose（用于幂等与状态查询）。 */
+    /**
+     * 是否已调用过 {@link #dispose()}。
+     *
+     * <p>两个用途：一是作为卸载的<b>幂等闸门</b>（见 {@link #dispose()} 开头的判定）；
+     * 二是经 {@link com.yuier.yuni.plugin.api.YuniContext#disposed()} 暴露给插件，
+     * 供异步回调判断「我是否已被卸载」，避免继续操作已释放的资源。</p>
+     *
+     * <p><b>注意它先于状态迁移置位</b>：进入卸载流程时就变为 {@code true}，
+     * 而此时 {@link #state()} 还是 {@link FiberState#UNLOADING}。
+     * 所以本标志回答的是「是否已<b>开始</b>卸载」；
+     * 「是否已卸载<b>完毕</b>」要问 {@code state() == DISPOSED}。</p>
+     *
+     * <p>访问器 {@code isDisposed()} 由 Lombok {@link Getter} 生成
+     * （布尔字段自动使用 {@code is} 前缀），与原手写方法签名完全等价。</p>
+     */
+    @Getter
     private volatile boolean disposed;
 
     /**
@@ -367,15 +383,6 @@ public final class PluginFiber {
             failures.add("[" + id + "] " + failure);
         }
         return Collections.unmodifiableList(failures);
-    }
-
-    /**
-     * 是否已被卸载（{@link #dispose()} 调用过）。
-     *
-     * @return 已卸载返回 {@code true}
-     */
-    public boolean isDisposed() {
-        return disposed;
     }
 
     // ==================== 诊断 ====================
