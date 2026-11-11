@@ -12,7 +12,7 @@ import java.util.Optional;
  *
  * <h2>取代了什么</h2>
  * <p>现行 {@code UserPermissionManager} 保留，但入口从「插件自己去 Spring 容器取
- * Bean」改为通过 {@code ctx.permission()} 注入。判定链路本身<b>不变</b>：</p>
+ * Bean」改为通过 {@code ctx.getPermission()} 注入。判定链路本身<b>不变</b>：</p>
  * <ol>
  *   <li>内存缓存（键 {@code userId@groupId:pluginId}）；</li>
  *   <li>数据库精确查（{@code group_user_plugin_permission} 的例外记录）；</li>
@@ -24,7 +24,7 @@ import java.util.Optional;
  * <pre>{@code
  * ctx.onMessage((ev, reply) -> {
  *     // 显式要求 USER 及以上
- *     if (!ctx.permission().atLeast(ev, "myplugin", UserPermission.USER)) {
+ *     if (!ctx.getPermission().atLeast(ev, "myplugin", UserPermission.USER)) {
  *         return;
  *     }
  *     ...
@@ -61,7 +61,7 @@ public interface PermissionService {
      * @return 权限等级
      */
     default UserPermission resolve(MessageEvent event, String pluginId) {
-        return resolve(event.userId(), event.groupId().orElse(null), pluginId);
+        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
     }
 
     /**
@@ -72,7 +72,7 @@ public interface PermissionService {
      * @return 权限等级
      */
     default UserPermission resolve(NoticeEvent event, String pluginId) {
-        return resolve(event.userId(), event.groupId().orElse(null), pluginId);
+        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
     }
 
     /**
@@ -83,7 +83,7 @@ public interface PermissionService {
      * @return 权限等级
      */
     default UserPermission resolve(RequestEvent event, String pluginId) {
-        return resolve(event.userId(), event.groupId().orElse(null), pluginId);
+        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
     }
 
     /**

@@ -89,7 +89,7 @@ public final class RestTemplateHttp implements Http {
      *
      * @return 底层实例
      */
-    public RestTemplate rawTemplate() {
+    public RestTemplate getRawTemplate() {
         return restTemplate;
     }
 

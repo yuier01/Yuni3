@@ -34,7 +34,7 @@ public class GroupService {
      * 插件运行时。
      *
      * <p>取代旧的 {@code PluginContainer} + {@code PluginEnableProcessor} 两个依赖。
-     * 管理服务经 {@code runtime.admin()} 取——那是<b>无状态的轻量适配器</b>，
+     * 管理服务经 {@code runtime.getAdmin()} 取——那是<b>无状态的轻量适配器</b>，
      * 按需新建即可，因此这里不必把 {@code PluginAdmin} 声明成注入依赖
      * （它本身也不是 Spring Bean：它由运行时提供，与插件系统同一生命周期）。</p>
      */
@@ -109,20 +109,20 @@ public class GroupService {
          * 1. 原来用 try/catch 兜住 isPluginEnabled——因为它内部会读数据库，
          *    异常时回落 defaultEnable。现在 PluginAdmin.isEnabledIn 本身就是
          *    「例外 → 基线 → 默认值」的完整判定链，不需要调用方兜异常；
-         * 2. 原来的 type 字段来自 instance.getPluginType().name()，即旧的八种
+         * 2. 原来的 type 字段来自 instance.getPluginType().getName()，即旧的八种
          *    插件类型（COMMAND / PATTERN / ...）。新系统里「插件类型」不再是
          *    声明，而是「注册了什么能力」的推论，因此这里改报运行状态
          *    （ACTIVE / FAILED / PENDING）——那才是管理端真正需要的信息。
          *    字段名保持 type 不变以免破坏前端契约。
          */
         List<GroupPluginStatusItem> result = new ArrayList<>();
-        var admin = pluginRuntime.admin();
-        for (PluginView plugin : admin.plugins()) {
+        var admin = pluginRuntime.getAdmin();
+        for (PluginView plugin : admin.getPlugins()) {
             result.add(new GroupPluginStatusItem(
-                    plugin.id(),
-                    plugin.name(),
-                    plugin.state().name(),
-                    admin.isEnabledIn(plugin.id(), groupId)
+                    plugin.getId(),
+                    plugin.getName(),
+                    plugin.getState().name(),
+                    admin.isEnabledIn(plugin.getId(), groupId)
             ));
         }
         return result;

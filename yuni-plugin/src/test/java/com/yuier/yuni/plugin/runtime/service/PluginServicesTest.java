@@ -173,7 +173,7 @@ class PluginServicesTest {
     @DisplayName("dataDir 暴露插件资源目录")
     void exposesDataDir() {
         ConfigLoader loader = new FileConfigLoader(pluginDir, jsonCodec);
-        assertEquals(pluginDir, loader.dataDir());
+        assertEquals(pluginDir, loader.getDataDir());
     }
 
     // ==================== CoreSender ====================
@@ -189,10 +189,10 @@ class PluginServicesTest {
 
         List<RecordingYuniBot.SentMessage> sent = bot.sentMessages();
         assertEquals(2, sent.size());
-        assertEquals(MessageTarget.TargetType.GROUP, sent.get(0).target().getTargetType());
-        assertEquals(123L, sent.get(0).target().getTargetId());
-        assertEquals(MessageTarget.TargetType.PRIVATE, sent.get(1).target().getTargetType());
-        assertEquals(456L, sent.get(1).target().getTargetId());
+        assertEquals(MessageTarget.TargetType.GROUP, sent.get(0).getTarget().getTargetType());
+        assertEquals(123L, sent.get(0).getTarget().getTargetId());
+        assertEquals(MessageTarget.TargetType.PRIVATE, sent.get(1).getTarget().getTargetType());
+        assertEquals(456L, sent.get(1).getTarget().getTargetId());
     }
 
     @Test
@@ -208,7 +208,7 @@ class PluginServicesTest {
         Reply.SentResult result = sender.sendToGroup(
                 789L, new com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView(chain, jsonCodec));
 
-        assertTrue(result.success());
+        assertTrue(result.isSuccess());
         assertEquals(1, bot.sentCount());
         assertTrue(bot.lastMessage().orElseThrow().text().contains("转发的内容"));
     }
@@ -233,6 +233,6 @@ class PluginServicesTest {
                 new com.yuier.yuni.core.model.message.MessageChain();
         chain.addTextSegment("hello");
 
-        assertEquals("hello", sender.wrap(chain).plainText());
+        assertEquals("hello", sender.wrap(chain).getPlainText());
     }
 }

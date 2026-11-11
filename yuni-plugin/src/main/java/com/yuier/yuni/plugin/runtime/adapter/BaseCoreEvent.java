@@ -4,7 +4,6 @@ import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.event.Event;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -36,7 +35,6 @@ import java.util.Optional;
  * @see Event
  */
 @Getter
-@Accessors(fluent = true)
 public abstract class BaseCoreEvent implements Event {
 
     /** 事件时间戳（秒）。 */
@@ -87,18 +85,18 @@ public abstract class BaseCoreEvent implements Event {
     }
 
     @Override
-    public Optional<Long> groupId() {
+    public Optional<Long> getGroupId() {
         return Optional.ofNullable(groupId);
     }
 
     /*
-     * time() / selfId() / subType() / rawJson() 由类上的
+     * getTime() / getSelfId() / getSubType() / getRawJson() 由类上的
      * @Getter + @Accessors(fluent) 生成。
      *
      * 其余成员保持手写，因为它们并非简单转发：
-     * - groupId() 包装成 Optional；
-     * - rawFields() 与 value() 读取字段表；
-     * - matched() / setMatched() 是可变匹配令牌；
+     * - getGroupId() 包装成 Optional；
+     * - getRawFields() 与 value() 读取字段表；
+     * - getMatched() / setMatched() 是可变匹配令牌；
      * - fields() 供子类访问（Lombok 发现同名方法会跳过生成）。
      */
 
@@ -108,12 +106,12 @@ public abstract class BaseCoreEvent implements Event {
     }
 
     @Override
-    public Map<String, Object> rawFields() {
+    public Map<String, Object> getRawFields() {
         return fields;
     }
 
     @Override
-    public MatchToken matched() {
+    public MatchToken getMatched() {
         return matched;
     }
 
@@ -127,7 +125,7 @@ public abstract class BaseCoreEvent implements Event {
      *
      * @return 不可变字段表
      */
-    protected Map<String, Object> fields() {
+    protected Map<String, Object> getFields() {
         return fields;
     }
 
@@ -207,14 +205,14 @@ public abstract class BaseCoreEvent implements Event {
     }
 
     /**
-     * 空消息链视图的单例——避免反复构造，也让 {@code chain()} 永不返回 null。
+     * 空消息链视图的单例——避免反复构造，也让 {@code getChain()} 永不返回 null。
      */
     private enum EmptyChainView implements MessageChainView {
         /** 唯一实例。 */
         INSTANCE;
 
         @Override
-        public String plainText() {
+        public String getPlainText() {
             return "";
         }
 
@@ -254,7 +252,7 @@ public abstract class BaseCoreEvent implements Event {
         }
 
         @Override
-        public java.util.List<String> segmentTypes() {
+        public java.util.List<String> getSegmentTypes() {
             return java.util.List.of();
         }
 
@@ -264,7 +262,7 @@ public abstract class BaseCoreEvent implements Event {
         }
 
         @Override
-        public java.util.List<String> segmentJsonList() {
+        public java.util.List<String> getSegmentJsonList() {
             return java.util.List.of();
         }
     }

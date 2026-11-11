@@ -26,8 +26,8 @@ import java.util.Optional;
  *
  * <h2>与 {@link PluginMetadata} 的关系</h2>
  * <p>本接口把 {@code PluginMetadata} 的字段<b>平铺</b>出来，而不是返回一个
- * {@code metadata()}。原因是视图需要把元数据与运行时状态（{@link #state()}、
- * {@link #missingServices()}）放在一起展示，而元数据本身不包含这些。
+ * {@code getMetadata()}。原因是视图需要把元数据与运行时状态（{@link #getState()}、
+ * {@link #getMissingServices()}）放在一起展示，而元数据本身不包含这些。
  * 平铺使消费方写模板时不必在两层对象间跳转。</p>
  *
  * @see PluginAdmin
@@ -45,7 +45,7 @@ public interface PluginView {
      *
      * @return 插件标识
      */
-    String id();
+    String getId();
 
     /**
      * 所属模块 ID。
@@ -54,7 +54,7 @@ public interface PluginView {
      *
      * @return 模块 ID；不属于任何模块时为空串
      */
-    String moduleId();
+    String getModuleId();
 
     // ==================== 元数据 ====================
 
@@ -63,35 +63,35 @@ public interface PluginView {
      *
      * @return 显示名
      */
-    String name();
+    String getName();
 
     /**
      * 版本。
      *
      * @return 版本字符串
      */
-    String version();
+    String getVersion();
 
     /**
      * 描述。
      *
      * @return 描述文本
      */
-    String description();
+    String getDescription();
 
     /**
      * 使用提示，每项一条。
      *
      * @return 不可变列表；无提示时为空列表
      */
-    List<String> tips();
+    List<String> getTips();
 
     /**
      * 作者。
      *
      * @return 作者信息
      */
-    String author();
+    String getAuthor();
 
     /**
      * 是否为系统内置插件。
@@ -102,7 +102,7 @@ public interface PluginView {
      *
      * @return 内置返回 {@code true}
      */
-    boolean buildIn();
+    boolean isBuildIn();
 
     /**
      * 元数据声明的默认启用状态。
@@ -113,7 +113,7 @@ public interface PluginView {
      *
      * @return 默认启用返回 {@code true}
      */
-    boolean defaultEnable();
+    boolean isDefaultEnable();
 
     // ==================== 运行状态 ====================
 
@@ -122,7 +122,7 @@ public interface PluginView {
      *
      * @return 状态枚举
      */
-    PluginState state();
+    PluginState getState();
 
     /**
      * 当前未满足的依赖服务类型名。
@@ -132,7 +132,7 @@ public interface PluginView {
      *
      * @return 不可变列表；无缺失依赖时为空列表
      */
-    List<String> missingServices();
+    List<String> getMissingServices();
 
     /**
      * 失败原因摘要。
@@ -142,5 +142,5 @@ public interface PluginView {
      *
      * @return 失败摘要；非 FAILED 状态时为空
      */
-    Optional<String> failureSummary();
+    Optional<String> getFailureSummary();
 }

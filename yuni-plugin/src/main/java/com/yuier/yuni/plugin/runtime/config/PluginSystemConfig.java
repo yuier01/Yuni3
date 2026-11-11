@@ -87,7 +87,7 @@ public class PluginSystemConfig {
                 () -> botProvider.getIfAvailable(),
                 botApp.getIfAvailable());
 
-        // 把内置服务登记进运行时：插件通过 ctx.cache() / ctx.http() / ctx.permission()
+        // 把内置服务登记进运行时：插件通过 ctx.getCache() / ctx.getHttp() / ctx.getPermission()
         // 拿到的是同一个共享实例，连接池与权限缓存因此不会被割裂
         Cache cacheBean = cache.getIfAvailable();
         if (cacheBean != null) {
@@ -329,7 +329,7 @@ public class PluginSystemConfig {
          *
          * @return 目录路径
          */
-        public Path pluginDirectory() {
+        public Path getPluginDirectory() {
             return Paths.get(pluginDirectory);
         }
     }

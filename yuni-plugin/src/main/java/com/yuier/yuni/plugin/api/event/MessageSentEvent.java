@@ -24,7 +24,7 @@ import com.yuier.yuni.plugin.api.Reply;
  * ctx.onMessageSent(ev -> true, (ev, reply) -> audit(ev));
  *
  * // 典型用法：只中转群消息
- * ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> maiMai.push(ev.rawJson()));
+ * ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> maiMai.push(ev.getRawJson()));
  * }</pre>
  *
  * @see MessageEvent 收到消息事件
@@ -42,7 +42,7 @@ public interface MessageSentEvent extends Event {
      *
      * @return {@link #TYPE_GROUP} 或 {@link #TYPE_PRIVATE}
      */
-    String messageType();
+    String getMessageType();
 
     /**
      * 是否为群聊消息。
@@ -50,7 +50,7 @@ public interface MessageSentEvent extends Event {
      * @return 群聊返回 {@code true}
      */
     default boolean isGroup() {
-        return TYPE_GROUP.equals(messageType());
+        return TYPE_GROUP.equals(getMessageType());
     }
 
     /**
@@ -59,7 +59,7 @@ public interface MessageSentEvent extends Event {
      * @return 私聊返回 {@code true}
      */
     default boolean isPrivate() {
-        return TYPE_PRIVATE.equals(messageType());
+        return TYPE_PRIVATE.equals(getMessageType());
     }
 
     /**
@@ -67,32 +67,32 @@ public interface MessageSentEvent extends Event {
      *
      * @return OneBot 消息 ID；协议未提供时为 {@code 0}
      */
-    long messageId();
+    long getMessageId();
 
     /**
      * 发送者账号。
      *
-     * <p>发出消息的通常是机器人自己，因此该值一般等于 {@link Event#selfId()}。
+     * <p>发出消息的通常是机器人自己，因此该值一般等于 {@link Event#getSelfId()}。
      * 保留本方法是为了让「转发/审计」类插件能像处理普通消息一样读取，
      * 不必特判事件类型。</p>
      *
      * @return 发送者 QQ 号；协议未提供时为 {@code 0}
      */
-    long userId();
+    long getUserId();
 
     /**
      * 消息内容（只读视图）。
      *
      * @return 消息链视图，永不为 {@code null}
      */
-    MessageChainView chain();
+    MessageChainView getChain();
 
     /**
      * 原始消息串。
      *
      * @return 原始消息内容；未提供时为 {@code null}
      */
-    String rawMessage();
+    String getRawMessage();
 
     /**
      * 本消息所属会话的回复入口。
@@ -102,16 +102,16 @@ public interface MessageSentEvent extends Event {
      *
      * @return 回复入口
      */
-    Reply reply();
+    Reply getReply();
 
     /**
      * 消息发送位置的可读描述，用于日志。
      *
      * @return 形如 {@code "group@123456"} 或 {@code "private@10001"}
      */
-    default String position() {
+    default String getPosition() {
         return isGroup()
-                ? TYPE_GROUP + "@" + groupId().orElse(0L)
+                ? TYPE_GROUP + "@" + getGroupId().orElse(0L)
                 : TYPE_PRIVATE + "@" + longValue("user_id");
     }
 }

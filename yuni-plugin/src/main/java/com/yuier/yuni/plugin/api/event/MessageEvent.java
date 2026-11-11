@@ -12,14 +12,14 @@ import java.util.Optional;
  * <h2>典型用法</h2>
  * <pre>{@code
  * // 模式匹配：条件与执行写在一个表达式里
- * ctx.onMessage(ev -> ev.chain().containsText("你好"),
- *               (ev, reply) -> reply.text("你好，我是 " + ctx.bot().nickName() + " !"));
+ * ctx.onMessage(ev -> ev.getChain().containsText("你好"),
+ *               (ev, reply) -> reply.text("你好，我是 " + ctx.getBot().nickName() + " !"));
  *
  * // 取发送者信息
  * ctx.onMessage(ev -> {
  *     if (ev.isGroup()) {
  *         // 群成员名片优先，回退到昵称
- *         String name = ev.sender().cardOrNickname();
+ *         String name = ev.getSender().cardOrNickname();
  *     }
  * });
  * }</pre>
@@ -39,7 +39,7 @@ public interface MessageEvent extends Event {
      *
      * @return {@link #TYPE_GROUP} 或 {@link #TYPE_PRIVATE}
      */
-    String messageType();
+    String getMessageType();
 
     /**
      * 是否为群聊消息。
@@ -47,7 +47,7 @@ public interface MessageEvent extends Event {
      * @return 群聊返回 {@code true}
      */
     default boolean isGroup() {
-        return TYPE_GROUP.equals(messageType());
+        return TYPE_GROUP.equals(getMessageType());
     }
 
     /**
@@ -56,7 +56,7 @@ public interface MessageEvent extends Event {
      * @return 私聊返回 {@code true}
      */
     default boolean isPrivate() {
-        return TYPE_PRIVATE.equals(messageType());
+        return TYPE_PRIVATE.equals(getMessageType());
     }
 
     /**
@@ -64,38 +64,38 @@ public interface MessageEvent extends Event {
      *
      * @return OneBot 消息 ID；协议未提供时为 {@code 0}
      */
-    long messageId();
+    long getMessageId();
 
     /**
      * 发送者账号。
      *
      * @return 发送者 QQ 号
      */
-    long userId();
+    long getUserId();
 
     /**
      * 消息内容（只读视图）。
      *
      * @return 消息链视图，永不为 {@code null}
      */
-    MessageChainView chain();
+    MessageChainView getChain();
 
     /**
      * 原始消息串。
      *
      * <p>当协议以 CQ 码格式上报时，这里是 CQ 码字符串；以数组格式上报时，
-     * 这里是消息段的 JSON 数组串。与 {@link #chain()} 的区别是本方法不做解析。</p>
+     * 这里是消息段的 JSON 数组串。与 {@link #getChain()} 的区别是本方法不做解析。</p>
      *
      * @return 原始消息内容；未提供时为 {@code null}
      */
-    String rawMessage();
+    String getRawMessage();
 
     /**
      * 发送者信息。
      *
      * @return 发送者视图，永不为 {@code null}
      */
-    Sender sender();
+    Sender getSender();
 
     /**
      * 本消息所属会话的回复入口。
@@ -106,17 +106,17 @@ public interface MessageEvent extends Event {
      *
      * @return 回复入口
      */
-    Reply reply();
+    Reply getReply();
 
     /**
      * 消息发送位置的可读描述，用于日志。
      *
      * @return 形如 {@code "group@123456"} 或 {@code "private@10001"}
      */
-    default String position() {
+    default String getPosition() {
         return isGroup()
-                ? TYPE_GROUP + "@" + groupId().orElse(0L)
-                : TYPE_PRIVATE + "@" + userId();
+                ? TYPE_GROUP + "@" + getGroupId().orElse(0L)
+                : TYPE_PRIVATE + "@" + getUserId();
     }
 
     /**
@@ -132,35 +132,35 @@ public interface MessageEvent extends Event {
          *
          * @return QQ 号
          */
-        long userId();
+        long getUserId();
 
         /**
          * 发送者昵称。
          *
          * @return 昵称；未提供时为 {@code null}
          */
-        String nickname();
+        String getNickname();
 
         /**
          * 群名片（群聊专有）。
          *
          * @return 群名片；私聊或未设置时为空
          */
-        Optional<String> card();
+        Optional<String> getCard();
 
         /**
          * 群内角色（群聊专有）。
          *
          * @return {@code owner} / {@code admin} / {@code member}；私聊时为空
          */
-        Optional<String> role();
+        Optional<String> getRole();
 
         /**
          * 群头衔（群聊专有）。
          *
          * @return 专属头衔；未设置时为空
          */
-        Optional<String> title();
+        Optional<String> getTitle();
 
         /**
          * 显示名——群名片优先，回退昵称，最后回退账号字符串。
@@ -172,10 +172,10 @@ public interface MessageEvent extends Event {
          *
          * @return 显示名，永不为 {@code null}
          */
-        default String displayName() {
-            return card().filter(s -> !s.isBlank())
-                    .or(() -> Optional.ofNullable(nickname()).filter(s -> !s.isBlank()))
-                    .orElseGet(() -> String.valueOf(userId()));
+        default String getDisplayName() {
+            return getCard().filter(s -> !s.isBlank())
+                    .or(() -> Optional.ofNullable(getNickname()).filter(s -> !s.isBlank()))
+                    .orElseGet(() -> String.valueOf(getUserId()));
         }
 
         /**
@@ -184,7 +184,7 @@ public interface MessageEvent extends Event {
          * @return 角色为 {@code owner} 时返回 {@code true}
          */
         default boolean isOwner() {
-            return role().map("owner"::equals).orElse(false);
+            return getRole().map("owner"::equals).orElse(false);
         }
 
         /**
@@ -193,7 +193,7 @@ public interface MessageEvent extends Event {
          * @return 角色为 {@code owner} 或 {@code admin} 时返回 {@code true}
          */
         default boolean isAdmin() {
-            return role().map(r -> "owner".equals(r) || "admin".equals(r)).orElse(false);
+            return getRole().map(r -> "owner".equals(r) || "admin".equals(r)).orElse(false);
         }
     }
 }

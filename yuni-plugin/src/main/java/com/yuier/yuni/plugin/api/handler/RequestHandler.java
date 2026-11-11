@@ -11,14 +11,14 @@ import com.yuier.yuni.plugin.api.event.RequestEvent;
  * <h2>示例</h2>
  * <pre>{@code
  * ctx.onRequest("friend", (ev, reply) -> {
- *     if (ev.comment().orElse("").contains("暗号")) {
+ *     if (ev.getComment().orElse("").contains("暗号")) {
  *         reply.approve();
  *     }
  * });
  * }</pre>
  *
  * <h2>关于批准/拒绝</h2>
- * <p>{@link RequestEvent#flag()} 是 OneBot 定位请求的唯一凭据，批准或拒绝时必须
+ * <p>{@link RequestEvent#getFlag()} 是 OneBot 定位请求的唯一凭据，批准或拒绝时必须
  * 原样回传。相关 API 由机器人服务暴露（见 {@code YuniBot} 的群管理能力）。</p>
  *
  * <h2>与现行系统的差异</h2>

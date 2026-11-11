@@ -12,7 +12,7 @@ import com.yuier.yuni.plugin.api.event.MessageSentEvent;
  * <h2>示例</h2>
  * <pre>{@code
  * // 把机器人发出的群消息转发给 maimai
- * ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> maiMai.push(ev.rawJson()));
+ * ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> maiMai.push(ev.getRawJson()));
  * }</pre>
  *
  * <h2>与现行系统的重要差异</h2>

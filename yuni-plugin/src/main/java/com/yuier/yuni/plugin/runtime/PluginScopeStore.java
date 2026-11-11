@@ -1,6 +1,9 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +41,7 @@ import java.util.Set;
  * <h2>与旧 {@code group_plugin_ability} 表的映射</h2>
  * <p>该表的 {@code (groupId, pluginId, ability)} 三元组可以无损承载本接口的形状：</p>
  * <ul>
- *   <li>{@code groupId = null} 的行 → 全局开关（{@link PluginScopeRecord#globalEnabled()}）；</li>
+ *   <li>{@code groupId = null} 的行 → 全局开关（{@link PluginScopeRecord#getGlobalEnabled()}）；</li>
  *   <li>{@code groupId = 具体群号} 的行 → 群例外集合中的一项。</li>
  * </ul>
  * <p>这恰好也是旧系统的用法——{@code PluginEnableProcessor} 在
@@ -58,13 +61,27 @@ public interface PluginScopeStore {
      *                        例如全局开启时，集合里的群是「被关闭的群」；
      *                        全局关闭时，集合里的群是「被开启的群」
      */
-    record PluginScopeRecord(Boolean globalEnabled, Set<Long> exceptionGroups) {
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    final class PluginScopeRecord {
+
+        /** 全局（不限群）是否生效；{@code null} 表示用户未设置过。 */
+        private final Boolean globalEnabled;
+
+        /** 群例外集合——每个群的值与全局开关相反（构造时冻结）。 */
+        private final Set<Long> exceptionGroups;
 
         /**
-         * 紧凑构造器：冻结例外集合，避免调用方修改影响存储层。
+         * 构造记录。
+         *
+         * @param globalEnabled   全局开关；{@code null} 表示未设置
+         * @param exceptionGroups 群例外集合；{@code null} 视为空集
          */
-        public PluginScopeRecord {
-            exceptionGroups = exceptionGroups == null
+        public PluginScopeRecord(Boolean globalEnabled, Set<Long> exceptionGroups) {
+            this.globalEnabled = globalEnabled;
+            // 冻结例外集合，避免调用方修改影响存储层
+            this.exceptionGroups = exceptionGroups == null
                     ? Set.of()
                     : Set.copyOf(exceptionGroups);
         }
@@ -113,6 +130,6 @@ public interface PluginScopeStore {
         if (persisted == null) {
             return new PluginScopeRecord(null, Set.of());
         }
-        return new PluginScopeRecord(persisted.enabledByDefault(), persisted.exceptionGroups());
+        return new PluginScopeRecord(persisted.isEnabledByDefault(), persisted.getExceptionGroups());
     }
 }

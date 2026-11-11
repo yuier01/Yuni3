@@ -31,7 +31,7 @@ import java.util.List;
  * public final class OhaYo implements YuniPlugin {
  *
  *     @Override
- *     public PluginMetadata metadata() {
+ *     public PluginMetadata getMetadata() {
  *         return PluginMetadata.of("定时问候")
  *                 .version("0.0.1")
  *                 .description("每天早上向 bot master 问好")
@@ -42,7 +42,7 @@ import java.util.List;
  *     @Override
  *     public void apply(YuniContext ctx) {
  *         ctx.schedule("0 0 10 * * ?", () ->
- *                 ctx.sender().privateChat(ctx.masterId()).text("偶哈哟，欧尼酱！").send());
+ *                 ctx.getSender().privateChat(ctx.masterId()).text("偶哈哟，欧尼酱！").send());
  *     }
  * }
  * }</pre>
@@ -66,10 +66,10 @@ import java.util.List;
  * </ul>
  *
  * <h2>实现方式</h2>
- * <p>本接口<b>不是</b>函数式接口（有两个方法），但 {@link #metadata()} 有默认实现，
+ * <p>本接口<b>不是</b>函数式接口（有两个方法），但 {@link #getMetadata()} 有默认实现，
  * 因此对不需要元数据的内部插件可以用 lambda：</p>
  * <pre>{@code
- * YuniPlugin greet = ctx -> ctx.onMessage(ev -> ev.chain().containsText("早"),
+ * YuniPlugin greet = ctx -> ctx.onMessage(ev -> ev.getChain().containsText("早"),
  *                                        (ev, reply) -> reply.text("早上好～"));
  * }</pre>
  *
@@ -113,7 +113,7 @@ public interface YuniPlugin {
      *
      * @return 元数据，永不为 {@code null}
      */
-    default PluginMetadata metadata() {
+    default PluginMetadata getMetadata() {
         return PluginMetadata.of(getClass().getSimpleName()).build();
     }
 
@@ -149,7 +149,7 @@ public interface YuniPlugin {
      * 用 lambda 构造一个无元数据的简单插件。
      *
      * <p>用于框架内部的胶水逻辑、以及把一个 {@code apply} 函数直接挂载为子插件。
-     * 对外发布的插件应实现本接口并覆写 {@link #metadata()}，以便管理端正确展示。</p>
+     * 对外发布的插件应实现本接口并覆写 {@link #getMetadata()}，以便管理端正确展示。</p>
      *
      * @param metadata 元数据
      * @param apply    能力注册函数
@@ -163,7 +163,7 @@ public interface YuniPlugin {
             }
 
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return metadata;
             }
         };

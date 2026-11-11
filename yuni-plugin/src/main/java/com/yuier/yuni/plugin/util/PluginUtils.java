@@ -25,36 +25,36 @@ import lombok.extern.slf4j.Slf4j;
  *   <caption>旧静态方法 → 新写法</caption>
  *   <tr><th>旧：{@code PluginUtils.xxx}</th><th>新</th></tr>
  *   <tr><td>{@code getYuniBot()} / {@code getBotId()} / {@code getBotNickName()}</td>
- *       <td>{@code ctx.bot()}</td></tr>
+ *       <td>{@code ctx.getBot()}</td></tr>
  *   <tr><td>{@code getBean(Class)} / {@code getBean(String)}</td>
  *       <td>{@code ctx.service(Class)} / {@code ctx.serviceIfPresent(Class)}</td></tr>
  *   <tr><td>{@code getBotAppCommandFlag()}</td>
  *       <td>框架侧已处理，插件无需读取命令前缀</td></tr>
  *   <tr><td>{@code loadJsonConfigFromPlugin(f, C, cls)}</td>
- *       <td>{@code ctx.config().load(f, C)}</td></tr>
+ *       <td>{@code ctx.getConfig().load(f, C)}</td></tr>
  *   <tr><td>{@code loadTextFromPluginFolder(f, cls)}</td>
- *       <td>{@code ctx.config().loadText(f)}</td></tr>
+ *       <td>{@code ctx.getConfig().loadText(f)}</td></tr>
  *   <tr><td>{@code loadFontFromPlugin(f, size, cls)}</td>
- *       <td>{@code ctx.config().open(f)} + {@code Font.createFont(...)}</td></tr>
+ *       <td>{@code ctx.getConfig().open(f)} + {@code Font.createFont(...)}</td></tr>
  *   <tr><td>{@code getPluginRootPath(cls)}</td>
- *       <td>{@code ctx.dataDir()} / {@code ctx.config().dataDir()}</td></tr>
+ *       <td>{@code ctx.getDataDir()} / {@code ctx.getConfig().getDataDir()}</td></tr>
  *   <tr><td>{@code sendGroupMessage(g, chain)} / {@code sendPrivateMessage(u, chain)}</td>
- *       <td>{@code ctx.sender().group(g).chain(view).send()}</td></tr>
+ *       <td>{@code ctx.getSender().group(g).chain(view).send()}</td></tr>
  *   <tr><td>{@code simpleGet(url, C)} / {@code simplePost(url, params, C)}</td>
- *       <td>{@code ctx.http().get(url).execute(C)}</td></tr>
+ *       <td>{@code ctx.getHttp().get(url).execute(C)}</td></tr>
  *   <tr><td>{@code getGroupMemberName(g, u)}</td>
- *       <td>{@code ctx.bot().getGroupMemberInfo(g, u)}</td></tr>
+ *       <td>{@code ctx.getBot().getGroupMemberInfo(g, u)}</td></tr>
  *   <tr><td>{@code findUserGroups(u)}</td>
- *       <td>{@code ctx.bot().getGroupList()}（自行筛选）</td></tr>
+ *       <td>{@code ctx.getBot().getGroupList()}（自行筛选）</td></tr>
  *   <tr><td>{@code registerEntity(C)} / {@code repo(C)} / {@code query(C)} /
  *       {@code delete(C)} / {@code update(C)} / {@code db()}</td>
- *       <td>{@code ctx.db().registerEntity(C)} / {@code ctx.db().getRepository(C)} 等</td></tr>
+ *       <td>{@code ctx.getDb().registerEntity(C)} / {@code ctx.getDb().getRepository(C)} 等</td></tr>
  *   <tr><td>{@code serialize(obj)} / {@code deserialize(json, C)}</td>
- *       <td>不会再用到——{@code ctx.cache()} 直接读写目标类型</td></tr>
+ *       <td>不会再用到——{@code ctx.getCache()} 直接读写目标类型</td></tr>
  *   <tr><td>{@code getRandomElement(list)} / {@code checkHitProbability(r)}</td>
  *       <td>纯工具函数，插件自行实现（框架不提供）</td></tr>
  *   <tr><td>{@code getPluginManager()}</td>
- *       <td>{@code ctx.plugins()}（{@code PluginAdmin}）</td></tr>
+ *       <td>{@code ctx.getPlugins()}（{@code PluginAdmin}）</td></tr>
  * </table>
  *
  * <p>设计文档 §1.1 记录了这个静态门面的三条病灶（无法测试、隐式全局状态、
@@ -76,7 +76,7 @@ public final class PluginUtils {
      * 取应用数据库的连接 URL。
      *
      * <p><b>仅供框架内部装配使用</b>（目前只有 {@code PluginDataService} 在建
-     * 自研 ORM 的 Jdbi 时调用）。插件侧请用 {@code ctx.db()}——
+     * 自研 ORM 的 Jdbi 时调用）。插件侧请用 {@code ctx.getDb()}——
      * 它已经把连接管理封在 {@code PluginDataService} 里，插件不需要知道 URL。</p>
      *
      * @return {@code jdbc:sqlite:./<配置的库文件名>}

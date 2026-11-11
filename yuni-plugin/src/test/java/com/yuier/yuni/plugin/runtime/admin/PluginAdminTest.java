@@ -54,7 +54,7 @@ class PluginAdminTest {
     @BeforeEach
     void setUp() {
         runtime = new PluginRuntime(null, null);
-        admin = runtime.admin();
+        admin = runtime.getAdmin();
     }
 
     /**
@@ -79,7 +79,7 @@ class PluginAdminTest {
                              ScopeFilter filter) {
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of(pluginName)
                         .description(pluginName + " 的描述")
                         .author("测试")
@@ -108,7 +108,7 @@ class PluginAdminTest {
     private void loadFailing(String moduleId, String pluginName, String message) {
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of(pluginName).build();
             }
 
@@ -126,25 +126,25 @@ class PluginAdminTest {
     void projectsMetadataIntoViews() {
         load("fortune", "Fortune", false, true, ScopeFilter.ALL);
 
-        List<PluginModuleView> modules = admin.modules();
+        List<PluginModuleView> modules = admin.getModules();
         assertEquals(1, modules.size());
-        assertEquals("fortune", modules.get(0).id());
+        assertEquals("fortune", modules.get(0).getId());
 
-        List<PluginView> plugins = admin.plugins();
+        List<PluginView> plugins = admin.getPlugins();
         assertEquals(1, plugins.size());
         PluginView view = plugins.get(0);
-        assertEquals("fortune/Fortune", view.id());
-        assertEquals("fortune", view.moduleId());
-        assertEquals("Fortune 的描述", view.description());
-        assertEquals("测试", view.author());
-        assertEquals("1.2.3", view.version());
-        assertEquals(List.of("提示一"), view.tips());
-        assertEquals(PluginState.ACTIVE, view.state());
-        assertTrue(view.defaultEnable());
-        assertFalse(view.buildIn());
+        assertEquals("fortune/Fortune", view.getId());
+        assertEquals("fortune", view.getModuleId());
+        assertEquals("Fortune 的描述", view.getDescription());
+        assertEquals("测试", view.getAuthor());
+        assertEquals("1.2.3", view.getVersion());
+        assertEquals(List.of("提示一"), view.getTips());
+        assertEquals(PluginState.ACTIVE, view.getState());
+        assertTrue(view.isDefaultEnable());
+        assertFalse(view.isBuildIn());
         // ACTIVE 的插件没有失败原因与缺失依赖
-        assertTrue(view.failureSummary().isEmpty());
-        assertTrue(view.missingServices().isEmpty());
+        assertTrue(view.getFailureSummary().isEmpty());
+        assertTrue(view.getMissingServices().isEmpty());
     }
 
     @Test
@@ -153,9 +153,9 @@ class PluginAdminTest {
         loadFailing("bad", "Bad", "初始化时炸了");
 
         PluginView view = admin.plugin("bad/Bad").orElseThrow();
-        assertEquals(PluginState.FAILED, view.state());
-        assertTrue(view.failureSummary().orElseThrow().contains("初始化时炸了"),
-                "失败摘要应包含异常消息，实际: " + view.failureSummary());
+        assertEquals(PluginState.FAILED, view.getState());
+        assertTrue(view.getFailureSummary().orElseThrow().contains("初始化时炸了"),
+                "失败摘要应包含异常消息，实际: " + view.getFailureSummary());
     }
 
     @Test
@@ -163,7 +163,7 @@ class PluginAdminTest {
     void pendingPluginReportsMissingService() {
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("Needs").build();
             }
 
@@ -179,8 +179,8 @@ class PluginAdminTest {
         }, "pending", null, null, null, null);
 
         PluginView view = admin.plugin("pending/Needs").orElseThrow();
-        assertEquals(PluginState.PENDING, view.state());
-        assertEquals(List.of("java.lang.CharSequence"), view.missingServices());
+        assertEquals(PluginState.PENDING, view.getState());
+        assertEquals(List.of("java.lang.CharSequence"), view.getMissingServices());
     }
 
     @Test
@@ -260,7 +260,7 @@ class PluginAdminTest {
     void setEnabledOnUnknownPluginFails() {
         PluginAdminException e = assertThrows(PluginAdminException.class,
                 () -> admin.setEnabled("nope/Nope", 100L, true, true));
-        assertEquals("nope/Nope", e.pluginId());
+        assertEquals("nope/Nope", e.getPluginId());
     }
 
     @Test
@@ -374,7 +374,7 @@ class PluginAdminTest {
         load("b", "B", false, true, ScopeFilter.ALL);
         loadFailing("c", "C", "boom");
 
-        String summary = admin.summary();
+        String summary = admin.getSummary();
         assertTrue(summary.contains("模块 3"), summary);
         assertTrue(summary.contains("插件 3"), summary);
         assertTrue(summary.contains("运行中 2"), summary);
@@ -398,8 +398,8 @@ class PluginAdminTest {
         admin.unload("p/P");
 
         // 快照仍在，字段可读——这使管理端可以安全地缓存与跨线程传递
-        assertEquals("p/P", view.id());
-        assertEquals(PluginState.ACTIVE, view.state());
+        assertEquals("p/P", view.getId());
+        assertEquals(PluginState.ACTIVE, view.getState());
         // 但重新查询才是权威答案
         assertTrue(admin.plugin("p/P").isEmpty());
     }
@@ -409,7 +409,7 @@ class PluginAdminTest {
     void childPluginsAreHidden() {
         YuniPlugin parent = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("Parent").build();
             }
 
@@ -420,11 +420,11 @@ class PluginAdminTest {
         };
         runtime.load(parent, "m", null, null, null, null);
 
-        List<PluginView> views = admin.plugins();
+        List<PluginView> views = admin.getPlugins();
         assertEquals(1, views.size(), "只应看到父插件: " + views);
-        assertEquals("Parent", views.get(0).name());
+        assertEquals("Parent", views.get(0).getName());
         // 但 Fiber 总数包含子插件
-        assertEquals(2, runtime.fibers().pluginCount());
+        assertEquals(2, runtime.getFibers().getPluginCount());
     }
 
     @Test

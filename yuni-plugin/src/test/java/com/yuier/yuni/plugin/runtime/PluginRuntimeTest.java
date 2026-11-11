@@ -53,7 +53,7 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("测试插件").build();
             }
 
@@ -67,12 +67,12 @@ class PluginRuntimeTest {
 
         PluginFiber fiber = runtime.load(plugin, "test-module", null, null);
 
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
         // 两个事件注册 + 一个自定义 Effect
-        assertEquals(3, fiber.effectCount());
+        assertEquals(3, fiber.getEffectCount());
         // 注册表也应看到这三条（自定义 Effect 不进注册表，故为 2）
-        assertEquals(2, runtime.registrations().totalSize());
-        assertEquals(1, runtime.fibers().pluginCount());
+        assertEquals(2, runtime.getRegistrations().getTotalSize());
+        assertEquals(1, runtime.getFibers().getPluginCount());
     }
 
     @Test
@@ -87,17 +87,17 @@ class PluginRuntimeTest {
         });
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
-        assertEquals(3, fiber.effectCount());
-        assertTrue(runtime.registrations().totalSize() > 0);
+        assertEquals(3, fiber.getEffectCount());
+        assertTrue(runtime.getRegistrations().getTotalSize() > 0);
 
-        List<String> failures = runtime.unload(fiber.id());
+        List<String> failures = runtime.unload(fiber.getId());
 
         assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
-        assertEquals(0, fiber.effectCount(), "Effect 必须归零");
-        assertEquals(FiberState.DISPOSED, fiber.state());
-        assertEquals(0, runtime.fibers().pluginCount());
-        assertEquals(0, runtime.registrations().totalSize(), "注册表必须清空");
-        assertEquals(0, runtime.fibers().totalEffectCount());
+        assertEquals(0, fiber.getEffectCount(), "Effect 必须归零");
+        assertEquals(FiberState.DISPOSED, fiber.getState());
+        assertEquals(0, runtime.getFibers().getPluginCount());
+        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
+        assertEquals(0, runtime.getFibers().getTotalEffectCount());
     }
 
     @Test
@@ -108,7 +108,7 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("半初始化插件").build();
             }
 
@@ -123,14 +123,14 @@ class PluginRuntimeTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.FAILED, fiber.state());
-        assertTrue(fiber.failureCause().isPresent());
-        assertTrue(fiber.failureCause().get().getMessage().contains("apply 中途失败"));
+        assertEquals(FiberState.FAILED, fiber.getState());
+        assertTrue(fiber.getFailureCause().isPresent());
+        assertTrue(fiber.getFailureCause().get().getMessage().contains("apply 中途失败"));
 
         // 回滚是关键：不回滚会出现「标记为失败但监听器仍在工作」的半初始化状态
-        assertEquals(0, fiber.effectCount(), "失败后 Effect 必须回滚");
+        assertEquals(0, fiber.getEffectCount(), "失败后 Effect 必须回滚");
         assertEquals(1, disposed.get(), "自定义 Effect 的 Disposer 应被调用");
-        assertEquals(0, runtime.registrations().totalSize(), "注册表不应残留半初始化条目");
+        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表不应残留半初始化条目");
     }
 
     @Test
@@ -146,9 +146,9 @@ class PluginRuntimeTest {
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
         // 只 catch Exception 会让这里静默通过并把注册残留下来
-        assertEquals(FiberState.FAILED, fiber.state());
-        assertEquals(0, fiber.effectCount());
-        assertEquals(0, runtime.registrations().totalSize());
+        assertEquals(FiberState.FAILED, fiber.getState());
+        assertEquals(0, fiber.getEffectCount());
+        assertEquals(0, runtime.getRegistrations().getTotalSize());
     }
 
     @Test
@@ -159,7 +159,7 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("缺依赖插件").build();
             }
 
@@ -176,9 +176,9 @@ class PluginRuntimeTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.PENDING, fiber.state());
+        assertEquals(FiberState.PENDING, fiber.getState());
         assertEquals(0, applyCount.get(), "依赖未满足时不能执行 apply");
-        assertEquals(List.of(CharSequence.class), fiber.pendingDependencies());
+        assertEquals(List.of(CharSequence.class), fiber.getPendingDependencies());
 
         // PENDING 必须在启动收尾时被显式报出，而不是静默
         List<String> report = runtime.reportPendingPlugins();
@@ -195,7 +195,7 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("等待服务").build();
             }
 
@@ -211,7 +211,7 @@ class PluginRuntimeTest {
         };
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
-        assertEquals(FiberState.PENDING, fiber.state());
+        assertEquals(FiberState.PENDING, fiber.getState());
 
         // 注入依赖
         runtime.registerService(CharSequence.class, "我来了");
@@ -219,7 +219,7 @@ class PluginRuntimeTest {
         int activated = runtime.activatePending();
 
         assertEquals(1, activated);
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
         assertEquals(1, applyCount.get());
         assertTrue(runtime.reportPendingPlugins().isEmpty());
     }
@@ -231,7 +231,7 @@ class PluginRuntimeTest {
 
         YuniPlugin consumer = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("消费者").build();
             }
 
@@ -248,12 +248,12 @@ class PluginRuntimeTest {
         };
 
         PluginFiber consumerFiber = runtime.load(consumer, null, null, null);
-        assertEquals(FiberState.PENDING, consumerFiber.state());
+        assertEquals(FiberState.PENDING, consumerFiber.getState());
 
         // 提供者插件在 apply 中注册服务——消费者应被自动推进，无需手动调用 activatePending
         YuniPlugin provider = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("提供者").build();
             }
 
@@ -265,7 +265,7 @@ class PluginRuntimeTest {
             }
         };
         runtime.load(provider, null, null, null);
-        assertEquals(FiberState.ACTIVE, consumerFiber.state(),
+        assertEquals(FiberState.ACTIVE, consumerFiber.getState(),
                 "provide 之后应自动推进等待者，否则必须等下次启动才生效");
     }
 
@@ -277,7 +277,7 @@ class PluginRuntimeTest {
         // 用两个标记接口模拟互相依赖
         YuniPlugin a = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("A").build();
             }
 
@@ -293,7 +293,7 @@ class PluginRuntimeTest {
         };
         YuniPlugin b = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("B").build();
             }
 
@@ -312,8 +312,8 @@ class PluginRuntimeTest {
         PluginFiber fiberB = runtime.load(b, null, null, null);
 
         // A 等 Comparable（由 B 提供），B 等 Cloneable（由 A 提供）：谁都无法先 apply
-        assertEquals(FiberState.PENDING, fiberA.state());
-        assertEquals(FiberState.PENDING, fiberB.state());
+        assertEquals(FiberState.PENDING, fiberA.getState());
+        assertEquals(FiberState.PENDING, fiberB.getState());
 
         // 不动点迭代不应死循环
         assertEquals(0, runtime.activatePending());
@@ -342,7 +342,7 @@ class PluginRuntimeTest {
 
         YuniPlugin provider = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("服务提供者").build();
             }
 
@@ -354,11 +354,11 @@ class PluginRuntimeTest {
         };
 
         PluginFiber fiber = runtime.load(provider, null, null, null);
-        assertTrue(runtime.services().contains(Runnable.class));
+        assertTrue(runtime.getServices().contains(Runnable.class));
 
-        runtime.unload(fiber.id());
+        runtime.unload(fiber.getId());
 
-        assertFalse(runtime.services().contains(Runnable.class), "卸载后服务必须注销");
+        assertFalse(runtime.getServices().contains(Runnable.class), "卸载后服务必须注销");
     }
 
     @Test
@@ -389,8 +389,8 @@ class PluginRuntimeTest {
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
         // 插件应进入 FAILED，且失败原因里说明是构造器问题
-        assertEquals(FiberState.FAILED, fiber.state());
-        Throwable cause = fiber.failureCause().orElseThrow();
+        assertEquals(FiberState.FAILED, fiber.getState());
+        Throwable cause = fiber.getFailureCause().orElseThrow();
         assertEquals(IllegalStateException.class, cause.getClass());
         assertTrue(cause.getMessage().contains("无参构造器"), cause.getMessage());
     }
@@ -408,16 +408,16 @@ class PluginRuntimeTest {
 
         PluginFiber parentFiber = runtime.load(parent, null, null, null);
 
-        assertEquals(FiberState.ACTIVE, parentFiber.state());
-        assertEquals(1, parentFiber.children().size(), "子插件应挂到父 Fiber 下");
-        PluginFiber childFiber = parentFiber.children().get(0);
-        assertEquals(FiberState.ACTIVE, childFiber.state());
+        assertEquals(FiberState.ACTIVE, parentFiber.getState());
+        assertEquals(1, parentFiber.getChildren().size(), "子插件应挂到父 Fiber 下");
+        PluginFiber childFiber = parentFiber.getChildren().get(0);
+        assertEquals(FiberState.ACTIVE, childFiber.getState());
 
-        runtime.unload(parentFiber.id());
+        runtime.unload(parentFiber.getId());
 
         // 子随父卸载：父插件卸载后，子插件的注册项也必须消失
-        assertEquals(FiberState.DISPOSED, childFiber.state());
-        assertEquals(0, runtime.registrations().totalSize(), "父子注册项都应清空");
+        assertEquals(FiberState.DISPOSED, childFiber.getState());
+        assertEquals(0, runtime.getRegistrations().getTotalSize(), "父子注册项都应清空");
     }
 
     @Test
@@ -434,15 +434,15 @@ class PluginRuntimeTest {
             }), "m" + n, null, null);
         }
 
-        assertEquals(5, runtime.fibers().pluginCount());
-        assertEquals(15, runtime.fibers().totalEffectCount());
+        assertEquals(5, runtime.getFibers().getPluginCount());
+        assertEquals(15, runtime.getFibers().getTotalEffectCount());
 
         List<String> failures = runtime.unloadAll();
 
         assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
-        assertEquals(0, runtime.fibers().pluginCount());
-        assertEquals(0, runtime.fibers().totalEffectCount());
-        assertEquals(0, runtime.registrations().totalSize());
+        assertEquals(0, runtime.getFibers().getPluginCount());
+        assertEquals(0, runtime.getFibers().getTotalEffectCount());
+        assertEquals(0, runtime.getRegistrations().getTotalSize());
     }
 
     @Test
@@ -454,7 +454,7 @@ class PluginRuntimeTest {
         // 保留 ctx 引用并在卸载后再注册——模拟「异步回调在插件卸载后才触发」
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("延迟注册").build();
             }
 
@@ -465,14 +465,14 @@ class PluginRuntimeTest {
         };
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
-        assertEquals(1, runtime.registrations().totalSize());
+        assertEquals(1, runtime.getRegistrations().getTotalSize());
 
-        runtime.unload(fiber.id());
-        assertEquals(0, runtime.registrations().totalSize());
+        runtime.unload(fiber.getId());
+        assertEquals(0, runtime.getRegistrations().getTotalSize());
 
         // 已经不在注册表里，再次撤销是幂等的
         lateHandles.get(0).dispose();
-        assertEquals(0, runtime.registrations().totalSize());
+        assertEquals(0, runtime.getRegistrations().getTotalSize());
     }
 
     /**

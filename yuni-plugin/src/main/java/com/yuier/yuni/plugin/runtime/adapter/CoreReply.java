@@ -10,7 +10,10 @@ import com.yuier.yuni.core.model.message.segment.ImageSegment;
 import com.yuier.yuni.core.model.message.segment.PokeSegment;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -163,7 +166,7 @@ public final class CoreReply implements Reply {
         }
         // 复用适配器持有的原始段列表，避免 JSON 往返
         if (chainView instanceof CoreMessageChainView core) {
-            for (MessageSegment segment : core.rawSegments()) {
+            for (MessageSegment segment : core.getRawSegments()) {
                 if (segment != null) {
                     this.chain.addSegment(segment);
                 }
@@ -171,7 +174,7 @@ public final class CoreReply implements Reply {
             return this;
         }
         // 其他实现：退回逐段 JSON 转换
-        for (String segmentJson : chainView.segmentJsonList()) {
+        for (String segmentJson : chainView.getSegmentJsonList()) {
             if (segmentJson == null || segmentJson.isBlank() || jsonCodec == null) {
                 continue;
             }
@@ -279,7 +282,7 @@ public final class CoreReply implements Reply {
      * {@link SentResult} 的默认实现。
      *
      * <p>组件名刻意用 {@code failureReason} 而非 {@code errorMessage}：接口要求
-     * {@code errorMessage()} 返回 {@code Optional<String>}，而 record 会自动为
+     * {@code getErrorMessage()} 返回 {@code Optional<String>}，而 record 会自动为
      * 同名组件生成返回裸 {@code String} 的访问器，两者签名冲突。换个组件名后
      * 手工实现接口方法即可。</p>
      *
@@ -287,10 +290,40 @@ public final class CoreReply implements Reply {
      * @param messageId     消息 ID；失败为 0
      * @param failureReason 失败原因；成功为 {@code null}
      */
-    record DefaultSentResult(boolean success, long messageId, String failureReason) implements SentResult {
+    /**
+     * {@link SentResult} 的默认实现。
+     *
+     * <p>原本是 record；为统一 JavaBean 访问器改为 {@code @Getter} 类。</p>
+     */
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    static final class DefaultSentResult implements SentResult {
+
+        /** 是否发送成功。 */
+        private final boolean success;
+
+        /** 平台返回的消息 ID；失败为 {@code 0}。 */
+        private final long messageId;
+
+        /** 失败原因；成功为 {@code null}。 */
+        private final String failureReason;
+
+        /**
+         * 构造结果。
+         *
+         * @param success       是否成功
+         * @param messageId     消息 ID
+         * @param failureReason 失败原因；成功传 {@code null}
+         */
+        public DefaultSentResult(boolean success, long messageId, String failureReason) {
+            this.success = success;
+            this.messageId = messageId;
+            this.failureReason = failureReason;
+        }
 
         @Override
-        public Optional<String> errorMessage() {
+        public Optional<String> getErrorMessage() {
             return Optional.ofNullable(failureReason);
         }
     }

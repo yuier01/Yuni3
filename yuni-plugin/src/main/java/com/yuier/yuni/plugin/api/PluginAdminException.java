@@ -1,7 +1,6 @@
 package com.yuier.yuni.plugin.api;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 /**
  * 插件管理操作失败。
@@ -28,7 +27,6 @@ import lombok.experimental.Accessors;
  * @see PluginAdmin
  */
 @Getter
-@Accessors(fluent = true)
 public class PluginAdminException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;

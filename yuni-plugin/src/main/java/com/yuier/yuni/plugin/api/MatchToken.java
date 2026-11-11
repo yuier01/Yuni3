@@ -28,14 +28,14 @@ import java.util.Objects;
  * }</pre>
  *
  * <h2>与 frame object 的关系</h2>
- * <p>{@link #frame()} 返回框架侧（{@code yuni-core}）的原始事件对象，供
+ * <p>{@link #getFrame()} 返回框架侧（{@code yuni-core}）的原始事件对象，供
  * 过渡期使用——插件若需要访问新 API 尚未覆盖的字段，可以取它。
  * <b>这是逃生舱，不应作为常规用法</b>：一旦插件依赖 frame object 的具体类型，
  * 就重新引入了上面说的耦合。</p>
  *
  * @deprecated 本类的设计仍在演进。当前建议：优先使用 {@code Event} 上的通用访问方法
- *             （{@code type()} / {@code is(String)} / {@code longValue(String)} 等）。
- *             {@link #frame()} 仅作为过渡期逃生舱保留。
+ *             （{@code getType()} / {@code is(String)} / {@code longValue(String)} 等）。
+ *             {@link #getFrame()} 仅作为过渡期逃生舱保留。
  */
 @Deprecated(since = "插件系统重构 P1", forRemoval = false)
 public interface MatchToken {
@@ -49,7 +49,7 @@ public interface MatchToken {
      *
      * @return 类型标识，永不为 {@code null}
      */
-    String type();
+    String getType();
 
     /**
      * 判定本令牌是否为指定类型。
@@ -58,7 +58,7 @@ public interface MatchToken {
      * @return 类型标识相等时返回 {@code true}
      */
     default boolean is(String expected) {
-        return Objects.equals(type(), expected);
+        return Objects.equals(getType(), expected);
     }
 
     /**
@@ -69,5 +69,5 @@ public interface MatchToken {
      *
      * @return 框架侧原始事件对象，可能为 {@code null}
      */
-    Object frame();
+    Object getFrame();
 }

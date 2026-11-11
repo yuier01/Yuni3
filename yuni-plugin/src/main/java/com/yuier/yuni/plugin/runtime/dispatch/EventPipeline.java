@@ -98,8 +98,8 @@ public final class EventPipeline {
      */
     public void onMessage(YuniMessageEvent event) {
         CoreMessageEvent adapted = adapter.adapt(event);
-        Long groupId = adapted.groupId().orElse(null);
-        Reply reply = adapted.reply();
+        Long groupId = adapted.getGroupId().orElse(null);
+        Reply reply = adapted.getReply();
 
         // 阶段 1：命令（同步匹配）
         boolean commandMatched = false;
@@ -112,7 +112,7 @@ public final class EventPipeline {
         }
 
         // 阶段 2：消息/模式处理器
-        dispatchAll(registrations.messageEntries(), adapted, groupId, reply,
+        dispatchAll(registrations.getMessageEntries(), adapted, groupId, reply,
                 payload -> cast(payload, MessageHandler.class)
                         .handle(adapted, reply));
     }
@@ -128,9 +128,9 @@ public final class EventPipeline {
      */
     public void onMessageSent(YuniMessageSentEvent event) {
         CoreMessageSentEvent adapted = adapter.adapt(event);
-        Reply reply = adapted.reply();
-        dispatchAll(registrations.messageSentEntries(), adapted,
-                adapted.groupId().orElse(null), reply,
+        Reply reply = adapted.getReply();
+        dispatchAll(registrations.getMessageSentEntries(), adapted,
+                adapted.getGroupId().orElse(null), reply,
                 payload -> cast(payload, MessageSentHandler.class)
                         .handle(adapted, reply));
     }
@@ -143,8 +143,8 @@ public final class EventPipeline {
     public void onNotice(YuniNoticeEvent event) {
         CoreLifecycleEvents.CoreNoticeEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.noticeEntries(), adapted,
-                adapted.groupId().orElse(null), reply,
+        dispatchAll(registrations.getNoticeEntries(), adapted,
+                adapted.getGroupId().orElse(null), reply,
                 payload -> cast(payload, NoticeHandler.class)
                         .handle(adapted, reply));
     }
@@ -157,8 +157,8 @@ public final class EventPipeline {
     public void onRequest(YuniRequestEvent event) {
         CoreLifecycleEvents.CoreRequestEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.requestEntries(), adapted,
-                adapted.groupId().orElse(null), reply,
+        dispatchAll(registrations.getRequestEntries(), adapted,
+                adapted.getGroupId().orElse(null), reply,
                 payload -> cast(payload, RequestHandler.class)
                         .handle(adapted, reply));
     }
@@ -171,8 +171,8 @@ public final class EventPipeline {
     public void onMeta(YuniMetaEvent event) {
         CoreLifecycleEvents.CoreMetaEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.metaEntries(), adapted,
-                adapted.groupId().orElse(null), reply,
+        dispatchAll(registrations.getMetaEntries(), adapted,
+                adapted.getGroupId().orElse(null), reply,
                 payload -> cast(payload, MetaHandler.class)
                         .handle(adapted, reply));
     }
@@ -208,8 +208,8 @@ public final class EventPipeline {
             if (!passesGates(entry, event, groupId)) {
                 continue;
             }
-            final PluginFiber owner = entry.owner();
-            final Object payload = entry.payload();
+            final PluginFiber owner = entry.getOwner();
+            final Object payload = entry.getPayload();
             // 异步执行：不阻塞 OneBot 的 /event 连接线程
             CompletableFuture.runAsync(() -> invokeSafely(owner, () -> body.accept(payload), event));
         }
@@ -250,7 +250,7 @@ public final class EventPipeline {
             return false;
         }
         // 关卡 2：子类型过滤（注册时用 ctx.onNotice("poke", ...) 声明的）
-        if (!entry.subTypeMatches(event.subType())) {
+        if (!entry.subTypeMatches(event.getSubType())) {
             return false;
         }
         // 关卡 3：作用域过滤。
@@ -280,7 +280,7 @@ public final class EventPipeline {
      */
     @SuppressWarnings("unchecked")
     private boolean matchesPredicate(RegistrationTable.Entry entry, Event event) {
-        java.util.function.Predicate<Object> predicate = entry.predicate();
+        java.util.function.Predicate<Object> predicate = entry.getPredicate();
         if (predicate == null) {
             return true;
         }
@@ -289,7 +289,7 @@ public final class EventPipeline {
         } catch (Throwable t) {
             // 条件判定抛异常：视为不匹配并记录。
             // 不能让一个写坏的条件把整条分发链路带崩。
-            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", entry.owner().id(), t);
+            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", entry.getOwner().getId(), t);
             return false;
         }
     }
@@ -332,7 +332,7 @@ public final class EventPipeline {
         try {
             body.run();
         } catch (Throwable t) {
-            String pluginId = owner == null ? "?" : owner.id();
+            String pluginId = owner == null ? "?" : owner.getId();
             log.error("插件 {} 处理事件失败: {}", pluginId, event.toLogString(), t);
             replyFailure(owner, event, t);
         }
@@ -369,7 +369,7 @@ public final class EventPipeline {
             return;
         }
         try {
-            String pluginName = owner == null ? "未知插件" : owner.metadata().name();
+            String pluginName = owner == null ? "未知插件" : owner.getMetadata().getName();
             reply.text("执行插件 " + pluginName + " 失败（"
                             + cause.getClass().getSimpleName() + "），请联系开发人员。")
                     .send();
@@ -391,10 +391,10 @@ public final class EventPipeline {
      */
     private Reply replyOf(Event event) {
         if (event instanceof CoreMessageEvent messageEvent) {
-            return messageEvent.reply();
+            return messageEvent.getReply();
         }
         if (event instanceof CoreMessageSentEvent sentEvent) {
-            return sentEvent.reply();
+            return sentEvent.getReply();
         }
         return null;
     }

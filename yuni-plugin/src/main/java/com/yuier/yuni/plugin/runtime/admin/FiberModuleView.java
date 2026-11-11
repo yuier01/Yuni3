@@ -4,7 +4,6 @@ import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.List;
 
@@ -24,7 +23,6 @@ import java.util.List;
  * @see PluginModuleView
  */
 @Getter
-@Accessors(fluent = true)
 public final class FiberModuleView implements PluginModuleView {
 
     /** 模块 ID。 */
@@ -46,13 +44,13 @@ public final class FiberModuleView implements PluginModuleView {
      * @param fibers Fiber 容器（用于取出该模块的插件 Fiber）
      */
     public FiberModuleView(FiberRegistry.ModuleHandle handle, FiberRegistry fibers) {
-        this.id = handle.moduleId();
-        this.name = handle.moduleName();
-        this.jarFileName = handle.jarFileName();
-        this.plugins = fibers.ofModule(handle.moduleId()).stream()
+        this.id = handle.getModuleId();
+        this.name = handle.getModuleName();
+        this.jarFileName = handle.getJarFileName();
+        this.plugins = fibers.ofModule(handle.getModuleId()).stream()
                 // 只保留顶层插件：子插件随父插件卸载，不是独立的运维对象
-                .filter(fiber -> fiber.parent() == null)
-                .map(fiber -> (PluginView) new FiberPluginView(fiber, handle.moduleId()))
+                .filter(fiber -> fiber.getParent() == null)
+                .map(fiber -> (PluginView) new FiberPluginView(fiber, handle.getModuleId()))
                 .toList();
     }
 

@@ -132,18 +132,18 @@ class ScopeFilterTest {
     void onlyNamedImplementationsArePersistable() {
         // 白名单可导出
         ScopeFilter white = ScopeFilter.onlyGroups(1L, 2L);
-        assertEquals(Set.of(1L, 2L), white.explicitGroupWhitelist().orElseThrow());
-        assertTrue(white.explicitGroupBlacklist().isEmpty());
+        assertEquals(Set.of(1L, 2L), white.getExplicitGroupWhitelist().orElseThrow());
+        assertTrue(white.getExplicitGroupBlacklist().isEmpty());
 
         // 黑名单可导出
         ScopeFilter black = ScopeFilter.excludeGroups(3L);
-        assertEquals(Set.of(3L), black.explicitGroupBlacklist().orElseThrow());
-        assertTrue(black.explicitGroupWhitelist().isEmpty());
+        assertEquals(Set.of(3L), black.getExplicitGroupBlacklist().orElseThrow());
+        assertTrue(black.getExplicitGroupWhitelist().isEmpty());
 
         // lambda 组合不可导出——它们无法被反向解析成数据
         ScopeFilter lambda = groupId -> true;
-        assertTrue(lambda.explicitGroupWhitelist().isEmpty());
-        assertTrue(lambda.explicitGroupBlacklist().isEmpty());
+        assertTrue(lambda.getExplicitGroupWhitelist().isEmpty());
+        assertTrue(lambda.getExplicitGroupBlacklist().isEmpty());
         assertTrue(lambda.toPersisted().isEmpty());
     }
 
@@ -154,8 +154,8 @@ class ScopeFilterTest {
 
         ScopeFilter.PersistedScope persisted = original.toPersisted().orElseThrow();
         // 白名单语义 = 全局关闭 + 例外群开启
-        assertFalse(persisted.enabledByDefault());
-        assertEquals(Set.of(1L, 2L), persisted.exceptionGroups());
+        assertFalse(persisted.isEnabledByDefault());
+        assertEquals(Set.of(1L, 2L), persisted.getExceptionGroups());
 
         ScopeFilter restored = ScopeFilter.fromPersisted(persisted);
         assertEquals(original.matches(1L), restored.matches(1L));
@@ -171,8 +171,8 @@ class ScopeFilterTest {
 
         ScopeFilter.PersistedScope persisted = original.toPersisted().orElseThrow();
         // 黑名单语义 = 全局开启 + 例外群关闭
-        assertTrue(persisted.enabledByDefault());
-        assertEquals(Set.of(1L), persisted.exceptionGroups());
+        assertTrue(persisted.isEnabledByDefault());
+        assertEquals(Set.of(1L), persisted.getExceptionGroups());
 
         ScopeFilter restored = ScopeFilter.fromPersisted(persisted);
         assertFalse(restored.matches(1L));
@@ -184,8 +184,8 @@ class ScopeFilterTest {
     @DisplayName("ALL 的持久化形态是「全局开启 + 空例外」")
     void allIsPersistedAsGloballyEnabled() {
         ScopeFilter.PersistedScope persisted = ScopeFilter.ALL.toPersisted().orElseThrow();
-        assertTrue(persisted.enabledByDefault());
-        assertTrue(persisted.exceptionGroups().isEmpty());
+        assertTrue(persisted.isEnabledByDefault());
+        assertTrue(persisted.getExceptionGroups().isEmpty());
     }
 
     @Test
@@ -196,6 +196,6 @@ class ScopeFilterTest {
 
         mutable.add(2L);
 
-        assertEquals(Set.of(1L), persisted.exceptionGroups());
+        assertEquals(Set.of(1L), persisted.getExceptionGroups());
     }
 }

@@ -20,7 +20,7 @@ import java.util.List;
  * （用户会以为它能独立启停，实际上它随父插件卸载）。因此本视图只包含
  * <b>顶层插件</b>——子插件是父插件的实现细节，不是运维对象。</p>
  *
- * @see PluginAdmin#modules()
+ * @see PluginAdmin#getModules()
  */
 public interface PluginModuleView {
 
@@ -32,7 +32,7 @@ public interface PluginModuleView {
      *
      * @return 模块 ID
      */
-    String id();
+    String getId();
 
     /**
      * 模块显示名。
@@ -41,7 +41,7 @@ public interface PluginModuleView {
      *
      * @return 显示名
      */
-    String name();
+    String getName();
 
     /**
      * jar 文件名。
@@ -51,12 +51,12 @@ public interface PluginModuleView {
      *
      * @return jar 文件名
      */
-    String jarFileName();
+    String getJarFileName();
 
     /**
      * 本模块的顶层插件。
      *
      * @return 不可变列表；本模块无成功加载的插件时为空列表
      */
-    List<PluginView> plugins();
+    List<PluginView> getPlugins();
 }

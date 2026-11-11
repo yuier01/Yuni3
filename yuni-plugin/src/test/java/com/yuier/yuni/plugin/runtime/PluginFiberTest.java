@@ -48,7 +48,7 @@ class PluginFiberTest {
     @Test
     @DisplayName("初始状态为 PENDING")
     void initialStateIsPending() {
-        assertEquals(FiberState.PENDING, newFiber().state());
+        assertEquals(FiberState.PENDING, newFiber().getState());
     }
 
     @Test
@@ -57,10 +57,10 @@ class PluginFiberTest {
         PluginFiber fiber = newFiber();
 
         assertTrue(fiber.tryBeginLoading(), "PENDING → LOADING 应成功");
-        assertEquals(FiberState.LOADING, fiber.state());
+        assertEquals(FiberState.LOADING, fiber.getState());
 
         assertFalse(fiber.tryBeginLoading(), "已不在 PENDING，抢占必须失败");
-        assertEquals(FiberState.LOADING, fiber.state(), "失败不得改变状态");
+        assertEquals(FiberState.LOADING, fiber.getState(), "失败不得改变状态");
     }
 
     @Test
@@ -94,7 +94,7 @@ class PluginFiberTest {
 
         assertEquals(1, wins.get(), "只能有一个线程抢到执行权");
         assertEquals(threads - 1, losses.get());
-        assertEquals(FiberState.LOADING, fiber.state());
+        assertEquals(FiberState.LOADING, fiber.getState());
     }
 
     // ==================== 激活 ====================
@@ -108,7 +108,7 @@ class PluginFiberTest {
 
         assertTrue(fiber.tryBeginLoading());
         assertTrue(fiber.tryMarkActive());
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
 
         assertFalse(fiber.tryMarkActive(), "已是 ACTIVE，重复迁移必须失败");
     }
@@ -125,12 +125,12 @@ class PluginFiberTest {
 
         // 另一个线程此刻执行 unload
         fiber.dispose();
-        assertEquals(FiberState.DISPOSED, fiber.state());
+        assertEquals(FiberState.DISPOSED, fiber.getState());
 
         // apply 返回后试图标记 ACTIVE —— 必须被拒绝
         assertFalse(fiber.tryMarkActive(),
                 "已卸载的 Fiber 不能被改回 ACTIVE，否则会留下不在索引里的僵尸");
-        assertEquals(FiberState.DISPOSED, fiber.state(), "状态必须仍是 DISPOSED");
+        assertEquals(FiberState.DISPOSED, fiber.getState(), "状态必须仍是 DISPOSED");
     }
 
     @Test
@@ -141,8 +141,8 @@ class PluginFiberTest {
         fiber.dispose();
 
         assertFalse(fiber.tryMarkFailed(new IllegalStateException("迟到的失败")));
-        assertEquals(FiberState.DISPOSED, fiber.state());
-        assertTrue(fiber.failureCause().isEmpty(), "失败原因不应被记到已卸载的 Fiber 上");
+        assertEquals(FiberState.DISPOSED, fiber.getState());
+        assertTrue(fiber.getFailureCause().isEmpty(), "失败原因不应被记到已卸载的 Fiber 上");
     }
 
     // ==================== 失败 ====================
@@ -156,9 +156,9 @@ class PluginFiberTest {
         IllegalStateException cause = new IllegalStateException("apply 炸了");
         assertTrue(fiber.tryMarkFailed(cause));
 
-        assertEquals(FiberState.FAILED, fiber.state());
-        assertEquals(cause, fiber.failureCause().orElseThrow());
-        assertEquals(FiberState.FAILED, fiber.state(), "失败状态必须保持，便于 reportFailedPlugins 报告");
+        assertEquals(FiberState.FAILED, fiber.getState());
+        assertEquals(cause, fiber.getFailureCause().orElseThrow());
+        assertEquals(FiberState.FAILED, fiber.getState(), "失败状态必须保持，便于 reportFailedPlugins 报告");
     }
 
     @Test
@@ -167,7 +167,7 @@ class PluginFiberTest {
         PluginFiber fiber = newFiber();
 
         assertFalse(fiber.tryMarkFailed(new IllegalStateException("未开始就失败")));
-        assertEquals(FiberState.PENDING, fiber.state());
+        assertEquals(FiberState.PENDING, fiber.getState());
     }
 
     // ==================== 卸载幂等 ====================
@@ -179,10 +179,10 @@ class PluginFiberTest {
         assertTrue(fiber.tryBeginLoading());
 
         assertTrue(fiber.dispose().isEmpty(), "首次卸载无清理失败");
-        assertEquals(FiberState.DISPOSED, fiber.state());
+        assertEquals(FiberState.DISPOSED, fiber.getState());
 
         assertTrue(fiber.dispose().isEmpty(), "重复卸载应直接返回空列表");
-        assertEquals(FiberState.DISPOSED, fiber.state());
-        assertTrue(fiber.disposed());
+        assertEquals(FiberState.DISPOSED, fiber.getState());
+        assertTrue(fiber.isDisposed());
     }
 }

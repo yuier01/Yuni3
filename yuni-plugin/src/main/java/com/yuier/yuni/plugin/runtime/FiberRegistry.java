@@ -1,5 +1,9 @@
 package com.yuier.yuni.plugin.runtime;
 
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -16,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 且每张 Map 都要在热重载时被手工增删（{@code PluginReloadProcessor} 与
  * {@code PluginService} 各实现了一遍同样的维护逻辑，是 bug 高发区）。</p>
  *
- * <p>本容器维护一棵<b>树</b>（父子关系由 {@link PluginFiber#parent()} 表达）
+ * <p>本容器维护一棵<b>树</b>（父子关系由 {@link PluginFiber#getParent()} 表达）
  * 加上按 ID / 模块 / 类名索引的三张 Map。<b>没有 index 字段，没有类型分桶，
  * 没有偏移修正</b>——热重载时「位置」就是「父 Fiber + 在父 Fiber 下的挂载顺序」。</p>
  *
@@ -56,18 +60,58 @@ public final class FiberRegistry {
      * @param classLoader   加载该模块插件类的类加载器
      * @param pluginIds     该模块包含的插件标识列表（保持 jar 内声明顺序）
      */
-    public record ModuleHandle(String moduleId,
-                               String moduleName,
-                               String jarFileName,
-                               String jarParentPath,
-                               ClassLoader classLoader,
-                               List<String> pluginIds) {
+    /**
+     * 一个模块的元数据与资源位置。
+     *
+     * <p>原本是 record；为统一 JavaBean 访问器（{@code getXxx()}）改为
+     * {@code @Getter} 类。字段语义与 record 组件一一对应。</p>
+     */
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    public static final class ModuleHandle {
+
+        /** 模块 ID（来自 {@code metadata.json} 的 {@code module_id}）。 */
+        private final String moduleId;
+
+        /** 模块显示名。 */
+        private final String moduleName;
+
+        /** jar 文件名；用于日志与热重载定位。 */
+        private final String jarFileName;
+
+        /** jar 所在目录。 */
+        private final String jarParentPath;
+
+        /** 加载该模块的类加载器。 */
+        private final ClassLoader classLoader;
+
+        /** 该模块下的插件标识（构造时冻结）。 */
+        private final List<String> pluginIds;
 
         /**
-         * 紧凑构造器：冻结可变的插件列表。
+         * 构造模块句柄。
+         *
+         * @param moduleId      模块 ID
+         * @param moduleName    模块显示名
+         * @param jarFileName   jar 文件名
+         * @param jarParentPath jar 所在目录
+         * @param classLoader   类加载器
+         * @param pluginIds     插件标识列表（会被复制并冻结）
          */
-        public ModuleHandle {
-            pluginIds = List.copyOf(pluginIds);
+        public ModuleHandle(String moduleId,
+                            String moduleName,
+                            String jarFileName,
+                            String jarParentPath,
+                            ClassLoader classLoader,
+                            List<String> pluginIds) {
+            this.moduleId = moduleId;
+            this.moduleName = moduleName;
+            this.jarFileName = jarFileName;
+            this.jarParentPath = jarParentPath;
+            this.classLoader = classLoader;
+            // 冻结可变的插件列表
+            this.pluginIds = List.copyOf(pluginIds);
         }
     }
 
@@ -84,12 +128,12 @@ public final class FiberRegistry {
         if (fiber == null) {
             return;
         }
-        fibersById.put(fiber.id(), fiber);
-        pluginIdByClass.put(fiber.plugin().getClass(), fiber.id());
+        fibersById.put(fiber.getId(), fiber);
+        pluginIdByClass.put(fiber.getPlugin().getClass(), fiber.getId());
         if (topLevel) {
             synchronized (rootOrder) {
-                if (!rootOrder.contains(fiber.id())) {
-                    rootOrder.add(fiber.id());
+                if (!rootOrder.contains(fiber.getId())) {
+                    rootOrder.add(fiber.getId());
                 }
             }
         }
@@ -101,8 +145,8 @@ public final class FiberRegistry {
      * @param handle 模块句柄
      */
     public void addModule(ModuleHandle handle) {
-        if (handle != null && handle.moduleId() != null) {
-            modulesById.put(handle.moduleId(), handle);
+        if (handle != null && handle.getModuleId() != null) {
+            modulesById.put(handle.getModuleId(), handle);
         }
     }
 
@@ -147,7 +191,7 @@ public final class FiberRegistry {
      *
      * @return 不可变快照
      */
-    public List<PluginFiber> all() {
+    public List<PluginFiber> getAll() {
         return List.copyOf(fibersById.values());
     }
 
@@ -158,7 +202,7 @@ public final class FiberRegistry {
      *
      * @return 不可变快照
      */
-    public List<PluginFiber> roots() {
+    public List<PluginFiber> getRoots() {
         List<PluginFiber> result = new ArrayList<>();
         synchronized (rootOrder) {
             for (String id : rootOrder) {
@@ -183,7 +227,7 @@ public final class FiberRegistry {
             return List.of();
         }
         List<PluginFiber> result = new ArrayList<>();
-        for (String pluginId : handle.pluginIds()) {
+        for (String pluginId : handle.getPluginIds()) {
             PluginFiber fiber = fibersById.get(pluginId);
             if (fiber != null) {
                 result.add(fiber);
@@ -197,7 +241,7 @@ public final class FiberRegistry {
      *
      * @return 数量
      */
-    public int pluginCount() {
+    public int getPluginCount() {
         return fibersById.size();
     }
 
@@ -206,7 +250,7 @@ public final class FiberRegistry {
      *
      * @return 数量
      */
-    public int moduleCount() {
+    public int getModuleCount() {
         return modulesById.size();
     }
 
@@ -215,9 +259,9 @@ public final class FiberRegistry {
      *
      * @return 不可变快照
      */
-    public List<ModuleHandle> allModules() {
+    public List<ModuleHandle> getAllModules() {
         List<ModuleHandle> result = new ArrayList<>(modulesById.values());
-        result.sort(java.util.Comparator.comparing(ModuleHandle::moduleId));
+        result.sort(java.util.Comparator.comparing(ModuleHandle::getModuleId));
         return Collections.unmodifiableList(result);
     }
 
@@ -234,7 +278,7 @@ public final class FiberRegistry {
             counts.put(state, 0);
         }
         for (PluginFiber fiber : fibersById.values()) {
-            counts.merge(fiber.state(), 1, Integer::sum);
+            counts.merge(fiber.getState(), 1, Integer::sum);
         }
         return Collections.unmodifiableMap(counts);
     }
@@ -248,7 +292,7 @@ public final class FiberRegistry {
     public List<PluginFiber> withState(FiberState state) {
         List<PluginFiber> result = new ArrayList<>();
         for (PluginFiber fiber : fibersById.values()) {
-            if (fiber.state() == state) {
+            if (fiber.getState() == state) {
                 result.add(fiber);
             }
         }
@@ -270,10 +314,10 @@ public final class FiberRegistry {
         if (fiber == null) {
             return;
         }
-        fibersById.remove(fiber.id());
-        pluginIdByClass.remove(fiber.plugin().getClass());
+        fibersById.remove(fiber.getId());
+        pluginIdByClass.remove(fiber.getPlugin().getClass());
         synchronized (rootOrder) {
-            rootOrder.remove(fiber.id());
+            rootOrder.remove(fiber.getId());
         }
     }
 
@@ -313,12 +357,12 @@ public final class FiberRegistry {
      *
      * @return 总数
      */
-    public int totalEffectCount() {
+    public int getTotalEffectCount() {
         int total = 0;
         for (PluginFiber fiber : fibersById.values()) {
             // 只统计顶层，避免子树被重复计数
-            if (fiber.parent() == null) {
-                total += fiber.totalEffectCount();
+            if (fiber.getParent() == null) {
+                total += fiber.getTotalEffectCount();
             }
         }
         return total;
@@ -330,9 +374,9 @@ public final class FiberRegistry {
      * @return 形如 {@code "modules=13, plugins=23, effects=41, states={ACTIVE=21, ...}"}
      */
     public String describe() {
-        return "modules=" + moduleCount()
-                + ", plugins=" + pluginCount()
-                + ", effects=" + totalEffectCount()
+        return "modules=" + getModuleCount()
+                + ", plugins=" + getPluginCount()
+                + ", effects=" + getTotalEffectCount()
                 + ", states=" + countByState();
     }
 }

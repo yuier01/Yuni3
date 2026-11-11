@@ -9,6 +9,7 @@ import com.yuier.yuni.core.bot.MessageSentResult;
 import com.yuier.yuni.core.bot.MessageTarget;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.message.MessageChain;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +31,25 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class RecordingYuniBot implements YuniBot {
 
     /** 已发送的消息记录。 */
-    public record SentMessage(MessageTarget target, MessageChain chain) {
+    @Getter
+    public static final class SentMessage {
+
+        /** 发送目标。 */
+        private final MessageTarget target;
+
+        /** 消息链。 */
+        private final MessageChain chain;
+
+        /**
+         * 构造记录。
+         *
+         * @param target 发送目标
+         * @param chain  消息链
+         */
+        public SentMessage(MessageTarget target, MessageChain chain) {
+            this.target = target;
+            this.chain = chain;
+        }
 
         /**
          * 消息链的纯文本内容。

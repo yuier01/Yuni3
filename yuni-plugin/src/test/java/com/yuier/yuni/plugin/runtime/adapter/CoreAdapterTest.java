@@ -80,7 +80,7 @@ class CoreAdapterTest {
 
         CoreMessageChainView view = new CoreMessageChainView(chain, jsonCodec);
 
-        assertEquals("你好，今天怎么样", view.plainText());
+        assertEquals("你好，今天怎么样", view.getPlainText());
     }
 
     @Test
@@ -132,7 +132,7 @@ class CoreAdapterTest {
                 chainOf(new TextSegment("a"), new AtSegment("1"), new ImageSegment().setFile("x")), jsonCodec);
 
         assertEquals(3, view.size());
-        assertEquals(List.of("text", "at", "image"), view.segmentTypes());
+        assertEquals(List.of("text", "at", "image"), view.getSegmentTypes());
     }
 
     @Test
@@ -146,7 +146,7 @@ class CoreAdapterTest {
         // 插件通过 JSON 读取段内容，从而不绑定到 core 的具体段类型
         assertTrue(json.contains("\"text\""), json);
         assertTrue(json.contains("hello"), json);
-        assertEquals(1, view.segmentJsonList().size());
+        assertEquals(1, view.getSegmentJsonList().size());
     }
 
     @Test
@@ -154,11 +154,11 @@ class CoreAdapterTest {
     void emptyChainIsSafe() {
         CoreMessageChainView view = CoreMessageChainView.empty(jsonCodec);
 
-        assertEquals("", view.plainText());
+        assertEquals("", view.getPlainText());
         assertEquals(0, view.size());
         assertTrue(view.isEmpty());
-        assertTrue(view.segmentTypes().isEmpty());
-        assertTrue(view.segmentJsonList().isEmpty());
+        assertTrue(view.getSegmentTypes().isEmpty());
+        assertTrue(view.getSegmentJsonList().isEmpty());
         assertFalse(view.containsForward());
         assertFalse(view.startsWithReply());
     }
@@ -172,7 +172,7 @@ class CoreAdapterTest {
         // 构造之后追加内容
         chain.addTextSegment("追加内容");
 
-        assertEquals("原始内容", view.plainText(), "视图内容不应随原链变化");
+        assertEquals("原始内容", view.getPlainText(), "视图内容不应随原链变化");
     }
 
     @Test
@@ -186,7 +186,7 @@ class CoreAdapterTest {
 
         // 现行 MessageChain.toString 在若干段实现里会解引用 null 字段；
         // 视图层统一兜住，保证插件的文本匹配不会因此崩溃
-        assertEquals("后续", view.plainText());
+        assertEquals("后续", view.getPlainText());
         assertEquals(2, view.size());
         assertFalse(view.isPlainText(), "含 null 段不应被判定为纯文本");
     }
@@ -205,8 +205,8 @@ class CoreAdapterTest {
         Reply.SentResult result = reply.send();
 
         assertEquals(1, bot.sentCount());
-        assertTrue(result.success());
-        assertEquals(1L, result.messageId());
+        assertTrue(result.isSuccess());
+        assertEquals(1L, result.getMessageId());
     }
 
     @Test
@@ -217,9 +217,9 @@ class CoreAdapterTest {
         reply.at(10001L).text("你好").image("http://example.com/a.png").send();
 
         RecordingYuniBot.SentMessage sent = bot.lastMessage().orElseThrow();
-        assertEquals(MessageTarget.TargetType.GROUP, sent.target().getTargetType());
-        assertEquals(456L, sent.target().getTargetId());
-        List<String> types = sent.chain().getContent().stream()
+        assertEquals(MessageTarget.TargetType.GROUP, sent.getTarget().getTargetType());
+        assertEquals(456L, sent.getTarget().getTargetId());
+        List<String> types = sent.getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         // 第 3 段是 addAt 自动补的空格文本段：避免「@某人你好」被客户端
@@ -227,11 +227,11 @@ class CoreAdapterTest {
         assertEquals(List.of("at", "text", "text", "image"), types);
 
         // @ 的目标账号确实写入了消息段
-        AtSegment atSegment = (AtSegment) sent.chain().getContent().get(0);
+        AtSegment atSegment = (AtSegment) sent.getChain().getContent().get(0);
         assertEquals("10001", atSegment.getQq());
 
         // 自动补的空格段内容为单个空格
-        TextSegment spacer = (TextSegment) sent.chain().getContent().get(1);
+        TextSegment spacer = (TextSegment) sent.getChain().getContent().get(1);
         assertEquals(" ", spacer.getText());
     }
 
@@ -243,7 +243,7 @@ class CoreAdapterTest {
         // 先追加内容，再引用——延迟插入保证回复段仍在第一位
         reply.text("内容").quote().send();
 
-        List<String> types = bot.lastMessage().orElseThrow().chain().getContent().stream()
+        List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         assertEquals("reply", types.get(0), "QQ 客户端要求回复段必须在第一位");
@@ -257,7 +257,7 @@ class CoreAdapterTest {
 
         reply.quote().text("定时播报").send();
 
-        List<String> types = bot.lastMessage().orElseThrow().chain().getContent().stream()
+        List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text"), types);
@@ -271,7 +271,7 @@ class CoreAdapterTest {
         // face 的 data 在 core 中是 private 无 setter，只能走多态反序列化路径
         reply.face(123).send();
 
-        List<String> types = bot.lastMessage().orElseThrow().chain().getContent().stream()
+        List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         assertEquals(List.of("face"), types);
@@ -284,7 +284,7 @@ class CoreAdapterTest {
 
         reply.text(null).text("有效").send();
 
-        List<String> types = bot.lastMessage().orElseThrow().chain().getContent().stream()
+        List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text"), types);
@@ -299,7 +299,7 @@ class CoreAdapterTest {
         CoreReply reply = new CoreReply(bot, MessageTarget.group(1L), null, jsonCodec);
         reply.chain(source).send();
 
-        List<String> types = bot.lastMessage().orElseThrow().chain().getContent().stream()
+        List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
                 .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text", "image"), types);
@@ -313,9 +313,9 @@ class CoreAdapterTest {
 
         Reply.SentResult result = reply.text("会失败").send();
 
-        assertFalse(result.success());
-        assertEquals(0L, result.messageId());
-        assertEquals("模拟发送失败", result.errorMessage().orElseThrow());
+        assertFalse(result.isSuccess());
+        assertEquals(0L, result.getMessageId());
+        assertEquals("模拟发送失败", result.getErrorMessage().orElseThrow());
     }
 
     @Test
@@ -327,9 +327,9 @@ class CoreAdapterTest {
         // 发送失败不应把插件处理器打挂——「先回复再落库」这类顺序敏感逻辑尤其依赖这一点
         Reply.SentResult result = reply.text("会抛异常").send();
 
-        assertFalse(result.success());
-        assertTrue(result.errorMessage().orElseThrow().contains("模拟发送时的 Error"),
-                result.errorMessage().orElseThrow());
+        assertFalse(result.isSuccess());
+        assertTrue(result.getErrorMessage().orElseThrow().contains("模拟发送时的 Error"),
+                result.getErrorMessage().orElseThrow());
     }
 
     @Test
@@ -343,7 +343,7 @@ class CoreAdapterTest {
                 new CoreMessageChainView(chainOf(new TextSegment("第三条")), jsonCodec)));
 
         assertEquals(3, results.size());
-        assertTrue(results.stream().allMatch(Reply.SentResult::success));
+        assertTrue(results.stream().allMatch(Reply.SentResult::isSuccess));
         assertEquals(3, bot.sentCount());
         assertTrue(bot.sentMessages().get(0).text().contains("第一条"));
         assertTrue(bot.sentMessages().get(2).text().contains("第三条"));

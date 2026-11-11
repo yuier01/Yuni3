@@ -217,11 +217,11 @@ public final class PluginScopes {
      *         未命中返回 {@code null}
      */
     private static Boolean hitOf(ScopeFilter filter, long groupId) {
-        Optional<Set<Long>> whitelist = filter.explicitGroupWhitelist();
+        Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
         if (whitelist.isPresent()) {
             return whitelist.get().contains(groupId) ? Boolean.TRUE : null;
         }
-        Optional<Set<Long>> blacklist = filter.explicitGroupBlacklist();
+        Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
         if (blacklist.isPresent()) {
             return blacklist.get().contains(groupId) ? Boolean.FALSE : null;
         }
@@ -287,8 +287,8 @@ public final class PluginScopes {
         for (int i = 0; i < filters.size(); i++) {
             ScopeFilter filter = filters.get(i);
             Optional<Set<Long>> existing = whitelist
-                    ? filter.explicitGroupWhitelist()
-                    : filter.explicitGroupBlacklist();
+                    ? filter.getExplicitGroupWhitelist()
+                    : filter.getExplicitGroupBlacklist();
             if (existing.isEmpty()) {
                 continue;
             }
@@ -311,8 +311,8 @@ public final class PluginScopes {
     private static void removeGroupLocked(List<ScopeFilter> filters, long groupId) {
         for (int i = filters.size() - 1; i >= 0; i--) {
             ScopeFilter filter = filters.get(i);
-            Optional<Set<Long>> whitelist = filter.explicitGroupWhitelist();
-            Optional<Set<Long>> blacklist = filter.explicitGroupBlacklist();
+            Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
+            Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
             Set<Long> groups = whitelist.orElseGet(() -> blacklist.orElse(null));
             if (groups == null || !groups.contains(groupId)) {
                 continue;
@@ -384,8 +384,8 @@ public final class PluginScopes {
     public ScopeFilter.PersistedScope toPersisted(String pluginId, boolean defaultEnabled) {
         Set<Long> opposite = new java.util.LinkedHashSet<>();
         for (ScopeFilter filter : all(pluginId)) {
-            filter.explicitGroupWhitelist().ifPresent(opposite::addAll);
-            filter.explicitGroupBlacklist().ifPresent(opposite::addAll);
+            filter.getExplicitGroupWhitelist().ifPresent(opposite::addAll);
+            filter.getExplicitGroupBlacklist().ifPresent(opposite::addAll);
         }
         return new ScopeFilter.PersistedScope(defaultEnabled, opposite);
     }
@@ -441,7 +441,7 @@ public final class PluginScopes {
      *
      * @return 插件标识集合
      */
-    public Set<String> pluginIds() {
+    public Set<String> getPluginIds() {
         return Set.copyOf(exceptions.keySet());
     }
 

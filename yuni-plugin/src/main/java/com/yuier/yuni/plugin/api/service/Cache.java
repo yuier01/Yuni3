@@ -16,12 +16,12 @@ import java.util.Set;
  * <h2>用法</h2>
  * <pre>{@code
  * // 简单值
- * ctx.cache().set("plugin:fortune:" + userId, cache, Duration.ofHours(24));
- * FortuneTodayCache today = ctx.cache().get("plugin:fortune:" + userId, FortuneTodayCache.class);
+ * ctx.getCache().set("plugin:fortune:" + userId, cache, Duration.ofHours(24));
+ * FortuneTodayCache today = ctx.getCache().get("plugin:fortune:" + userId, FortuneTodayCache.class);
  *
  * // 哈希（现行 fortune / pig-today 插件用的是 Map 结构）
- * ctx.cache().hashSet(KEY, userId.toString(), today);
- * Optional<FortuneTodayCache> t = ctx.cache().hashGet(KEY, userId.toString(), FortuneTodayCache.class);
+ * ctx.getCache().hashSet(KEY, userId.toString(), today);
+ * Optional<FortuneTodayCache> t = ctx.getCache().hashGet(KEY, userId.toString(), FortuneTodayCache.class);
  * }</pre>
  *
  * <h2>键名约定</h2>

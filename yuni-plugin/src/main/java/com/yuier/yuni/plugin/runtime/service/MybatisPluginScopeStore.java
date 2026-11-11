@@ -112,16 +112,16 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
         }
 
         int saved = 0;
-        if (record.globalEnabled() != null) {
+        if (record.getGlobalEnabled() != null) {
             // 全局开关：用 groupId = null 的行表达，与旧系统写法一致
             GroupPluginAbilityEntity globalRow = new GroupPluginAbilityEntity();
             globalRow.setGroupId(null);
             globalRow.setPluginId(pluginId);
-            globalRow.setAbility(record.globalEnabled());
+            globalRow.setAbility(record.getGlobalEnabled());
             abilityService.save(globalRow);
             saved++;
         }
-        for (Long groupId : record.exceptionGroups()) {
+        for (Long groupId : record.getExceptionGroups()) {
             GroupPluginAbilityEntity row = new GroupPluginAbilityEntity();
             row.setGroupId(groupId);
             row.setPluginId(pluginId);
@@ -133,7 +133,7 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
              * 时，这里只能如实写入「与默认相反」，由运行时在装载时结合插件默认值
              * 还原。因此真正的判定始终由 PluginScopes 负责，本层只做搬运。
              */
-            row.setAbility(!Boolean.TRUE.equals(record.globalEnabled()));
+            row.setAbility(!Boolean.TRUE.equals(record.getGlobalEnabled()));
             abilityService.save(row);
             saved++;
         }

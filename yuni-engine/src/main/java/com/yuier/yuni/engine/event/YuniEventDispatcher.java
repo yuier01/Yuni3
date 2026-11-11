@@ -27,19 +27,19 @@ import org.springframework.stereotype.Component;
  *   <caption>旧 → 新</caption>
  *   <tr><th>旧实现</th><th>新实现</th></tr>
  *   <tr><td>{@code pluginManager.handleMessageEvent(event)}</td>
- *       <td>{@code runtime.pipeline().onMessage(event)}</td></tr>
+ *       <td>{@code runtime.getPipeline().onMessage(event)}</td></tr>
  *   <tr><td>{@code pluginManager.handleNoticeEvent(event)}</td>
- *       <td>{@code runtime.pipeline().onNotice(event)}</td></tr>
+ *       <td>{@code runtime.getPipeline().onNotice(event)}</td></tr>
  *   <tr><td>{@code pluginManager.handleRequestEvent(event)}</td>
- *       <td>{@code runtime.pipeline().onRequest(event)}</td></tr>
+ *       <td>{@code runtime.getPipeline().onRequest(event)}</td></tr>
  *   <tr><td>{@code pluginManager.handleMetaEvent(event)}</td>
- *       <td>{@code runtime.pipeline().onMeta(event)}</td></tr>
+ *       <td>{@code runtime.getPipeline().onMeta(event)}</td></tr>
  *   <tr><td>{@code pluginManager.handleMessageSentEvent(event)}</td>
- *       <td>{@code runtime.pipeline().onMessageSent(event)}</td></tr>
+ *       <td>{@code runtime.getPipeline().onMessageSent(event)}</td></tr>
  * </table>
  *
  * <h2>为什么注入 {@code PluginRuntime} 而不是 {@code EventPipeline}</h2>
- * <p>流水线是<b>惰性构造</b>的（{@code PluginRuntime.pipeline()} 在首次访问时
+ * <p>流水线是<b>惰性构造</b>的（{@code PluginRuntime.getPipeline()} 在首次访问时
  * 才建适配器与命令分发器），因为它需要 bot 实例与权限服务——这两者可能晚于
  * 本 Bean 的装配时机就绪。若把 {@code EventPipeline} 声明为注入依赖，
  * Spring 会在启动早期就构造它，那时 bot 还是 {@code null}，
@@ -70,7 +70,7 @@ public class YuniEventDispatcher {
     public void messageEventHandler(YuniMessageEvent event) {
         log.info(EventLogUtil.toLog(event));
         eventSaver.saveEvent(event);
-        pluginRuntime.pipeline().onMessage(event);
+        pluginRuntime.getPipeline().onMessage(event);
         if (event.isGroup()) {  // TODO 为什么被写成只推送群聊消息？？？
             eventPublisher.publishEvent(YuniMessagePushEvent.from(event));
         }
@@ -80,7 +80,7 @@ public class YuniEventDispatcher {
     public void messageSentEventHandler(YuniMessageSentEvent event) {
         log.info(EventLogUtil.toLog(event));
         eventSaver.saveEvent(event);
-        pluginRuntime.pipeline().onMessageSent(event);
+        pluginRuntime.getPipeline().onMessageSent(event);
         if (event.isGroup()) {
             eventPublisher.publishEvent(YuniMessagePushEvent.from(event));
         }
@@ -88,17 +88,17 @@ public class YuniEventDispatcher {
 
     @EventListener
     public void noticeEventHandler(YuniNoticeEvent event) {
-        pluginRuntime.pipeline().onNotice(event);
+        pluginRuntime.getPipeline().onNotice(event);
     }
 
     @EventListener
     public void requestEventHandler(YuniRequestEvent event) {
         log.info(event.toLogString());
-        pluginRuntime.pipeline().onRequest(event);
+        pluginRuntime.getPipeline().onRequest(event);
     }
 
     @EventListener
     public void metaEventHandler(YuniMetaEvent event) {
-        pluginRuntime.pipeline().onMeta(event);
+        pluginRuntime.getPipeline().onMeta(event);
     }
 }

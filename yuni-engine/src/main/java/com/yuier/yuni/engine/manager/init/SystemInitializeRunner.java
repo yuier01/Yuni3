@@ -29,12 +29,12 @@ import java.util.List;
  * <h2>为什么这一步在 {@code botManager.startBot()} 之后</h2>
  * <p>顺序与旧实现完全一致，且这个顺序是必要的：</p>
  * <ol>
- *   <li>插件在 {@code apply} 里通过 {@code ctx.bot()} 拿机器人实例。
+ *   <li>插件在 {@code apply} 里通过 {@code ctx.getBot()} 拿机器人实例。
  *       {@code BotManager} 在 {@code startBot()} 里创建并注册它，
  *       因此插件加载必须在之后；</li>
- *   <li>插件在 {@code apply} 里通过 {@code ctx.permission()} 做权限判定，
+ *   <li>插件在 {@code apply} 里通过 {@code ctx.getPermission()} 做权限判定，
  *       而权限系统在本方法更早处初始化；</li>
- *   <li>插件在 {@code apply} 里通过 {@code ctx.db()} 建表，
+ *   <li>插件在 {@code apply} 里通过 {@code ctx.getDb()} 建表，
  *       数据库文件在更早处检查。</li>
  * </ol>
  *

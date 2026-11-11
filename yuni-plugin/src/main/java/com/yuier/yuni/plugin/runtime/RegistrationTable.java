@@ -1,8 +1,9 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import lombok.experimental.Accessors;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -78,7 +79,6 @@ public final class RegistrationTable {
      * <b>注册动作</b>而非插件本身，因此不存在「一个插件只能属于一个类型」的限制。</p>
      */
     @Getter
-    @Accessors(fluent = true)
     public enum Kind {
         /** 命令树。 */
         COMMAND("命令"),
@@ -108,31 +108,59 @@ public final class RegistrationTable {
     /**
      * 一条注册项。
      *
-     * @param kind      能力种类
-     * @param owner     注册者（插件 Fiber），用于状态检查、日志与失败归因
-     * @param filter    <b>注册项自带</b>的作用域过滤器；{@code null} 视为
-     *                  {@link ScopeFilter#ALL}。注意它不是「该插件在哪些群生效」的
-     *                  权威来源——那个随管理端配置变化，只能向运行时查询。
-     *                  分发路径必须用
-     *                  {@link #scopeMatches(Long, java.util.function.Function)}
-     * @param predicate 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）
-     * @param subType   子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤
-     * @param payload   实际载荷：处理器、命令树根节点或 Runnable
+     * <p>原本是 record；为统一 JavaBean 访问器改为 {@code @Getter} 类，
+     * 构造期空值归一化放在显式构造器里。</p>
      */
-    public record Entry(
-            Kind kind,
-            PluginFiber owner,
-            ScopeFilter filter,
-            java.util.function.Predicate<Object> predicate,
-            String subType,
-            Object payload
-    ) {
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    public static final class Entry {
+
+        /** 能力种类。 */
+        private final Kind kind;
+
+        /** 注册者（插件 Fiber），用于状态检查、日志与失败归因。 */
+        private final PluginFiber owner;
 
         /**
-         * 紧凑构造器：规范化空值。
+         * <b>注册项自带</b>的作用域过滤器；构造时 {@code null} 归一化为
+         * {@link ScopeFilter#ALL}。注意它不是「该插件在哪些群生效」的
+         * 权威来源——那个随管理端配置变化，分发路径必须用
+         * {@link #scopeMatches(Long, java.util.function.Function)}。
          */
-        public Entry {
-            filter = filter == null ? ScopeFilter.ALL : filter;
+        private final ScopeFilter filter;
+
+        /** 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）。 */
+        private final java.util.function.Predicate<Object> predicate;
+
+        /** 子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤。 */
+        private final String subType;
+
+        /** 实际载荷：处理器、命令树根节点或 Runnable。 */
+        private final Object payload;
+
+        /**
+         * 构造注册项。
+         *
+         * @param kind      能力种类
+         * @param owner     注册者
+         * @param filter    作用域过滤器；{@code null} 视为 {@link ScopeFilter#ALL}
+         * @param predicate 附加条件；可为 {@code null}
+         * @param subType   子类型过滤；可为 {@code null}
+         * @param payload   载荷
+         */
+        public Entry(Kind kind,
+                     PluginFiber owner,
+                     ScopeFilter filter,
+                     java.util.function.Predicate<Object> predicate,
+                     String subType,
+                     Object payload) {
+            this.kind = kind;
+            this.owner = owner;
+            this.filter = filter == null ? ScopeFilter.ALL : filter;
+            this.predicate = predicate;
+            this.subType = subType;
+            this.payload = payload;
         }
 
         /**
@@ -174,7 +202,7 @@ public final class RegistrationTable {
             }
             // 运行时没有该插件的记录（例如测试里直接往注册表塞条目）时放行，
             // 与「无配置即按元数据默认值」的语义一致
-            return runtimeScopes.apply(owner.id())
+            return runtimeScopes.apply(owner.getId())
                     .map(scope -> scope.matches(groupId))
                     .orElse(true);
         }
@@ -211,7 +239,7 @@ public final class RegistrationTable {
      * @return 撤销句柄；调用后从对应桶中移除该条目
      */
     public com.yuier.yuni.plugin.api.Disposable add(Entry entry) {
-        List<Entry> bucket = bucketOf(entry.kind());
+        List<Entry> bucket = bucketOf(entry.getKind());
         bucket.add(entry);
         // 撤销时只做移除；桶是 CopyOnWriteArrayList，remove 是安全且幂等的
         return () -> bucket.remove(entry);
@@ -253,7 +281,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> commandEntries() {
+    public List<Entry> getCommandEntries() {
         return entriesOf(Kind.COMMAND);
     }
 
@@ -262,7 +290,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> messageEntries() {
+    public List<Entry> getMessageEntries() {
         return entriesOf(Kind.MESSAGE);
     }
 
@@ -271,7 +299,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> messageSentEntries() {
+    public List<Entry> getMessageSentEntries() {
         return entriesOf(Kind.MESSAGE_SENT);
     }
 
@@ -280,7 +308,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> noticeEntries() {
+    public List<Entry> getNoticeEntries() {
         return entriesOf(Kind.NOTICE);
     }
 
@@ -289,7 +317,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> requestEntries() {
+    public List<Entry> getRequestEntries() {
         return entriesOf(Kind.REQUEST);
     }
 
@@ -298,7 +326,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> metaEntries() {
+    public List<Entry> getMetaEntries() {
         return entriesOf(Kind.META);
     }
 
@@ -307,7 +335,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> scheduleEntries() {
+    public List<Entry> getScheduleEntries() {
         return entriesOf(Kind.SCHEDULE);
     }
 
@@ -316,7 +344,7 @@ public final class RegistrationTable {
      *
      * @return 不可变快照
      */
-    public List<Entry> serviceEntries() {
+    public List<Entry> getServiceEntries() {
         return entriesOf(Kind.SERVICE);
     }
 
@@ -327,7 +355,7 @@ public final class RegistrationTable {
      *
      * @return 总数
      */
-    public int totalSize() {
+    public int getTotalSize() {
         int total = 0;
         for (Kind kind : Kind.values()) {
             total += bucketOf(kind).size();
@@ -364,7 +392,7 @@ public final class RegistrationTable {
         java.util.Set<Kind> kinds = java.util.EnumSet.noneOf(Kind.class);
         for (Kind kind : Kind.values()) {
             for (Entry entry : bucketOf(kind)) {
-                if (entry.owner() == owner) {
+                if (entry.getOwner() == owner) {
                     kinds.add(kind);
                     break;
                 }

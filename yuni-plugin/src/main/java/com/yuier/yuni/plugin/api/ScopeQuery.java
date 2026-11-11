@@ -18,14 +18,14 @@ import java.util.List;
  * <p>本服务把该查询收敛为一个稳定的插件侧契约：</p>
  * <pre>{@code
  * // 向「启用了本插件的群」广播
- * ScopeQuery scope = ctx.scope();
+ * ScopeQuery scope = ctx.getScope();
  * for (BotGroupInfo group : groupList) {
  *     if (!scope.isEnabledIn(group.getGroupId())) continue;   // 尊重群粒度启停
- *     ctx.sender().group(group.getGroupId()).text(文案).send();
+ *     ctx.getSender().group(group.getGroupId()).text(文案).send();
  * }
  * }</pre>
  *
- * @see YuniContext#scope()
+ * @see YuniContext#getScope()
  */
 public interface ScopeQuery {
 
@@ -48,7 +48,7 @@ public interface ScopeQuery {
      *
      * @return 群号列表，不可变
      */
-    List<Long> enabledGroups();
+    List<Long> getEnabledGroups();
 
     /**
      * 当前插件的<b>全局开关</b>是否处于开启状态（不考虑群例外）。
@@ -58,7 +58,7 @@ public interface ScopeQuery {
      *
      * <p>典型用途：主动插件要决定「是按群逐个判断，还是可以一次广播到所有群」。</p>
      * <p><b>注意</b>：返回 {@code true} 不等于「每个群都生效」——可能仍有群例外。
-     * 要拿到「实际在哪些群生效」请用 {@link #enabledGroups()}；
+     * 要拿到「实际在哪些群生效」请用 {@link #getEnabledGroups()}；
      * 要对单个群下结论请用 {@link #isEnabledIn(long)}。</p>
      *
      * @return 全局默认生效时返回 {@code true}

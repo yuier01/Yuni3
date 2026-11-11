@@ -1,7 +1,6 @@
 package com.yuier.yuni.plugin.api;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 /**
  * 插件对外的运行状态。
@@ -27,10 +26,9 @@ import lombok.experimental.Accessors;
  * <p>一个插件可以同时是 ACTIVE 且在某个群里不生效（群粒度启停）。反过来，
  * 非 ACTIVE 的插件在任何群里都不生效。</p>
  *
- * @see PluginView#state()
+ * @see PluginView#getState()
  */
 @Getter
-@Accessors(fluent = true)
 public enum PluginState {
 
     /**
@@ -55,7 +53,7 @@ public enum PluginState {
      * {@code apply(ctx)} 抛出异常，插件不可用。
      *
      * <p>已建立的 Effect 已被回滚，因此不会出现「标记为失败但监听器仍在工作」
-     * 的半初始化状态。失败原因见 {@link PluginView#failureSummary()}。</p>
+     * 的半初始化状态。失败原因见 {@link PluginView#getFailureSummary()}。</p>
      */
     FAILED("加载失败"),
 

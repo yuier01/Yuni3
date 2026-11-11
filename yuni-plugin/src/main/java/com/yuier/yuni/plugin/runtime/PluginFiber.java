@@ -3,7 +3,6 @@ package com.yuier.yuni.plugin.runtime;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,7 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * （见 {@code PluginRuntime#reloadModule}）。</p>
  *
  * <h2>树形结构</h2>
- * <p>{@link #children()} 是父 Fiber 挂载的子 Fiber。子 Fiber 随父 Fiber 一同
+ * <p>{@link #getChildren()} 是父 Fiber 挂载的子 Fiber。子 Fiber 随父 Fiber 一同
  * dispose。这是「一个复杂插件拆成多个模块」与「替代现行『A 插件的 enable 回调里
  * 启停 B 插件』耦合写法」的基础设施。</p>
  *
@@ -53,7 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Effect 的线程安全由 {@link EffectRegistry} 负责。</p>
  *
  * <p>{@link #disposed} 是独立的 volatile 标志，先于状态迁移置位，
- * 供幂等判定与插件侧 {@code ctx.disposed()} 使用。并发调用
+ * 供幂等判定与插件侧 {@code ctx.isDisposed()} 使用。并发调用
  * {@link #dispose()} 时，重复的清理由 {@link EffectRegistry#disposeAll()}
  * 自身的封存 CAS 兜住。</p>
  *
@@ -61,7 +60,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * @see EffectRegistry
  */
 @Getter
-@Accessors(fluent = true)
 public final class PluginFiber {
 
     /** 插件的稳定标识（模块名 + 插件名），用于日志与管理端展示。 */
@@ -108,15 +106,15 @@ public final class PluginFiber {
      * 是否已调用过 {@link #dispose()}。
      *
      * <p>两个用途：一是作为卸载的<b>幂等闸门</b>（见 {@link #dispose()} 开头的判定）；
-     * 二是经 {@link com.yuier.yuni.plugin.api.YuniContext#disposed()} 暴露给插件，
+     * 二是经 {@link com.yuier.yuni.plugin.api.YuniContext#isDisposed()} 暴露给插件，
      * 供异步回调判断「我是否已被卸载」，避免继续操作已释放的资源。</p>
      *
      * <p><b>注意它先于状态迁移置位</b>：进入卸载流程时就变为 {@code true}，
-     * 而此时 {@link #state()} 还是 {@link FiberState#UNLOADING}。
+     * 而此时 {@link #getState()} 还是 {@link FiberState#UNLOADING}。
      * 所以本标志回答的是「是否已<b>开始</b>卸载」；
-     * 「是否已卸载<b>完毕</b>」要问 {@code state() == DISPOSED}。</p>
+     * 「是否已卸载<b>完毕</b>」要问 {@code getState() == DISPOSED}。</p>
      *
-     * <p>访问器 {@code disposed()} 由 Lombok {@link Getter} 生成
+     * <p>访问器 {@code isDisposed()} 由 Lombok {@link Getter} 生成
      * （类上使用 {@code @Accessors(fluent = true)}，与其余访问器命名一致）。</p>
      */
     @Getter
@@ -140,7 +138,7 @@ public final class PluginFiber {
     // ==================== 身份 ====================
 
     /*
-     * id() / plugin() / metadata() / classLoader() 由类上的
+     * getId() / getPlugin() / getMetadata() / getClassLoader() 由类上的
      * @Getter + @Accessors(fluent) 生成（字段注释已说明各自语义）。
      */
 
@@ -151,7 +149,7 @@ public final class PluginFiber {
      *
      * @return 状态枚举
      */
-    public FiberState state() {
+    public FiberState getState() {
         return state.get();
     }
 
@@ -202,7 +200,7 @@ public final class PluginFiber {
      * 原子地把状态从 {@link FiberState#LOADING} 迁移到 {@link FiberState#FAILED}，
      * 并记录失败原因。
      *
-     * <p>顺序是「先迁移状态、再写原因」：这样 {@link #failureCause()} 的契约
+     * <p>顺序是「先迁移状态、再写原因」：这样 {@link #getFailureCause()} 的契约
      * （非 FAILED 时为空）始终成立。代价是两步之间若被读到，会看到
      * FAILED 但原因为空——那只影响诊断文案显示「(未记录)」，不影响状态正确性。</p>
      *
@@ -222,7 +220,7 @@ public final class PluginFiber {
      *
      * @return 失败原因；非 FAILED 状态时为空
      */
-    public java.util.Optional<Throwable> failureCause() {
+    public java.util.Optional<Throwable> getFailureCause() {
         return java.util.Optional.ofNullable(failureCause.get());
     }
 
@@ -251,13 +249,13 @@ public final class PluginFiber {
      *
      * @return 不可变的类型列表
      */
-    public List<Class<?>> pendingDependencies() {
+    public List<Class<?>> getPendingDependencies() {
         return Collections.unmodifiableList(new ArrayList<>(pendingDependencies));
     }
 
     // ==================== Effect ====================
 
-    /* effects() 由 @Getter 生成；下面是带计算的效应数量。 */
+    /* getEffects() 由 @Getter 生成；下面是带计算的效应数量。 */
 
     /**
      * 当前登记的 Effect 数量。
@@ -266,13 +264,13 @@ public final class PluginFiber {
      *
      * @return 数量
      */
-    public int effectCount() {
+    public int getEffectCount() {
         return effects.size();
     }
 
     // ==================== 树结构 ====================
 
-    /* parent() 由 @Getter 生成。 */
+    /* getParent() 由 @Getter 生成。 */
 
     /**
      * 登记一个子 Fiber。
@@ -294,7 +292,7 @@ public final class PluginFiber {
      *
      * @return 不可变视图
      */
-    public List<PluginFiber> children() {
+    public List<PluginFiber> getChildren() {
         return Collections.unmodifiableList(children);
     }
 
@@ -305,10 +303,10 @@ public final class PluginFiber {
      *
      * @return 总数
      */
-    public int totalEffectCount() {
-        int total = effectCount();
+    public int getTotalEffectCount() {
+        int total = getEffectCount();
         for (PluginFiber child : children) {
-            total += child.totalEffectCount();
+            total += child.getTotalEffectCount();
         }
         return total;
     }
@@ -386,8 +384,8 @@ public final class PluginFiber {
      * @return 形如 {@code "fortune/Fortune[ACTIVE, effects=3]"}
      */
     public String describe() {
-        return id + "[" + state.get().displayName()
-                + ", effects=" + effectCount()
+        return id + "[" + state.get().getDisplayName()
+                + ", effects=" + getEffectCount()
                 + (children.isEmpty() ? "" : ", children=" + children.size()) + "]";
     }
 

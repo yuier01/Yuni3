@@ -11,12 +11,12 @@ import java.util.Optional;
  * <h2>子类型判定方式</h2>
  * <p>现行系统要求插件自己把 {@code rawJson} 反序列化成具体子类型再 {@code instanceof}
  * 判定（{@code PokeNotice} 因此解了两次 JSON、又在执行入口强转一次）。
- * 新系统中 {@link Event#subType()} 已由适配器填好，插件用字符串判定：</p>
+ * 新系统中 {@link Event#getSubType()} 已由适配器填好，插件用字符串判定：</p>
  * <pre>{@code
  * // 只关心戳一戳
  * ctx.onNotice("poke", (ev, reply) -> {
- *     if (!ev.targetId().map(t -> t == ev.selfId()).orElse(false)) return;
- *     reply.at(ev.userId()).text("戳我干嘛？");
+ *     if (!ev.getTargetId().map(t -> t == ev.getSelfId()).orElse(false)) return;
+ *     reply.at(ev.getUserId()).text("戳我干嘛？");
  * });
  * }</pre>
  *
@@ -37,7 +37,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 通知类型；未提供时为 {@code null}
      */
-    String noticeType();
+    String getNoticeType();
 
     /**
      * 通知的主体用户账号。
@@ -47,7 +47,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 用户 QQ 号；该子类型无主体时返回 {@code 0}
      */
-    long userId();
+    long getUserId();
 
     /**
      * 操作者账号。
@@ -57,7 +57,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 操作者 QQ 号；未提供时为空
      */
-    Optional<Long> operatorId();
+    Optional<Long> getOperatorId();
 
     /**
      * 戳一戳的目标账号。
@@ -67,7 +67,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 目标 QQ 号；非戳一戳子类型时为空
      */
-    default Optional<Long> targetId() {
+    default Optional<Long> getTargetId() {
         Object v = value("target_id").orElse(null);
         return v == null ? Optional.empty() : Optional.of(longValue("target_id"));
     }
@@ -77,7 +77,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 禁言秒数；{@code 0} 表示解除禁言；非禁言子类型时为空
      */
-    default Optional<Long> duration() {
+    default Optional<Long> getDuration() {
         return value("duration").map(v -> longValue("duration"));
     }
 
@@ -90,7 +90,7 @@ public interface NoticeEvent extends Event {
      * @return 全员禁言时返回 {@code true}
      */
     default boolean isWholeGroupBan() {
-        return "group_ban".equals(noticeType()) && userId() == 0L;
+        return "group_ban".equals(getNoticeType()) && getUserId() == 0L;
     }
 
     /**
@@ -99,9 +99,9 @@ public interface NoticeEvent extends Event {
      * @return {@code leave}（主动退群）/ {@code kick}（被踢）/ {@code kick_me}
      *         （机器人自己被踢）；非成员减少子类型时为空
      */
-    default Optional<String> decreaseSubType() {
-        return "group_decrease".equals(noticeType())
-                ? Optional.ofNullable(subType())
+    default Optional<String> getDecreaseSubType() {
+        return "group_decrease".equals(getNoticeType())
+                ? Optional.ofNullable(getSubType())
                 : Optional.empty();
     }
 
@@ -110,7 +110,7 @@ public interface NoticeEvent extends Event {
      *
      * @return 文件名；非文件上传子类型时为空
      */
-    default Optional<String> fileName() {
+    default Optional<String> getFileName() {
         return Optional.ofNullable(stringValue("file_name"));
     }
 }

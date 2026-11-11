@@ -171,7 +171,7 @@ class PluginLifecycleIntegrationTest {
         }
 
         @Override
-        public PluginMetadata metadata() {
+        public PluginMetadata getMetadata() {
             return PluginMetadata.of("多能力插件")
                     .version("0.0.1")
                     .description("同时贡献消息监听、定时任务与服务的测试插件")
@@ -182,7 +182,7 @@ class PluginLifecycleIntegrationTest {
         @Override
         public void apply(YuniContext ctx) {
             // 能力 1：消息监听
-            ctx.onMessage(ev -> ev.chain().containsText("ping"),
+            ctx.onMessage(ev -> ev.getChain().containsText("ping"),
                     (ev, reply) -> messageHits.incrementAndGet());
 
             // 能力 2：定时任务
@@ -203,19 +203,19 @@ class PluginLifecycleIntegrationTest {
         PluginFiber fiber = runtime.load(plugin, "test-module", null, null);
 
         // 加载成功，贡献了 4 类能力
-        assertEquals(FiberState.ACTIVE, fiber.state());
-        assertEquals(4, fiber.effectCount(), "应有 4 个 Effect：消息 + 定时 + 服务 + 自定义");
+        assertEquals(FiberState.ACTIVE, fiber.getState());
+        assertEquals(4, fiber.getEffectCount(), "应有 4 个 Effect：消息 + 定时 + 服务 + 自定义");
         // 注册表：消息 1 条；服务不进注册表（在 ServiceRegistry 里）
-        assertEquals(1, runtime.registrations().totalSize());
-        assertTrue(runtime.services().contains(MultiAbilityPlugin.Greeter.class));
+        assertEquals(1, runtime.getRegistrations().getTotalSize());
+        assertTrue(runtime.getServices().contains(MultiAbilityPlugin.Greeter.class));
 
         // 能力 1 生效：符合条件时处理器被调用
-        runtime.pipeline().onMessage(groupMessage("ping 一下"));
+        runtime.getPipeline().onMessage(groupMessage("ping 一下"));
         await(() -> plugin.messageHits.get() > 0, 3000);
         assertEquals(1, plugin.messageHits.get());
 
         // 条件不满足时不调用
-        runtime.pipeline().onMessage(groupMessage("无关内容"));
+        runtime.getPipeline().onMessage(groupMessage("无关内容"));
         await(() -> plugin.messageHits.get() > 1, 300);
         assertEquals(1, plugin.messageHits.get(), "条件不满足不应调用");
 
@@ -224,15 +224,15 @@ class PluginLifecycleIntegrationTest {
         assertTrue(plugin.scheduleHits.get() > 0, "定时任务应被执行");
 
         // 卸载：插件作者没有写任何清理代码
-        java.util.List<String> failures = runtime.unload(fiber.id());
+        java.util.List<String> failures = runtime.unload(fiber.getId());
 
         assertTrue(failures.isEmpty(), "清理不应失败: " + failures);
-        assertEquals(0, fiber.effectCount(), "Effect 必须归零");
-        assertEquals(0, runtime.registrations().totalSize(), "注册表必须清空");
-        assertTrue(!runtime.services().contains(MultiAbilityPlugin.Greeter.class),
+        assertEquals(0, fiber.getEffectCount(), "Effect 必须归零");
+        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
+        assertTrue(!runtime.getServices().contains(MultiAbilityPlugin.Greeter.class),
                 "提供的服务必须注销");
-        assertEquals(FiberState.DISPOSED, fiber.state());
-        assertEquals(0, runtime.fibers().pluginCount());
+        assertEquals(FiberState.DISPOSED, fiber.getState());
+        assertEquals(0, runtime.getFibers().getPluginCount());
     }
 
     @Test
@@ -240,7 +240,7 @@ class PluginLifecycleIntegrationTest {
     void abilitiesAreDerivableFromRegistrations() {
         PluginFiber fiber = runtime.load(new MultiAbilityPlugin(), null, null, null);
 
-        java.util.Set<RegistrationTable.Kind> kinds = runtime.registrations().kindsOf(fiber);
+        java.util.Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
 
         // 「这个插件是什么类型」由它注册了什么推导得出，而不是由它 extends 了什么声明
         assertTrue(kinds.contains(RegistrationTable.Kind.MESSAGE));
@@ -251,18 +251,18 @@ class PluginLifecycleIntegrationTest {
     @DisplayName("重复加载同一插件被拒绝，卸载后可重新加载")
     void reloadAfterUnloadIsAllowed() {
         PluginFiber first = runtime.load(new MultiAbilityPlugin(), "m", null, null);
-        assertTrue(runtime.fibers().byId(first.id()).isPresent());
+        assertTrue(runtime.getFibers().byId(first.getId()).isPresent());
 
         // 加载前未卸载 → 拒绝
         org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
                 () -> runtime.load(new MultiAbilityPlugin(), "m", null, null));
 
-        runtime.unload(first.id());
+        runtime.unload(first.getId());
 
         // 卸载后可以重新加载（热重载的基础）
         PluginFiber second = runtime.load(new MultiAbilityPlugin(), "m", null, null);
-        assertEquals(FiberState.ACTIVE, second.state());
-        assertEquals(1, runtime.fibers().pluginCount());
+        assertEquals(FiberState.ACTIVE, second.getState());
+        assertEquals(1, runtime.getFibers().getPluginCount());
     }
 
     @Test
@@ -280,7 +280,7 @@ class PluginLifecycleIntegrationTest {
 
         YuniPlugin child = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("子插件").build();
             }
 
@@ -292,7 +292,7 @@ class PluginLifecycleIntegrationTest {
 
         YuniPlugin parent = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("父插件").build();
             }
 
@@ -304,23 +304,23 @@ class PluginLifecycleIntegrationTest {
 
         PluginFiber parentFiber = runtime.load(parent, null, null, null);
 
-        assertEquals(FiberState.ACTIVE, parentFiber.state());
-        assertEquals(1, parentFiber.children().size());
-        assertTrue(runtime.services().contains(ChildService.class), "子插件的服务应已注册");
+        assertEquals(FiberState.ACTIVE, parentFiber.getState());
+        assertEquals(1, parentFiber.getChildren().size());
+        assertTrue(runtime.getServices().contains(ChildService.class), "子插件的服务应已注册");
 
         // 必须在卸载前持有子 Fiber 的引用：PluginFiber.dispose() 会清空 children 列表
         // （卸载顺序要求子先于父消失，清空是刻意的）
-        PluginFiber childFiber = parentFiber.children().get(0);
-        assertEquals(FiberState.ACTIVE, childFiber.state());
+        PluginFiber childFiber = parentFiber.getChildren().get(0);
+        assertEquals(FiberState.ACTIVE, childFiber.getState());
 
-        runtime.unload(parentFiber.id());
+        runtime.unload(parentFiber.getId());
 
-        assertEquals(FiberState.DISPOSED, childFiber.state(), "子插件应随父插件一同卸载");
+        assertEquals(FiberState.DISPOSED, childFiber.getState(), "子插件应随父插件一同卸载");
         // 子插件的服务也随其 Effect 撤销而注销：provide 是一条 Effect，
         // 父卸载 → 递归 dispose 子 Fiber → 执行子插件 provide 的 Disposer → 服务注销
-        assertTrue(!runtime.services().contains(ChildService.class),
+        assertTrue(!runtime.getServices().contains(ChildService.class),
                 "父卸载时子插件提供的服务必须随之注销，实际剩余: "
-                        + runtime.services().registeredTypes());
+                        + runtime.getServices().getRegisteredTypes());
     }
 
     @Test
@@ -339,7 +339,7 @@ class PluginLifecycleIntegrationTest {
         YuniPlugin[] childRef = new YuniPlugin[1];
         childRef[0] = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("独立子插件").build();
             }
 
@@ -351,7 +351,7 @@ class PluginLifecycleIntegrationTest {
 
         YuniPlugin parent = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("父插件2").build();
             }
 
@@ -362,13 +362,13 @@ class PluginLifecycleIntegrationTest {
         };
 
         runtime.load(parent, null, null, null);
-        assertTrue(runtime.services().contains(ChildService.class));
+        assertTrue(runtime.getServices().contains(ChildService.class));
 
         // 单独卸载子插件（不经父）：服务应随之注销
         runtime.unload("独立子插件");
-        assertTrue(runtime.services().registeredTypes().isEmpty(),
+        assertTrue(runtime.getServices().getRegisteredTypes().isEmpty(),
                 "子插件单独卸载后其服务必须注销，实际剩余: "
-                        + runtime.services().registeredTypes());
+                        + runtime.getServices().getRegisteredTypes());
     }
 
     @Test
@@ -377,7 +377,7 @@ class PluginLifecycleIntegrationTest {
         // 一个必失败的插件
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("必失败插件").build();
             }
 
@@ -390,7 +390,7 @@ class PluginLifecycleIntegrationTest {
         // 一个缺依赖的插件
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("缺依赖插件").build();
             }
 

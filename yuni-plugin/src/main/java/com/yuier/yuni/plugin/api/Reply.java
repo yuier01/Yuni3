@@ -165,12 +165,12 @@ public interface Reply {
     /**
      * 发送本消息并返回消息 ID。
      *
-     * <p>便捷方法，等价 {@code send().messageId()}。</p>
+     * <p>便捷方法，等价 {@code send().getMessageId()}。</p>
      *
      * @return 消息 ID；发送失败时返回 {@code 0}
      */
     default long sendAndGetId() {
-        return send().messageId();
+        return send().getMessageId();
     }
 
     /**
@@ -195,20 +195,20 @@ public interface Reply {
          *
          * @return 成功返回 {@code true}
          */
-        boolean success();
+        boolean isSuccess();
 
         /**
          * 消息 ID。
          *
          * @return 成功时为 OneBot 消息 ID；失败时为 {@code 0}
          */
-        long messageId();
+        long getMessageId();
 
         /**
          * 失败原因。
          *
          * @return 失败描述；成功时为空
          */
-        java.util.Optional<String> errorMessage();
+        java.util.Optional<String> getErrorMessage();
     }
 }

@@ -78,9 +78,9 @@ class EventPipelineTest {
         botApp.setCommandFlag("/");
 
         commandDispatcher = new CommandDispatcher(
-                runtime.registrations(), bot, botApp, CommandDispatcher.permissiveResolver());
+                runtime.getRegistrations(), bot, botApp, CommandDispatcher.permissiveResolver());
         pipeline = new EventPipeline(
-                runtime.registrations(), runtime, adapter, commandDispatcher);
+                runtime.getRegistrations(), runtime, adapter, commandDispatcher);
     }
 
     /**
@@ -143,7 +143,7 @@ class EventPipelineTest {
         AtomicInteger hits = new AtomicInteger();
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
-                ctx.onMessage(ev -> ev.chain().containsText("你好"),
+                ctx.onMessage(ev -> ev.getChain().containsText("你好"),
                         (ev, reply) -> hits.incrementAndGet())), null, null, null);
 
         // 条件不满足：不执行
@@ -208,14 +208,14 @@ class EventPipelineTest {
         PluginFiber outOfScope = runtime.load(
                 YuniPlugin.of("排除群插件", ctx -> { }), null, null, null);
 
-        runtime.registrations().add(new RegistrationTable.Entry(
+        runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, inScope,
                 com.yuier.yuni.plugin.api.ScopeFilter.onlyGroups(999L),
                 null, null,
                 (com.yuier.yuni.plugin.api.handler.NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
-        runtime.registrations().add(new RegistrationTable.Entry(
+        runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, outOfScope,
                 com.yuier.yuni.plugin.api.ScopeFilter.excludeGroups(999L),
                 null, null,
@@ -261,7 +261,7 @@ class EventPipelineTest {
         // 插件通过正常的 ctx API 注册处理器——不手工构造注册项
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("可启停插件").defaultEnable(true).build();
             }
 
@@ -271,7 +271,7 @@ class EventPipelineTest {
             }
         }, "mymod", null, null);
 
-        String pluginId = fiber.id();
+        String pluginId = fiber.getId();
         long groupId = 123L;
 
         // 配置前：默认启用，事件应当被投递
@@ -280,8 +280,8 @@ class EventPipelineTest {
         assertEquals(1, hits.get(), "默认启用时应收到事件");
 
         // 管理端关闭这个群
-        runtime.admin().setEnabled(pluginId, groupId, false, true);
-        assertFalse(runtime.admin().isEnabledIn(pluginId, groupId));
+        runtime.getAdmin().setEnabled(pluginId, groupId, false, true);
+        assertFalse(runtime.getAdmin().isEnabledIn(pluginId, groupId));
 
         // 配置后：同一群的事件不应再投递。
         // 这一条曾经失败——PluginContext 注册时把 ScopeFilter 写死为 ALL，
@@ -297,7 +297,7 @@ class EventPipelineTest {
         assertEquals(2, hits.get(), "其他群的投递不应受影响");
 
         // 重新开启后恢复投递
-        runtime.admin().setEnabled(pluginId, groupId, true, true);
+        runtime.getAdmin().setEnabled(pluginId, groupId, true, true);
         pipeline.onNotice(groupBanNotice(groupId));
         await(() -> hits.get() > 2, 2000);
         assertEquals(3, hits.get(), "重新开启后应恢复投递");
@@ -310,7 +310,7 @@ class EventPipelineTest {
 
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("全局可关插件").defaultEnable(true).build();
             }
 
@@ -320,8 +320,8 @@ class EventPipelineTest {
             }
         }, "mymod", null, null);
 
-        runtime.admin().setGlobalEnabled(fiber.id(), false, true);
-        assertFalse(runtime.admin().isGloballyEnabled(fiber.id()));
+        runtime.getAdmin().setGlobalEnabled(fiber.getId(), false, true);
+        assertFalse(runtime.getAdmin().isGloballyEnabled(fiber.getId()));
 
         pipeline.onNotice(groupBanNotice(123L));
         pipeline.onNotice(groupBanNotice(999L));
@@ -354,7 +354,7 @@ class EventPipelineTest {
 
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("失败插件").build();
             }
 
@@ -365,7 +365,7 @@ class EventPipelineTest {
             }
         }, null, null, null);
 
-        assertEquals(com.yuier.yuni.plugin.runtime.FiberState.FAILED, fiber.state());
+        assertEquals(com.yuier.yuni.plugin.runtime.FiberState.FAILED, fiber.getState());
 
         pipeline.onMessage(groupMessage("任意消息"));
         await(() -> hits.get() > 0, 300);
@@ -461,7 +461,7 @@ class EventPipelineTest {
 
         // 模式插件：匹配任意含「测试」的消息
         runtime.load(YuniPlugin.of("模式插件", ctx ->
-                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
 
         CommandNode tree = CommandNode.builder("测试").build();
@@ -483,7 +483,7 @@ class EventPipelineTest {
         AtomicInteger patternRuns = new AtomicInteger();
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
-                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
 
         CommandNode tree = CommandNode.builder("测试").build();
@@ -553,13 +553,13 @@ class EventPipelineTest {
         // 注入一个「拥有 ADMIN」的权限判定，并用它构造独立的分发器与流水线。
         // 注意处理器必须绑到这个分发器上——处理器绑定表是分发器私有的。
         CommandDispatcher adminDispatcher = new CommandDispatcher(
-                runtime.registrations(), bot, botApp,
+                runtime.getRegistrations(), bot, botApp,
                 (userId, groupId, pluginId) -> UserPermission.ADMIN);
         com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0),
                 (event, reply) -> runs.incrementAndGet());
 
         EventPipeline adminPipeline = new EventPipeline(
-                runtime.registrations(), runtime, adapter, adminDispatcher);
+                runtime.getRegistrations(), runtime, adapter, adminDispatcher);
 
         adminPipeline.onMessage(groupMessage("/测试 管理"));
 
@@ -573,7 +573,7 @@ class EventPipelineTest {
         AtomicInteger patternRuns = new AtomicInteger();
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
-                ctx.onMessage(ev -> ev.chain().containsText("测试"),
+                ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
 
         // 只声明命令树，不绑定任何处理器
@@ -671,8 +671,8 @@ class EventPipelineTest {
         PluginFiber fiber = runtime.load(YuniPlugin.of("临时插件", ctx ->
                 ctx.onMessage((ev, reply) -> hits.incrementAndGet())), null, null, null);
 
-        runtime.unload(fiber.id());
-        assertEquals(0, runtime.registrations().totalSize());
+        runtime.unload(fiber.getId());
+        assertEquals(0, runtime.getRegistrations().getTotalSize());
 
         pipeline.onMessage(groupMessage("任意"));
         await(() -> hits.get() > 0, 300);
@@ -686,7 +686,7 @@ class EventPipelineTest {
         // 而单元测试里没有 Spring 容器。它必须给出可操作的错误信息，
         // 否则在插件里表现为「命令莫名其妙不生效」，极难定位。
         CommandDispatcher noBotApp = new CommandDispatcher(
-                runtime.registrations(), bot, null, CommandDispatcher.permissiveResolver());
+                runtime.getRegistrations(), bot, null, CommandDispatcher.permissiveResolver());
 
         CommandNode tree = CommandNode.builder("测试").build();
         runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
@@ -696,7 +696,7 @@ class EventPipelineTest {
         // 因此这里绕过它，单独断言底层行为
         var adapted = adapter.adapt(groupMessage("/测试"));
         var engineEvent = new YuniMessageEvent();
-        engineEvent.setMessageChain(adapted.chain() instanceof
+        engineEvent.setMessageChain(adapted.getChain() instanceof
                 com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view
                 ? buildChain(view) : new MessageChain());
         engineEvent.setMessageType("group");
@@ -720,7 +720,7 @@ class EventPipelineTest {
     private static MessageChain buildChain(
             com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
         MessageChain chain = new MessageChain();
-        chain.addAll(view.rawSegments());
+        chain.addAll(view.getRawSegments());
         return chain;
     }
 
@@ -739,15 +739,15 @@ class EventPipelineTest {
         assertTrue(commandDispatcher.handlerOf(tree).isPresent());
         assertFalse(commandDispatcher.handlerOf(tree.getChildren().get(0)).isPresent(),
                 "处理器绑定是逐节点的，不应自动下推到子节点");
-        assertEquals(1, commandDispatcher.handlerCount());
+        assertEquals(1, commandDispatcher.getHandlerCount());
 
         // 给子节点也绑上
         com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0), (event, reply) -> { });
-        assertEquals(2, commandDispatcher.handlerCount());
+        assertEquals(2, commandDispatcher.getHandlerCount());
 
         commandDispatcher.unbindHandler(tree);
         assertFalse(commandDispatcher.handlerOf(tree).isPresent());
-        assertEquals(1, commandDispatcher.handlerCount(), "解绑根节点不应影响子节点");
+        assertEquals(1, commandDispatcher.getHandlerCount(), "解绑根节点不应影响子节点");
     }
 
     @Test

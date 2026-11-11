@@ -106,16 +106,16 @@ class CoreEventAdapterTest {
                 new CoreMessageChainView(messageEvent("group", 123L).getMessageChain(), jsonCodec),
                 reply);
 
-        assertEquals(1700000000L, event.time());
-        assertEquals(10000L, event.selfId());
-        assertEquals(123L, event.groupId().orElseThrow());
-        assertEquals("group", event.messageType());
+        assertEquals(1700000000L, event.getTime());
+        assertEquals(10000L, event.getSelfId());
+        assertEquals(123L, event.getGroupId().orElseThrow());
+        assertEquals("group", event.getMessageType());
         assertTrue(event.isGroup());
         assertFalse(event.isPrivate());
-        assertEquals(555L, event.messageId());
-        assertEquals(10001L, event.userId());
-        assertEquals("你好", event.chain().plainText());
-        assertEquals("原始消息", event.rawMessage());
+        assertEquals(555L, event.getMessageId());
+        assertEquals(10001L, event.getUserId());
+        assertEquals("你好", event.getChain().getPlainText());
+        assertEquals("原始消息", event.getRawMessage());
     }
 
     @Test
@@ -124,14 +124,14 @@ class CoreEventAdapterTest {
         CoreMessageEvent event = new CoreMessageEvent(
                 messageEvent("group", 123L), null, reply);
 
-        MessageEvent.Sender sender = event.sender();
-        assertEquals(10001L, sender.userId());
-        assertEquals("昵称", sender.nickname());
-        assertEquals("群名片", sender.card().orElseThrow());
-        assertEquals("admin", sender.role().orElseThrow());
-        assertEquals("头衔", sender.title().orElseThrow());
+        MessageEvent.Sender sender = event.getSender();
+        assertEquals(10001L, sender.getUserId());
+        assertEquals("昵称", sender.getNickname());
+        assertEquals("群名片", sender.getCard().orElseThrow());
+        assertEquals("admin", sender.getRole().orElseThrow());
+        assertEquals("头衔", sender.getTitle().orElseThrow());
         // 群名片优先
-        assertEquals("群名片", sender.displayName());
+        assertEquals("群名片", sender.getDisplayName());
         assertTrue(sender.isAdmin());
         assertFalse(sender.isOwner());
     }
@@ -144,10 +144,10 @@ class CoreEventAdapterTest {
 
         CoreMessageEvent event = new CoreMessageEvent(source, null, reply);
 
-        assertEquals(10001L, event.sender().userId(), "回退到事件顶层的 userId");
-        assertEquals("10001", event.sender().displayName());
+        assertEquals(10001L, event.getSender().getUserId(), "回退到事件顶层的 userId");
+        assertEquals("10001", event.getSender().getDisplayName());
         assertTrue(event.isPrivate());
-        assertTrue(event.sender().role().isEmpty());
+        assertTrue(event.getSender().getRole().isEmpty());
     }
 
     @Test
@@ -155,9 +155,9 @@ class CoreEventAdapterTest {
     void messageChainNullBecomesEmptyView() {
         CoreMessageEvent event = new CoreMessageEvent(messageEvent("group", 1L), null, reply);
 
-        assertEquals("", event.chain().plainText());
-        assertEquals(0, event.chain().size());
-        assertTrue(event.chain().isPlainText());
+        assertEquals("", event.getChain().getPlainText());
+        assertEquals(0, event.getChain().size());
+        assertTrue(event.getChain().isPlainText());
     }
 
     @Test
@@ -168,7 +168,7 @@ class CoreEventAdapterTest {
 
         CoreMessageEvent event = new CoreMessageEvent(source, null, reply);
 
-        assertEquals("{\"raw\":true}", event.rawJson());
+        assertEquals("{\"raw\":true}", event.getRawJson());
         assertEquals("原始消息", event.stringValue("raw_message"));
         assertEquals(555L, event.longValue("message_id"));
         assertEquals(10001L, event.longValue("user_id"));
@@ -192,10 +192,10 @@ class CoreEventAdapterTest {
 
         CoreMessageSentEvent event = new CoreMessageSentEvent(source, null, reply);
 
-        assertEquals(10000L, event.userId());
-        assertEquals(666L, event.messageId());
+        assertEquals(10000L, event.getUserId());
+        assertEquals(666L, event.getMessageId());
         assertTrue(event.isGroup());
-        assertEquals(123L, event.groupId().orElseThrow());
+        assertEquals(123L, event.getGroupId().orElseThrow());
         assertEquals(10000L, event.longValue("user_id"));
     }
 
@@ -234,12 +234,12 @@ class CoreEventAdapterTest {
         CoreLifecycleEvents.CoreNoticeEvent event = new CoreLifecycleEvents.CoreNoticeEvent(pokeNotice("poke"), reply);
 
         // 这是 PokeNotice 插件在现行系统里必须自己解 rawJson 才能得到的信息
-        assertEquals("poke", event.subType());
-        assertEquals("notify", event.noticeType());
+        assertEquals("poke", event.getSubType());
+        assertEquals("notify", event.getNoticeType());
         assertEquals("poke", event.stringValue("sub_type"));
-        assertEquals(10001L, event.userId());
-        assertEquals(10002L, event.operatorId().orElseThrow());
-        assertEquals(123L, event.groupId().orElseThrow());
+        assertEquals(10001L, event.getUserId());
+        assertEquals(10002L, event.getOperatorId().orElseThrow());
+        assertEquals(123L, event.getGroupId().orElseThrow());
     }
 
     @Test
@@ -249,7 +249,7 @@ class CoreEventAdapterTest {
 
         // target_id 是戳一戳处理的必要前置（判断是否戳的机器人自己）
         assertEquals(10000L, event.longValue("target_id"));
-        assertEquals(10000L, event.targetId().orElseThrow());
+        assertEquals(10000L, event.getTargetId().orElseThrow());
     }
 
     @Test
@@ -261,10 +261,10 @@ class CoreEventAdapterTest {
         // detector 未参与匹配（matchedEvent 为 null）时回退到 notice_type。
         // 这样 group_ban / group_recall 这类没有独立 sub_type 的事件，
         // 插件的 ev.is("group_ban") 仍然成立——见下一个用例。
-        assertEquals("notify", event.subType());
+        assertEquals("notify", event.getSubType());
         assertFalse(event.is("poke"));
-        assertEquals("notify", event.noticeType());
-        assertEquals(10001L, event.userId());
+        assertEquals("notify", event.getNoticeType());
+        assertEquals(10001L, event.getUserId());
         // 基础事件未携带子类型特有字段
         assertTrue(event.value("target_id").isEmpty());
     }
@@ -301,11 +301,11 @@ class CoreEventAdapterTest {
         add.setFlag("flag-add");
 
         CoreLifecycleEvents.CoreRequestEvent addEvent = new CoreLifecycleEvents.CoreRequestEvent(add, reply);
-        assertEquals("add", addEvent.subType());
+        assertEquals("add", addEvent.getSubType());
         assertTrue(addEvent.isAddGroup());
         assertFalse(addEvent.isInviteToGroup());
-        assertEquals("我要加群", addEvent.comment().orElseThrow());
-        assertEquals("flag-add", addEvent.flag());
+        assertEquals("我要加群", addEvent.getComment().orElseThrow());
+        assertEquals("flag-add", addEvent.getFlag());
 
         InviteToGroupRequest invite = new InviteToGroupRequest();
         invite.setTime(2L);
@@ -317,7 +317,7 @@ class CoreEventAdapterTest {
         invite.setFlag("flag-invite");
 
         CoreLifecycleEvents.CoreRequestEvent inviteEvent = new CoreLifecycleEvents.CoreRequestEvent(invite, reply);
-        assertEquals("invite", inviteEvent.subType());
+        assertEquals("invite", inviteEvent.getSubType());
         assertFalse(inviteEvent.isAddGroup());
         assertTrue(inviteEvent.isInviteToGroup());
     }
@@ -337,7 +337,7 @@ class CoreEventAdapterTest {
         assertTrue(event.isFriendRequest());
         assertFalse(event.isGroupRequest());
         // 无群号的加好友请求：groupId 为空
-        assertTrue(event.groupId().isEmpty());
+        assertTrue(event.getGroupId().isEmpty());
     }
 
     // ==================== 元事件 ====================
@@ -358,9 +358,9 @@ class CoreEventAdapterTest {
         assertFalse(event.isLifecycle());
 
         // 这两项在现行 EventTranslator 里被丢弃，导致 HeartBeatEvent 拿不到间隔
-        assertEquals(30000L, event.heartbeatInterval().orElseThrow());
-        assertTrue(event.statusOnline());
-        assertTrue(event.statusGood());
+        assertEquals(30000L, event.getHeartbeatInterval().orElseThrow());
+        assertTrue(event.isStatusOnline());
+        assertTrue(event.isStatusGood());
     }
 
     @Test
@@ -373,9 +373,9 @@ class CoreEventAdapterTest {
 
         CoreLifecycleEvents.CoreMetaEvent event = new CoreLifecycleEvents.CoreMetaEvent(heartbeat, reply);
 
-        assertTrue(event.heartbeatInterval().isEmpty());
-        assertFalse(event.statusOnline());
-        assertFalse(event.statusGood());
+        assertTrue(event.getHeartbeatInterval().isEmpty());
+        assertFalse(event.isStatusOnline());
+        assertFalse(event.isStatusGood());
     }
 
     @Test
@@ -391,9 +391,9 @@ class CoreEventAdapterTest {
 
         assertTrue(event.isLifecycle());
         assertFalse(event.isHeartbeat());
-        assertEquals("connect", event.lifecyclePhase().orElseThrow());
+        assertEquals("connect", event.getLifecyclePhase().orElseThrow());
         // 元事件是连接层事件，不属于任何群——ScopeFilter 会看到 groupId 为空
-        assertTrue(event.groupId().isEmpty());
+        assertTrue(event.getGroupId().isEmpty());
     }
 
     // ==================== 匹配令牌 ====================
@@ -404,23 +404,23 @@ class CoreEventAdapterTest {
         CoreLifecycleEvents.CoreNoticeEvent event = new CoreLifecycleEvents.CoreNoticeEvent(pokeNotice("poke"), reply);
 
         // 初始未回填
-        assertEquals(null, event.matched());
+        assertEquals(null, event.getMatched());
 
         event.setMatched(new com.yuier.yuni.plugin.api.MatchToken() {
             @Override
-            public String type() {
+            public String getType() {
                 return "poke";
             }
 
             @Override
-            public Object frame() {
+            public Object getFrame() {
                 return null;
             }
         });
 
-        assertEquals("poke", event.matched().type());
-        assertTrue(event.matched().is("poke"));
-        assertFalse(event.matched().is("honor"));
+        assertEquals("poke", event.getMatched().getType());
+        assertTrue(event.getMatched().is("poke"));
+        assertFalse(event.getMatched().is("honor"));
     }
 
     // ==================== 公共字段访问 ====================
@@ -430,7 +430,7 @@ class CoreEventAdapterTest {
     void fieldsTableIsImmutable() {
         CoreLifecycleEvents.CoreNoticeEvent event = new CoreLifecycleEvents.CoreNoticeEvent(pokeNotice("poke"), reply);
 
-        Map<String, Object> fields = event.rawFields();
+        Map<String, Object> fields = event.getRawFields();
         assertEquals("notify", fields.get("notice_type"));
         org.junit.jupiter.api.Assertions.assertThrows(
                 UnsupportedOperationException.class,

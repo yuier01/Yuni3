@@ -1,7 +1,6 @@
 package com.yuier.yuni.plugin.api;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.Objects;
  * 插件元数据——插件的身份与展示信息。
  *
  * <h2>来源</h2>
- * <p>本对象由插件自己在 {@code YuniPlugin.metadata()} 中返回，<b>代码即唯一真相</b>。
+ * <p>本对象由插件自己在 {@code YuniPlugin.getMetadata()} 中返回，<b>代码即唯一真相</b>。
  * 现行系统把插件级元数据放在 jar 同级的 {@code metadata.json} 里，于是同一份信息
  * 有两处来源（代码里的类名 + json 里的 id），必然漂移。</p>
  *
@@ -22,10 +21,9 @@ import java.util.Objects;
  * <h2>不变性</h2>
  * <p>本类不可变。{@code Builder} 用于构造，{@link #build()} 后即冻结。</p>
  *
- * @see YuniPlugin#metadata()
+ * @see YuniPlugin#getMetadata()
  */
 @Getter
-@Accessors(fluent = true)
 public final class PluginMetadata {
 
     /** 插件显示名，用于日志与管理端展示；不应为空。 */
@@ -40,7 +38,7 @@ public final class PluginMetadata {
     /**
      * 使用提示，每项一条。
      *
-     * <p>此处保存的是调用方给出的原始列表；对外读取请用 {@link #tips()}，
+     * <p>此处保存的是调用方给出的原始列表；对外读取请用 {@link #getTips()}，
      * 它在列表为空时会回退为「只含描述的单元素列表」。</p>
      */
     private final List<String> tips;
@@ -95,8 +93,8 @@ public final class PluginMetadata {
     }
 
     /*
-     * name() / version() / description() / author() / dependencies() /
-     * defaultEnable() / buildIn() 由类上的 @Getter + @Accessors(fluent) 生成
+     * getName() / getVersion() / getDescription() / getAuthor() / dependencies() /
+     * isDefaultEnable() / isBuildIn() 由类上的 @Getter + @Accessors(fluent) 生成
      * ——对外契约是 record 风格的方法名，fluent getter 正好与之匹配。
      */
 
@@ -108,7 +106,7 @@ public final class PluginMetadata {
      *
      * @return 不可变的提示列表
      */
-    public List<String> tips() {
+    public List<String> getTips() {
         return tips.isEmpty() && !description.isEmpty()
                 ? List.of(description)
                 : tips;

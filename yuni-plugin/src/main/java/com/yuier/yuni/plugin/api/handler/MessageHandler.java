@@ -10,8 +10,8 @@ import com.yuier.yuni.plugin.api.event.MessageEvent;
  *
  * <h2>示例</h2>
  * <pre>{@code
- * ctx.onMessage(ev -> ev.chain().containsText("你好"),
- *               (ev, reply) -> reply.at(ev.userId()).text(" 你好呀～").send());
+ * ctx.onMessage(ev -> ev.getChain().containsText("你好"),
+ *               (ev, reply) -> reply.at(ev.getUserId()).text(" 你好呀～").send());
  * }</pre>
  *
  * <h2>线程模型</h2>

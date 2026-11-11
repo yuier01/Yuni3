@@ -52,14 +52,14 @@ import java.util.function.Predicate;
  * <pre>{@code
  * public void apply(YuniContext ctx) {
  *     // 1. 基础设施
- *     ctx.db().register(UserSteamId.class);
- *     SteamApiKey key = ctx.config().load("api_key.json", SteamApiKey.class);
+ *     ctx.getDb().register(UserSteamId.class);
+ *     SteamApiKey key = ctx.getConfig().load("api_key.json", SteamApiKey.class);
  *
  *     // 2. 定时任务
  *     ctx.schedule("0 0/5 * * * ?", () -> pollSteam(key));
  *
  *     // 3. 事件处理（条件与行为写在一起）
- *     ctx.onMessage(ev -> ev.chain().startsWithText() && ev.chain().containsText("/steam"),
+ *     ctx.onMessage(ev -> ev.getChain().startsWithText() && ev.getChain().containsText("/steam"),
  *                   (ev, reply) -> handleSteamCommand(ev, reply));
  *
  *     // 4. 自定义资源
@@ -87,25 +87,25 @@ public interface YuniContext {
      *
      * @return 作用域标识
      */
-    String scopeId();
+    String getScopeId();
 
     /**
      * 本插件的日志器。
      *
-     * <p>已带上插件名前缀，插件内应使用 {@code ctx.logger().info(...)}
+     * <p>已带上插件名前缀，插件内应使用 {@code ctx.getLogger().info(...)}
      * 而不是自建 {@code LoggerFactory.getLogger(...)}——这样日志格式统一，
      * 且能从日志反查是哪个插件输出的。</p>
      *
      * @return 日志器，永不为 {@code null}
      */
-    Logger logger();
+    Logger getLogger();
 
     /**
      * 本插件的元数据。
      *
      * @return 元数据，永不为 {@code null}
      */
-    PluginMetadata self();
+    PluginMetadata getSelf();
 
     // ==================== 事件注册 ====================
 
@@ -128,7 +128,7 @@ public interface YuniContext {
      * {@code execute()} 两个相距几十行的方法。</p>
      *
      * <pre>{@code
-     * ctx.onMessage(ev -> ev.chain().containsText("granbluefantasy.jp"),
+     * ctx.onMessage(ev -> ev.getChain().containsText("granbluefantasy.jp"),
      *               (ev, reply) -> reply.text("大家不要信，这是骑空士的陷阱！"));
      * }</pre>
      *
@@ -394,16 +394,16 @@ public interface YuniContext {
      * 取代现行插件直接依赖框架内部的 {@code PluginEnableProcessor}。</p>
      *
      * <pre>{@code
-     * ScopeQuery scope = ctx.scope();
+     * ScopeQuery scope = ctx.getScope();
      * for (BotGroupInfo group : bot.getGroupList().orElse(List.of())) {
      *     if (!scope.isEnabledIn(group.getGroupId())) continue;
-     *     ctx.sender().group(group.getGroupId()).text("...").send();
+     *     ctx.getSender().group(group.getGroupId()).text("...").send();
      * }
      * }</pre>
      *
      * @return 作用域查询服务，永不为 {@code null}
      */
-    ScopeQuery scope();
+    ScopeQuery getScope();
 
     /**
      * 插件管理服务——枚举、启停与重载插件。
@@ -419,12 +419,12 @@ public interface YuniContext {
      * 后者是管理端职责，不是插件间协作。</p>
      *
      * <pre>{@code
-     * PluginAdmin admin = ctx.plugins();
-     * for (PluginModuleView module : admin.modules()) {
-     *     for (PluginView plugin : module.plugins()) {
+     * PluginAdmin admin = ctx.getPlugins();
+     * for (PluginModuleView module : admin.getModules()) {
+     *     for (PluginView plugin : module.getPlugins()) {
      *         log.info("{} [{}] 在群 {} 生效={}",
-     *                 plugin.name(), plugin.state().displayName(),
-     *                 groupId, admin.isEnabledIn(plugin.id(), groupId));
+     *                 plugin.getName(), plugin.getState().getDisplayName(),
+     *                 groupId, admin.isEnabledIn(plugin.getId(), groupId));
      *     }
      * }
      * }</pre>
@@ -432,7 +432,7 @@ public interface YuniContext {
      * @return 插件管理服务，永不为 {@code null}
      * @see PluginAdmin
      */
-    PluginAdmin plugins();
+    PluginAdmin getPlugins();
 
     // ==================== 作用域状态 ====================
 
@@ -457,8 +457,8 @@ public interface YuniContext {
      *
      * ctx.onNotice("poke", (ev, reply) -> {
      *     PokeState st = ctx.state(PokeState.class);
-     *     int n = st.countPerUser.merge(ev.userId(), 1, Integer::sum) % MESSAGES.length;
-     *     reply.at(ev.userId()).text(MESSAGES[n]).send();
+     *     int n = st.countPerUser.merge(ev.getUserId(), 1, Integer::sum) % MESSAGES.length;
+     *     reply.at(ev.getUserId()).text(MESSAGES[n]).send();
      * });
      * }</pre>
      *
@@ -477,7 +477,7 @@ public interface YuniContext {
      *
      * @return 机器人实例
      */
-    com.yuier.yuni.core.bot.YuniBot bot();
+    com.yuier.yuni.core.bot.YuniBot getBot();
 
     /**
      * 消息发送门面。
@@ -486,13 +486,13 @@ public interface YuniContext {
      * {@code PluginUtils.sendPrivateMessage(...)}。</p>
      *
      * <pre>{@code
-     * ctx.sender().group(123456L).text("上线了").send();
-     * ctx.sender().privateChat(ctx.bot().getBotId()).text("自检完成").send();
+     * ctx.getSender().group(123456L).text("上线了").send();
+     * ctx.getSender().privateChat(ctx.getBot().getBotId()).text("自检完成").send();
      * }</pre>
      *
      * @return 发送门面，永不为 {@code null}
      */
-    Sender sender();
+    Sender getSender();
 
     /**
      * 插件数据访问入口（JDBI + SQLite）。
@@ -503,7 +503,7 @@ public interface YuniContext {
      *
      * @return 数据访问门面，永不为 {@code null}
      */
-    com.yuier.yuni.plugin.data.PluginDataService db();
+    com.yuier.yuni.plugin.data.PluginDataService getDb();
 
     /**
      * Redis 缓存门面。
@@ -512,7 +512,7 @@ public interface YuniContext {
      *
      * @return 缓存门面，永不为 {@code null}
      */
-    Cache cache();
+    Cache getCache();
 
     /**
      * 插件配置加载器。
@@ -522,7 +522,7 @@ public interface YuniContext {
      *
      * @return 配置加载器，永不为 {@code null}
      */
-    ConfigLoader config();
+    ConfigLoader getConfig();
 
     /**
      * HTTP 客户端。
@@ -532,7 +532,7 @@ public interface YuniContext {
      *
      * @return HTTP 门面，永不为 {@code null}
      */
-    Http http();
+    Http getHttp();
 
     /**
      * 权限判定服务。
@@ -542,17 +542,17 @@ public interface YuniContext {
      *
      * @return 权限服务，永不为 {@code null}
      */
-    PermissionService permission();
+    PermissionService getPermission();
 
     /**
      * 本插件的资源目录（jar 所在的父目录）。
      *
      * <p>取代现行 {@code PluginUtils.getPluginRootPath(Class)}。插件把字体、图片、
-     * 模板等资源放在这个目录下，用 {@code ctx.dataDir().resolve("img/...")} 访问。</p>
+     * 模板等资源放在这个目录下，用 {@code ctx.getDataDir().resolve("img/...")} 访问。</p>
      *
      * @return 插件资源目录
      */
-    Path dataDir();
+    Path getDataDir();
 
     // ==================== 挂载子插件 ====================
 
@@ -588,5 +588,5 @@ public interface YuniContext {
      *
      * @return 已卸载返回 {@code true}
      */
-    boolean disposed();
+    boolean isDisposed();
 }

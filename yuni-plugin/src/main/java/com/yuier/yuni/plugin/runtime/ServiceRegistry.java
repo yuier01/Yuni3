@@ -148,7 +148,7 @@ public final class ServiceRegistry {
      *
      * @return 不可变快照
      */
-    public java.util.Set<Class<?>> registeredTypes() {
+    public java.util.Set<Class<?>> getRegisteredTypes() {
         return java.util.Collections.unmodifiableSet(new java.util.LinkedHashSet<>(services.keySet()));
     }
 

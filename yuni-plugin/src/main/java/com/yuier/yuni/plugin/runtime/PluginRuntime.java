@@ -52,7 +52,7 @@ import java.util.Optional;
  *
  * <h2>能力范围</h2>
  * <p>本类已实现：模块加载（经 {@code PluginModuleLoader}）、依赖检查与推进、
- * {@code apply} 调用、索引登记、卸载、热重载、事件分发（经 {@link #pipeline()}）、
+ * {@code apply} 调用、索引登记、卸载、热重载、事件分发（经 {@link #getPipeline()}）、
  * 作用域查询与写入、{@link com.yuier.yuni.plugin.api.PluginAdmin} 适配。
  * 重构 P1–P6 已全部完成，本类不再有「待接线」的方法。</p>
  *
@@ -81,7 +81,7 @@ public final class PluginRuntime {
      *
      * <p>记录每个插件的群粒度启停例外，供三处使用：</p>
      * <ol>
-     *   <li>{@code ctx.scope()} 回答「本插件在某群是否生效」——
+     *   <li>{@code ctx.getScope()} 回答「本插件在某群是否生效」——
      *       主动插件（定时任务）没有事件上下文，框架无法替它施加过滤；</li>
      *   <li>事件分发给每个注册项合成一个过滤器；</li>
      *   <li>{@code PluginAdmin} 读写并在重启后从数据库恢复。</li>
@@ -145,10 +145,10 @@ public final class PluginRuntime {
     /** 事件分发流水线；首次访问时构造并缓存。 */
     private volatile com.yuier.yuni.plugin.runtime.dispatch.EventPipeline pipeline;
 
-    /** 命令分发器；由 {@link #pipeline()} 惰性构造。 */
+    /** 命令分发器；由 {@link #getPipeline()} 惰性构造。 */
     private volatile com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher commandDispatcher;
 
-    /** 事件适配工厂；由 {@link #pipeline()} 惰性构造。 */
+    /** 事件适配工厂；由 {@link #getPipeline()} 惰性构造。 */
     private volatile com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter eventAdapter;
 
     /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
@@ -303,10 +303,10 @@ public final class PluginRuntime {
              * 从而干扰 PluginAdmin.setEnabled 的默认值推导。
              */
             com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope baseline =
-                    toBaseline(id, filter, metadata.defaultEnable());
+                    toBaseline(id, filter, metadata.isDefaultEnable());
             if (baseline != null) {
                 baseScopeFilters.put(id, baseline);
-                if (filter.explicitGroupWhitelist().isPresent()) {
+                if (filter.getExplicitGroupWhitelist().isPresent()) {
                     // 记下白名单形态：仅用于 describeScope 的措辞
                     whitelistBaselines.add(id);
                 }
@@ -344,7 +344,7 @@ public final class PluginRuntime {
      * <ul>
      *   <li>{@code PluginAdmin.moduleIdOf} 查不到插件所属模块，
      *       于是管理视图里的 {@code moduleId} 是空的；</li>
-     *   <li>模块分组视图（{@code admin.modules()}）看不到这些插件——
+     *   <li>模块分组视图（{@code admin.getModules()}）看不到这些插件——
      *       它们明明已加载，却在「按模块看」的视角下消失。</li>
      * </ul>
      * <p>因此这里补一个「最小可用」的模块句柄。之后若
@@ -361,7 +361,7 @@ public final class PluginRuntime {
         synchronized (moduleHandles) {
             com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle existing =
                     fibers.module(moduleId).orElse(null);
-            if (existing != null && existing.jarFileName() != null) {
+            if (existing != null && existing.getJarFileName() != null) {
                 // 已经有携带完整信息（jar 名）的句柄——它由 loadModule 建立，不要覆盖
                 return;
             }
@@ -369,7 +369,7 @@ public final class PluginRuntime {
             /*
              * 收集本模块下的全部插件 ID。
              *
-             * 句柄的 pluginIds 决定 admin.modules() 能列出哪些插件
+             * 句柄的 pluginIds 决定 admin.getModules() 能列出哪些插件
              * （见 FiberRegistry.ofModule），因此必须带上，不能留空——
              * 留空会让「按模块看」的视角漏掉该插件。
              *
@@ -377,9 +377,9 @@ public final class PluginRuntime {
              * 因为 moduleIdOf 本身依赖模块句柄，此时可能还没建好（会死循环）。
              */
             java.util.List<String> pluginIds = new java.util.ArrayList<>();
-            for (PluginFiber fiber : fibers.all()) {
-                if (moduleId.equals(moduleIdOfRaw(fiber.id()))) {
-                    pluginIds.add(fiber.id());
+            for (PluginFiber fiber : fibers.getAll()) {
+                if (moduleId.equals(moduleIdOfRaw(fiber.getId()))) {
+                    pluginIds.add(fiber.getId());
                 }
             }
 
@@ -408,9 +408,9 @@ public final class PluginRuntime {
      * @return 模块 ID；无法判定时返回 {@code null}
      */
     private String moduleIdOfRaw(String pluginId) {
-        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.allModules()) {
-            if (handle.pluginIds().contains(pluginId)) {
-                return handle.moduleId();
+        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.getAllModules()) {
+            if (handle.getPluginIds().contains(pluginId)) {
+                return handle.getModuleId();
             }
         }
         // 退化为「标识前缀」判定：标识格式为 moduleId/name，因此前缀即模块
@@ -451,11 +451,11 @@ public final class PluginRuntime {
             String pluginId,
             com.yuier.yuni.plugin.api.ScopeFilter filter,
             boolean defaultEnabled) {
-        java.util.Optional<java.util.Set<Long>> whitelist = filter.explicitGroupWhitelist();
+        java.util.Optional<java.util.Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
         if (whitelist.isPresent()) {
             return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(false, whitelist.get());
         }
-        java.util.Optional<java.util.Set<Long>> blacklist = filter.explicitGroupBlacklist();
+        java.util.Optional<java.util.Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
         if (blacklist.isPresent()) {
             return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(true, blacklist.get());
         }
@@ -493,7 +493,7 @@ public final class PluginRuntime {
         /*
          * 用 CAS 抢占 PENDING → LOADING。
          *
-         * 这里曾写成「先检查 effects().isSealed()，再 markLoading()」，那是
+         * 这里曾写成「先检查 getEffects().isSealed()，再 markLoading()」，那是
          * check-then-act：两个并发 tryActivate 都能通过检查，于是同一个插件被
          * apply 两次（监听器、定时任务、数据库连接全部重复注册）。
          * 现在只有一个线程能拿到执行权。
@@ -509,7 +509,7 @@ public final class PluginRuntime {
          * 之间。此时登记表已封存，继续 apply 会让插件注册的一切被就地撤销——
          * 插件作者看到的是「代码跑了但什么也没生效」，很难排查，因此直接放弃。
          */
-        if (fiber.effects().isSealed()) {
+        if (fiber.getEffects().isSealed()) {
             return false;
         }
 
@@ -519,9 +519,9 @@ public final class PluginRuntime {
         ctx.bindRuntime(this);
 
         try {
-            fiber.plugin().apply(ctx);
+            fiber.getPlugin().apply(ctx);
             if (fiber.tryMarkActive()) {
-                log.info("插件已加载: {} | 贡献能力 {}", fiber.id(), registrations.kindsOf(fiber));
+                log.info("插件已加载: {} | 贡献能力 {}", fiber.getId(), registrations.kindsOf(fiber));
                 return true;
             }
 
@@ -531,7 +531,7 @@ public final class PluginRuntime {
              * dispose() 可能已经撤过一遍，rollbackEffects 是幂等的（封存 CAS 兜底）。
              */
             List<String> rollbackFailures = fiber.rollbackEffects();
-            log.warn("插件 {} 在 apply 期间被卸载，已放弃激活{}", fiber.id(),
+            log.warn("插件 {} 在 apply 期间被卸载，已放弃激活{}", fiber.getId(),
                     rollbackFailures.isEmpty() ? "" : "（回滚失败: " + rollbackFailures + "）");
             return false;
         } catch (Throwable t) {
@@ -539,9 +539,9 @@ public final class PluginRuntime {
             // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
             boolean marked = fiber.tryMarkFailed(t);
             if (marked) {
-                log.error("插件 {} 加载失败，已回滚其 Effect", fiber.id(), t);
+                log.error("插件 {} 加载失败，已回滚其 Effect", fiber.getId(), t);
             } else {
-                log.warn("插件 {} 加载失败，但期间已被卸载，状态不再改为 FAILED", fiber.id(), t);
+                log.warn("插件 {} 加载失败，但期间已被卸载，状态不再改为 FAILED", fiber.getId(), t);
             }
 
             // 回滚：撤销已建立的 Effect，避免「标记为失败但监听器仍在工作」。
@@ -549,7 +549,7 @@ public final class PluginRuntime {
             // 使这次失败在管理端与 reportFailedPlugins() 中消失。
             List<String> failures = fiber.rollbackEffects();
             if (!failures.isEmpty()) {
-                log.error("插件 {} 回滚期间有清理失败: {}", fiber.id(), failures);
+                log.error("插件 {} 回滚期间有清理失败: {}", fiber.getId(), failures);
             }
             // 索引保留（状态为 FAILED），以便管理端展示失败插件；调用方可选择移除
             return false;
@@ -571,11 +571,11 @@ public final class PluginRuntime {
             return false;
         }
         PluginFiber fiber = found.get();
-        if (fiber.state() != FiberState.PENDING) {
+        if (fiber.getState() != FiberState.PENDING) {
             // 已经 ACTIVE（可能被上一轮推进）或已 FAILED / DISPOSED，都不再尝试
             return false;
         }
-        List<Class<?>> missing = missingDependencies(fiber.plugin());
+        List<Class<?>> missing = missingDependencies(fiber.getPlugin());
         if (!missing.isEmpty()) {
             fiber.clearPendingDependencies();
             missing.forEach(fiber::addPendingDependency);
@@ -584,7 +584,7 @@ public final class PluginRuntime {
         fiber.clearPendingDependencies();
         /*
          * 不在这里判状态——applyTo 内部用 PENDING → LOADING 的 CAS 抢占，
-         * 并发调用时只有一个线程能真正执行 apply。上面的 state() 检查只是
+         * 并发调用时只有一个线程能真正执行 apply。上面的 getState() 检查只是
          * 快速跳过已确定不在 PENDING 的 Fiber，不承担正确性。
          */
         return applyTo(fiber, dataDir, ScopeFilter.ALL);
@@ -618,8 +618,8 @@ public final class PluginRuntime {
         while (progressed) {
             progressed = false;
             for (PluginFiber fiber : fibers.withState(FiberState.PENDING)) {
-                Path dir = dataDirResolver == null ? null : dataDirResolver.apply(fiber.id());
-                if (tryActivate(fiber.id(), dir)) {
+                Path dir = dataDirResolver == null ? null : dataDirResolver.apply(fiber.getId());
+                if (tryActivate(fiber.getId(), dir)) {
                     activated++;
                     progressed = true;
                 }
@@ -643,11 +643,11 @@ public final class PluginRuntime {
         }
         List<String> report = new ArrayList<>();
         for (PluginFiber fiber : pending) {
-            String deps = fiber.pendingDependencies().stream()
+            String deps = fiber.getPendingDependencies().stream()
                     .map(Class::getName)
                     .reduce((a, b) -> a + ", " + b)
                     .orElse("(未记录)");
-            report.add(fiber.id() + "：缺失 " + deps);
+            report.add(fiber.getId() + "：缺失 " + deps);
         }
         return Collections.unmodifiableList(report);
     }
@@ -664,10 +664,10 @@ public final class PluginRuntime {
         }
         List<String> report = new ArrayList<>();
         for (PluginFiber fiber : failed) {
-            String cause = fiber.failureCause()
+            String cause = fiber.getFailureCause()
                     .map(t -> t.getClass().getSimpleName() + ": " + t.getMessage())
                     .orElse("(未记录)");
-            report.add(fiber.id() + "：" + cause);
+            report.add(fiber.getId() + "：" + cause);
         }
         return Collections.unmodifiableList(report);
     }
@@ -729,16 +729,16 @@ public final class PluginRuntime {
     /**
      * 卸载全部插件。
      *
-     * <p>从叶子往根卸载（{@link FiberRegistry#roots()} 的逆序），
+     * <p>从叶子往根卸载（{@link FiberRegistry#getRoots()} 的逆序），
      * 保证子插件先于父插件消失。</p>
      *
      * @return 清理失败的描述列表
      */
     public List<String> unloadAll() {
         List<String> failures = new ArrayList<>();
-        List<PluginFiber> roots = fibers.roots();
+        List<PluginFiber> roots = fibers.getRoots();
         for (int i = roots.size() - 1; i >= 0; i--) {
-            failures.addAll(unload(roots.get(i).id()));
+            failures.addAll(unload(roots.get(i).getId()));
         }
         return Collections.unmodifiableList(failures);
     }
@@ -795,8 +795,8 @@ public final class PluginRuntime {
         com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle = fibers.module(moduleId)
                 .orElseThrow(() -> new IllegalStateException("模块不存在: " + moduleId));
 
-        Path moduleDir = handle.jarParentPath() == null ? null : Path.of(handle.jarParentPath());
-        java.io.File jarFile = moduleDir == null ? null : moduleDir.resolve(handle.jarFileName()).toFile();
+        Path moduleDir = handle.getJarParentPath() == null ? null : Path.of(handle.getJarParentPath());
+        java.io.File jarFile = moduleDir == null ? null : moduleDir.resolve(handle.getJarFileName()).toFile();
         if (jarFile == null || !jarFile.isFile()) {
             throw new IllegalStateException(
                     "找不到模块 " + moduleId + " 的 jar 文件"
@@ -807,7 +807,7 @@ public final class PluginRuntime {
         // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
         java.util.Map<String, java.util.List<com.yuier.yuni.plugin.api.ScopeFilter>> scopeSnapshot =
                 new java.util.LinkedHashMap<>();
-        for (String pluginId : handle.pluginIds()) {
+        for (String pluginId : handle.getPluginIds()) {
             java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = pluginScopes.all(pluginId);
             if (!filters.isEmpty()) {
                 scopeSnapshot.put(pluginId, filters);
@@ -815,7 +815,7 @@ public final class PluginRuntime {
         }
 
         // 第 3 步：逐个卸载。逆序，与加载顺序对称（子插件先于父插件消失）
-        List<String> pluginIds = new java.util.ArrayList<>(handle.pluginIds());
+        List<String> pluginIds = new java.util.ArrayList<>(handle.getPluginIds());
         for (int i = pluginIds.size() - 1; i >= 0; i--) {
             unload(pluginIds.get(i));
         }
@@ -824,7 +824,7 @@ public final class PluginRuntime {
         // 关闭是必须的：Windows 下 jar 文件句柄不释放就无法覆盖同名文件，
         // 而「换了 jar 再重载」正是热重载最常见的用法。
         fibers.removeModule(moduleId);
-        closeQuietly(handle.classLoader());
+        closeQuietly(handle.getClassLoader());
 
         log.info("模块 {} 已卸载，开始重新加载 {}", moduleId, jarFile.getName());
 
@@ -836,9 +836,9 @@ public final class PluginRuntime {
         // 只要模块没有增删插件，标识就保持一致。
         int restored = 0;
         for (PluginFiber fiber : loaded) {
-            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = scopeSnapshot.get(fiber.id());
+            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = scopeSnapshot.get(fiber.getId());
             if (filters != null) {
-                pluginScopes.putAll(fiber.id(), filters);
+                pluginScopes.putAll(fiber.getId(), filters);
                 restored++;
             }
         }
@@ -899,7 +899,7 @@ public final class PluginRuntime {
      *
      * @return 流水线，永不为 {@code null}
      */
-    public com.yuier.yuni.plugin.runtime.dispatch.EventPipeline pipeline() {
+    public com.yuier.yuni.plugin.runtime.dispatch.EventPipeline getPipeline() {
         com.yuier.yuni.plugin.runtime.dispatch.EventPipeline current = this.pipeline;
         if (current != null) {
             return current;
@@ -914,7 +914,7 @@ public final class PluginRuntime {
                         // 这里即时解析一次，未就绪时传 null，由引擎的静态回退兜住
                         resolveBot(),
                         botApp,
-                        // 权限判定委托给权限服务——插件可通过 ctx.permission() 覆盖注册
+                        // 权限判定委托给权限服务——插件可通过 ctx.getPermission() 覆盖注册
                         com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher.fromService(
                                 services.resolve(com.yuier.yuni.plugin.api.service.PermissionService.class)
                                         .orElse(null)),
@@ -955,7 +955,7 @@ public final class PluginRuntime {
     }
 
     /**
-     * 判定插件是否在指定群生效（供主动插件经 {@code ctx.scope()} 查询）。
+     * 判定插件是否在指定群生效（供主动插件经 {@code ctx.getScope()} 查询）。
      *
      * <p>判定链：用户显式例外 → 插件注册时的基线过滤器 → 元数据的
      * {@code defaultEnable}。</p>
@@ -981,10 +981,10 @@ public final class PluginRuntime {
          * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
          */
         com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
-        if (base != null && !base.exceptionGroups().isEmpty()) {
-            boolean listed = base.exceptionGroups().contains(groupId);
+        if (base != null && !base.getExceptionGroups().isEmpty()) {
+            boolean listed = base.getExceptionGroups().contains(groupId);
             // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
-            return base.enabledByDefault() ? !listed : listed;
+            return base.isEnabledByDefault() ? !listed : listed;
         }
         // ③ 没有任何例外信息 → 按有效默认值（用户全局开关 > 基线 > 元数据）
         return effectiveDefaultEnabled(pluginId);
@@ -1015,12 +1015,12 @@ public final class PluginRuntime {
         // 其次看插件注册时的基线
         com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
         if (base != null) {
-            return base.enabledByDefault();
+            return base.isEnabledByDefault();
         }
         // 最后回落到元数据。插件不存在时保守返回 false：
         // 配置损坏时「不放行」比「误放行」安全
         return fibers.byId(pluginId)
-                .map(fiber -> fiber.metadata().defaultEnable())
+                .map(fiber -> fiber.getMetadata().isDefaultEnable())
                 .orElse(false);
     }
 
@@ -1097,7 +1097,7 @@ public final class PluginRuntime {
             java.util.List<Long> enabled = new java.util.ArrayList<>();
             for (com.yuier.yuni.core.bot.BotGroupInfo group : groups) {
                 Boolean hit = isPluginEnabledIn(pluginId, group.getGroupId());
-                // 无显式设置时回落到插件的 defaultEnable——与 ctx.scope() 一致
+                // 无显式设置时回落到插件的 defaultEnable——与 ctx.getScope() 一致
                 boolean effective = hit != null ? hit : effectiveDefaultEnabled(pluginId);
                 if (effective) {
                     enabled.add(group.getGroupId());
@@ -1124,23 +1124,23 @@ public final class PluginRuntime {
         com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
         if (base != null) {
             if (whitelistBaselines.contains(pluginId)) {
-                return "仅限群 " + base.exceptionGroups();
+                return "仅限群 " + base.getExceptionGroups();
             }
-            if (!base.exceptionGroups().isEmpty()) {
-                return "排除群 " + base.exceptionGroups();
+            if (!base.getExceptionGroups().isEmpty()) {
+                return "排除群 " + base.getExceptionGroups();
             }
         }
 
         // 再看用户配置的群例外
         com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted =
                 pluginScopes.toPersisted(pluginId, effectiveDefaultEnabled(pluginId));
-        if (persisted.exceptionGroups().isEmpty()) {
-            return persisted.enabledByDefault() ? "全部群" : "未记录";
+        if (persisted.getExceptionGroups().isEmpty()) {
+            return persisted.isEnabledByDefault() ? "全部群" : "未记录";
         }
         // 与旧实现保持同样的措辞，便于日志检索与既有文档对照
-        return persisted.enabledByDefault()
-                ? "排除群 " + persisted.exceptionGroups()
-                : "仅限群 " + persisted.exceptionGroups();
+        return persisted.isEnabledByDefault()
+                ? "排除群 " + persisted.getExceptionGroups()
+                : "仅限群 " + persisted.getExceptionGroups();
     }
 
     // ==================== 作用域写入 ====================
@@ -1174,7 +1174,7 @@ public final class PluginRuntime {
         PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
                 new IllegalArgumentException("插件不存在: " + pluginId));
 
-        pluginScopes.set(pluginId, groupId, enabled, fiber.metadata().defaultEnable());
+        pluginScopes.set(pluginId, groupId, enabled, fiber.getMetadata().isDefaultEnable());
         log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
                 pluginId, groupId, enabled, describeScope(pluginId));
         persistScope(pluginId);
@@ -1269,20 +1269,20 @@ public final class PluginRuntime {
         }
 
         int restored = 0;
-        for (PluginFiber fiber : fibers.all()) {
+        for (PluginFiber fiber : fibers.getAll()) {
             com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord record =
-                    stored.get(fiber.id());
+                    stored.get(fiber.getId());
             if (record == null || record.isEmpty()) {
                 continue;
             }
-            boolean pluginDefault = fiber.metadata().defaultEnable();
+            boolean pluginDefault = fiber.getMetadata().isDefaultEnable();
             // 全局开关：用户设置过就用它，否则用插件默认值。
             // 例外群的「相反值」判定以全局开关为基准，因此必须先定下它
-            boolean global = record.globalEnabled() != null ? record.globalEnabled() : pluginDefault;
-            pluginScopes.setGlobalDefault(fiber.id(), global);
-            pluginScopes.putAll(fiber.id(),
+            boolean global = record.getGlobalEnabled() != null ? record.getGlobalEnabled() : pluginDefault;
+            pluginScopes.setGlobalDefault(fiber.getId(), global);
+            pluginScopes.putAll(fiber.getId(),
                     com.yuier.yuni.plugin.runtime.PluginScopes.fromRecords(
-                            toValueMap(record.exceptionGroups(), global), global));
+                            toValueMap(record.getExceptionGroups(), global), global));
             restored++;
         }
         log.info("已从存储恢复 {} 个插件的群粒度启停配置", restored);
@@ -1321,7 +1321,7 @@ public final class PluginRuntime {
         }
         try {
             boolean pluginDefault = fibers.byId(pluginId)
-                    .map(fiber -> fiber.metadata().defaultEnable())
+                    .map(fiber -> fiber.getMetadata().isDefaultEnable())
                     .orElse(false);
             // 只持久化「用户显式设置过」的全局开关；
             // 未设置时存 null，让下次启动重新回落到插件元数据
@@ -1330,8 +1330,8 @@ public final class PluginRuntime {
             // 例外群 = 与有效全局值相反的那些群
             java.util.Set<Long> exceptionGroups = new java.util.LinkedHashSet<>();
             pluginScopes.all(pluginId).forEach(filter -> {
-                filter.explicitGroupWhitelist().ifPresent(exceptionGroups::addAll);
-                filter.explicitGroupBlacklist().ifPresent(exceptionGroups::addAll);
+                filter.getExplicitGroupWhitelist().ifPresent(exceptionGroups::addAll);
+                filter.getExplicitGroupBlacklist().ifPresent(exceptionGroups::addAll);
             });
             store.save(pluginId,
                     new com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord(
@@ -1353,9 +1353,9 @@ public final class PluginRuntime {
      * @return 模块 ID；插件不属于任何模块或不存在时为空
      */
     public java.util.Optional<String> moduleIdOf(String pluginId) {
-        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.allModules()) {
-            if (handle.pluginIds().contains(pluginId)) {
-                return java.util.Optional.of(handle.moduleId());
+        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.getAllModules()) {
+            if (handle.getPluginIds().contains(pluginId)) {
+                return java.util.Optional.of(handle.getModuleId());
             }
         }
         return java.util.Optional.empty();
@@ -1370,7 +1370,7 @@ public final class PluginRuntime {
      *
      * @return 插件管理服务
      */
-    public com.yuier.yuni.plugin.api.PluginAdmin admin() {
+    public com.yuier.yuni.plugin.api.PluginAdmin getAdmin() {
         return new com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime(this, moduleLoader);
     }
 
@@ -1392,7 +1392,7 @@ public final class PluginRuntime {
     /**
      * 立即解析机器人实例（不抛异常）。
      *
-     * <p>供 {@code PluginContext.bot()} 与命令引擎使用。解析失败返回
+     * <p>供 {@code PluginContext.getBot()} 与命令引擎使用。解析失败返回
      * {@code null}，由调用方决定降级策略。</p>
      *
      * @return 机器人实例；未就绪时返回 {@code null}
@@ -1411,14 +1411,14 @@ public final class PluginRuntime {
     }
 
     /**
-     * 取命令分发器（惰性构造，与 {@link #pipeline()} 共享实例）。
+     * 取命令分发器（惰性构造，与 {@link #getPipeline()} 共享实例）。
      *
      * <p>供插件注册命令时绑定处理器使用。</p>
      *
      * @return 命令分发器，永不为 {@code null}
      */
-    public com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher commandDispatcher() {
-        pipeline();
+    public com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher getCommandDispatcher() {
+        getPipeline();
         return commandDispatcher;
     }
 
@@ -1429,7 +1429,7 @@ public final class PluginRuntime {
      *
      * @return 注册表
      */
-    public RegistrationTable registrations() {
+    public RegistrationTable getRegistrations() {
         return registrations;
     }
 
@@ -1438,7 +1438,7 @@ public final class PluginRuntime {
      *
      * @return 注册表
      */
-    public ServiceRegistry services() {
+    public ServiceRegistry getServices() {
         return services;
     }
 
@@ -1447,7 +1447,7 @@ public final class PluginRuntime {
      *
      * @return 容器
      */
-    public FiberRegistry fibers() {
+    public FiberRegistry getFibers() {
         return fibers;
     }
 
@@ -1466,10 +1466,10 @@ public final class PluginRuntime {
             return Optional.of(recorded);
         }
         return fibers.byId(pluginId)
-                .flatMap(fiber -> fibers.allModules().stream()
-                        .filter(m -> m.pluginIds().contains(pluginId))
+                .flatMap(fiber -> fibers.getAllModules().stream()
+                        .filter(m -> m.getPluginIds().contains(pluginId))
                         .findFirst())
-                .map(m -> m.jarParentPath() == null ? null : Path.of(m.jarParentPath()))
+                .map(m -> m.getJarParentPath() == null ? null : Path.of(m.getJarParentPath()))
                 .filter(java.util.Objects::nonNull);
     }
 
@@ -1479,7 +1479,7 @@ public final class PluginRuntime {
      * @return 形如 {@code "modules=13, plugins=23, effects=41, states={...}"}
      */
     public String describe() {
-        return fibers.describe() + ", registrations=" + registrations.totalSize();
+        return fibers.describe() + ", registrations=" + registrations.getTotalSize();
     }
 
     // ==================== 内部 ====================
@@ -1487,7 +1487,7 @@ public final class PluginRuntime {
     /**
      * 安全读取插件元数据。
      *
-     * <p>{@code metadata()} 是插件代码，可能抛异常。此处兜底为一个默认元数据，
+     * <p>{@code getMetadata()} 是插件代码，可能抛异常。此处兜底为一个默认元数据，
      * 使「元数据写错」不至于让插件完全无法加载——真正的失败应发生在
      * {@code apply} 阶段并带上完整上下文。</p>
      *
@@ -1496,12 +1496,12 @@ public final class PluginRuntime {
      */
     private static PluginMetadata safeMetadata(YuniPlugin plugin) {
         try {
-            PluginMetadata metadata = plugin.metadata();
+            PluginMetadata metadata = plugin.getMetadata();
             return metadata == null
                     ? PluginMetadata.of(plugin.getClass().getSimpleName()).build()
                     : metadata;
         } catch (Throwable t) {
-            log.warn("插件 {} 的 metadata() 执行失败，使用默认元数据", plugin.getClass().getName(), t);
+            log.warn("插件 {} 的 getMetadata() 执行失败，使用默认元数据", plugin.getClass().getName(), t);
             return PluginMetadata.of(plugin.getClass().getSimpleName()).build();
         }
     }
@@ -1519,7 +1519,7 @@ public final class PluginRuntime {
      * @return 插件标识
      */
     private static String buildPluginId(String moduleId, PluginMetadata metadata, YuniPlugin plugin) {
-        String name = metadata.name();
+        String name = metadata.getName();
         if (name == null || name.isBlank()) {
             name = plugin.getClass().getSimpleName();
         }
@@ -1562,7 +1562,7 @@ public final class PluginRuntime {
      * @return 子插件 Fiber
      */
     PluginFiber mountChild(YuniPlugin child, PluginFiber parent, Path dataDir, ScopeFilter filter) {
-        return load(child, null, dataDir, parent == null ? null : parent.classLoader(), parent, filter);
+        return load(child, null, dataDir, parent == null ? null : parent.getClassLoader(), parent, filter);
     }
 
     /**

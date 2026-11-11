@@ -24,6 +24,9 @@ import com.yuier.yuni.plugin.api.service.ConfigLoader;
 import com.yuier.yuni.plugin.api.service.Http;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.api.service.Sender;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 
@@ -67,12 +70,12 @@ import java.util.function.Predicate;
  * 并在消息里带上说明，这<b>不是</b>「功能还没做」，而是「这份上下文缺少对应部件」。
  * 最常见的场景是单元测试：测试常常只想验证「注册 → 撤销 → 资源归零」
  * 这条最小闭环，于是 {@code new PluginRuntime(null, null)} 就够了，
- * 此时 {@code ctx.schedule(...)} / {@code ctx.http()} 之类的调用自然不可用。</p>
+ * 此时 {@code ctx.schedule(...)} / {@code ctx.getHttp()} 之类的调用自然不可用。</p>
  * <ul>
- *   <li>{@link #bot()} / {@link #sender()} —— 需要运行时持有 bot 供应函数；</li>
+ *   <li>{@link #getBot()} / {@link #getSender()} —— 需要运行时持有 bot 供应函数；</li>
  *   <li>{@link #schedule} / {@link #every} / {@link #runNow} —— 需要
  *       {@code DynamicTaskManager}；</li>
- *   <li>{@link #http()} / {@link #cache()} / {@link #config()} —— 需要
+ *   <li>{@link #getHttp()} / {@link #getCache()} / {@link #getConfig()} —— 需要
  *       {@code JsonCodec}（未注册共享实例时按需构造）；</li>
  *   <li>{@link #plugin(YuniPlugin)} —— 需要上下文已绑定运行时。</li>
  * </ul>
@@ -125,7 +128,7 @@ public final class PluginContext implements YuniContext {
     /**
      * JSON 编解码器。
      *
-     * <p>供 {@code config()} / {@code cache()} / {@code http()} 以及原始消息段
+     * <p>供 {@code getConfig()} / {@code getCache()} / {@code getHttp()} 以及原始消息段
      * 构造使用。为 {@code null} 时相关能力会给出明确错误（测试场景）。</p>
      */
     private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
@@ -204,25 +207,25 @@ public final class PluginContext implements YuniContext {
      * <p>类上的 {@code @Slf4j} 生成的是 {@code LoggerFactory.getLogger(PluginContext.class)}——
      * 一个<b>所有插件共享</b>的 logger。那样日志里只会看到
      * {@code c.y.y.plugin.runtime.PluginContext}，无法区分是哪个插件输出的，
-     * 与 {@link YuniContext#logger()} 承诺的「已带上插件名前缀」直接矛盾。</p>
+     * 与 {@link YuniContext#getLogger()} 承诺的「已带上插件名前缀」直接矛盾。</p>
      *
      * <p>因此这里按 Fiber 标识取一个独立 logger，名字形如
      * {@code plugin.steam/MemberSteamStatus}。它在日志配置里可以被单独
      * 设置级别，也便于按插件检索。</p>
      *
-     * <p>惰性构造并缓存：{@code logger()} 在日志密集的插件里会被频繁调用，
+     * <p>惰性构造并缓存：{@code getLogger()} 在日志密集的插件里会被频繁调用，
      * 而 {@code LoggerFactory.getLogger} 虽然内部有缓存，仍有一次 map 查找。
      * 字段是 {@code volatile}，因为上下文可能被多个工作线程同时访问。</p>
      */
     private volatile Logger pluginLogger;
 
     @Override
-    public String scopeId() {
+    public String getScopeId() {
         return "default";
     }
 
     @Override
-    public Logger logger() {
+    public Logger getLogger() {
         Logger cached = this.pluginLogger;
         if (cached != null) {
             return cached;
@@ -234,15 +237,15 @@ public final class PluginContext implements YuniContext {
          */
         String name = fiber == null
                 ? "plugin.unknown"
-                : "plugin." + fiber.id();
+                : "plugin." + fiber.getId();
         Logger created = org.slf4j.LoggerFactory.getLogger(name);
         this.pluginLogger = created;
         return created;
     }
 
     @Override
-    public PluginMetadata self() {
-        return fiber == null ? PluginMetadata.of("unknown").build() : fiber.metadata();
+    public PluginMetadata getSelf() {
+        return fiber == null ? PluginMetadata.of("unknown").build() : fiber.getMetadata();
     }
 
     // ==================== 事件注册 ====================
@@ -329,7 +332,7 @@ public final class PluginContext implements YuniContext {
             // 无 Fiber（测试或框架内部用法）：直接返回移除句柄
             return removeEntry;
         }
-        boolean accepted = fiber.effects().register(removeEntry);
+        boolean accepted = fiber.getEffects().register(removeEntry);
         if (!accepted) {
             // 插件正在卸载：登记表已封存，注册表条目必须立即回滚
             removeEntry.dispose();
@@ -350,7 +353,7 @@ public final class PluginContext implements YuniContext {
         if (fiber == null) {
             return removeEntry;
         }
-        if (!fiber.effects().register(removeEntry)) {
+        if (!fiber.getEffects().register(removeEntry)) {
             removeEntry.dispose();
         }
         return removeEntry;
@@ -409,7 +412,7 @@ public final class PluginContext implements YuniContext {
         }
         // 对应现行 ImmediatePlugin：注册后异步执行一次
         java.util.concurrent.CompletableFuture.runAsync(() -> {
-            if (disposed()) {
+            if (isDisposed()) {
                 // 插件在任务执行前就被卸载了，跳过
                 return;
             }
@@ -418,7 +421,7 @@ public final class PluginContext implements YuniContext {
             } catch (Throwable t) {
                 // 必须捕获 Throwable：否则 Error 会被 commonPool 静默吞掉
                 // （2026-08 P0 事故的教训之一）
-                log.error("[{}] runNow 任务执行失败", self().name(), t);
+                log.error("[{}] runNow 任务执行失败", getSelf().getName(), t);
             }
         });
         // 任务已提交，无可撤销的资源
@@ -449,13 +452,13 @@ public final class PluginContext implements YuniContext {
      */
     private Runnable wrapTask(Runnable task) {
         return () -> {
-            if (disposed()) {
+            if (isDisposed()) {
                 return;
             }
             try {
                 task.run();
             } catch (Throwable t) {
-                log.error("[{}] 定时任务执行失败", self().name(), t);
+                log.error("[{}] 定时任务执行失败", getSelf().getName(), t);
             }
         };
     }
@@ -470,7 +473,7 @@ public final class PluginContext implements YuniContext {
         if (fiber == null) {
             return disposable;
         }
-        if (!fiber.effects().register(disposable)) {
+        if (!fiber.getEffects().register(disposable)) {
             // 已封存：立即撤销，避免泄漏
             disposable.dispose();
         }
@@ -501,7 +504,7 @@ public final class PluginContext implements YuniContext {
         Optional<Object> previous = services.register(type, impl, fiber);
         previous.ifPresent(old -> log.warn(
                 "[{}] 服务 {} 被覆盖注册：旧实现 {} → 新实现 {}",
-                self().name(), type.getSimpleName(),
+                getSelf().getName(), type.getSimpleName(),
                 old.getClass().getName(), impl.getClass().getName()));
 
         /*
@@ -530,7 +533,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public com.yuier.yuni.plugin.api.ScopeQuery scope() {
+    public com.yuier.yuni.plugin.api.ScopeQuery getScope() {
         // 惰性构造并缓存：作用域查询在广播场景下会被反复调用（每个群一次）
         com.yuier.yuni.plugin.api.ScopeQuery cached = this.scopeQuery;
         if (cached != null) {
@@ -542,13 +545,13 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public com.yuier.yuni.plugin.api.PluginAdmin plugins() {
+    public com.yuier.yuni.plugin.api.PluginAdmin getPlugins() {
         /*
          * 不缓存，每次新建。
          *
-         * 与 scope() 的惰性缓存形成对比，原因是两者的使用模式不同：
-         * scope() 在广播场景下按群调用（可能几百次），必须避免重复构造；
-         * plugins() 是管理操作，调用频率是「用户敲一条命令」量级，
+         * 与 getScope() 的惰性缓存形成对比，原因是两者的使用模式不同：
+         * getScope() 在广播场景下按群调用（可能几百次），必须避免重复构造；
+         * getPlugins() 是管理操作，调用频率是「用户敲一条命令」量级，
          * 而它返回的适配器本身不持有状态（全部状态在运行时里），
          * 构造一个的开销只是几次字段赋值。
          *
@@ -561,7 +564,7 @@ public final class PluginContext implements YuniContext {
                     "插件管理服务不可用：本上下文未绑定 PluginRuntime。"
                             + "这通常意味着插件在框架之外被手动构造（测试场景）。");
         }
-        return runtime.admin();
+        return runtime.getAdmin();
     }
 
     /**
@@ -587,7 +590,7 @@ public final class PluginContext implements YuniContext {
      *
      * <h2>不写库</h2>
      * <p>本实现只做查询。写入（以及随之而来的持久化）走
-     * {@link #plugins()} 的 {@code setEnabled} / {@code setGlobalEnabled}——
+     * {@link #getPlugins()} 的 {@code setEnabled} / {@code setGlobalEnabled}——
      * 那是管理端职责（见设计文档 §10.5）。</p>
      */
     private final class DefaultScopeQuery implements com.yuier.yuni.plugin.api.ScopeQuery {
@@ -599,16 +602,16 @@ public final class PluginContext implements YuniContext {
                 return true;
             }
             // ①+② 由运行时合并判定；「无任何例外信息」时返回 null
-            Boolean enabled = runtime.isPluginEnabledIn(fiber.id(), groupId);
+            Boolean enabled = runtime.isPluginEnabledIn(fiber.getId(), groupId);
             if (enabled != null) {
                 return enabled;
             }
             // ③ 回落到元数据默认值
-            return fiber.metadata().defaultEnable();
+            return fiber.getMetadata().isDefaultEnable();
         }
 
         @Override
-        public java.util.List<Long> enabledGroups() {
+        public java.util.List<Long> getEnabledGroups() {
             if (runtime == null) {
                 return java.util.List.of();
             }
@@ -622,9 +625,9 @@ public final class PluginContext implements YuniContext {
              *
              * 实现上直接复用 runtime.groupsWhereEnabled：它内部已经做了这两件事，
              * 且与 PluginAdmin.isEnabledIn 走同一条判定链，因此不会出现
-             * 「ctx.scope() 说启用、管理端说关闭」的不一致。
+             * 「ctx.getScope() 说启用、管理端说关闭」的不一致。
              */
-            return runtime.groupsWhereEnabled(fiber == null ? null : fiber.id());
+            return runtime.groupsWhereEnabled(fiber == null ? null : fiber.getId());
         }
 
         @Override
@@ -633,7 +636,7 @@ public final class PluginContext implements YuniContext {
                 return true;
             }
             // 全局生效 = 未配置任何群例外（ScopeFilter 为 ALL）
-            return runtime.isGloballyEnabled(fiber.id());
+            return runtime.isGloballyEnabled(fiber.getId());
         }
     }
 
@@ -645,7 +648,7 @@ public final class PluginContext implements YuniContext {
         if (type == null) {
             throw new IllegalArgumentException("状态类型不能为 null");
         }
-        StateKey key = new StateKey(type, scopeId());
+        StateKey key = new StateKey(type, getScopeId());
         return (T) scopeStates.computeIfAbsent(key, k -> {
             try {
                 return type.getDeclaredConstructor().newInstance();
@@ -663,7 +666,7 @@ public final class PluginContext implements YuniContext {
     // ==================== 内置服务快捷方式 ====================
 
     @Override
-    public YuniBot bot() {
+    public YuniBot getBot() {
         /*
          * 优先经运行时解析：bot 由 engine 的 BotManager 动态创建，
          * 运行时持有的供应函数是唯一在启动全阶段都可靠的来源。
@@ -679,22 +682,22 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public Sender sender() {
+    public Sender getSender() {
         /*
          * 按需构造而非预注册：Sender 绑定到具体的 YuniBot 实例，而 bot 由
          * BotManager 在启动流程中动态创建并注册为单例，时机晚于 PluginContext
          * 的构造。因此这里在首次访问时从服务表取 bot 并即时包装。
          */
-        return new com.yuier.yuni.plugin.runtime.service.CoreSender(bot(), jsonCodec());
+        return new com.yuier.yuni.plugin.runtime.service.CoreSender(getBot(), jsonCodec());
     }
 
     @Override
-    public com.yuier.yuni.plugin.data.PluginDataService db() {
+    public com.yuier.yuni.plugin.data.PluginDataService getDb() {
         return service(com.yuier.yuni.plugin.data.PluginDataService.class);
     }
 
     @Override
-    public Cache cache() {
+    public Cache getCache() {
         /*
          * 优先取注册表里的实例（启动配置会注入一个共享实例），
          * 未注册时按需构造。共享实例的价值在于连接池与线程池的复用——
@@ -705,20 +708,20 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public ConfigLoader config() {
+    public ConfigLoader getConfig() {
         // 按插件构造：每个插件的资源目录不同，这是 ConfigLoader 的关键语义
         if (dataDir == null) {
             throw new IllegalStateException(
                     "插件资源目录未注入，无法读取配置文件。"
-                            + "若插件不需要读取资源，请勿调用 ctx.config()。" + MISSING_DEPENDENCY_NOTE);
+                            + "若插件不需要读取资源，请勿调用 ctx.getConfig()。" + MISSING_DEPENDENCY_NOTE);
         }
         return new com.yuier.yuni.plugin.runtime.service.FileConfigLoader(dataDir, jsonCodec());
     }
 
     @Override
-    public Http http() {
+    public Http getHttp() {
         /*
-         * 同 cache()：优先复用注册表里的共享实例。
+         * 同 getCache()：优先复用注册表里的共享实例。
          * 现行 PluginUtils.simpleGet/simplePost 每次调用都 new RestTemplate()，
          * 不复用连接池——这正是本设计要修掉的问题之一。
          */
@@ -727,12 +730,12 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public PermissionService permission() {
+    public PermissionService getPermission() {
         return service(PermissionService.class);
     }
 
     @Override
-    public Path dataDir() {
+    public Path getDataDir() {
         if (dataDir == null) {
             throw new IllegalStateException("插件资源目录未注入" + MISSING_DEPENDENCY_NOTE);
         }
@@ -743,7 +746,7 @@ public final class PluginContext implements YuniContext {
      * 取 JSON 编解码器。
      *
      * <p>由运行时注入；测试场景可能为 {@code null}，此时依赖它的能力
-     * （{@code config()} / {@code cache()} / {@code http()} / 原始段构造）
+     * （{@code getConfig()} / {@code getCache()} / {@code getHttp()} / 原始段构造）
      * 会给出明确的错误而不是 NPE。</p>
      *
      * @return 编解码器
@@ -783,7 +786,7 @@ public final class PluginContext implements YuniContext {
          * 这里采用的做法是在 provide() 之后统一尝试推进（见 provide 的实现），
          * 因此挂载动作本身只负责登记与撤销。
          */
-        return registerDisposable(() -> runtime.unload(childFiber.id()));
+        return registerDisposable(() -> runtime.unload(childFiber.getId()));
     }
 
     /**
@@ -802,8 +805,8 @@ public final class PluginContext implements YuniContext {
     // ==================== 生命周期查询 ====================
 
     @Override
-    public boolean disposed() {
-        return fiber != null && fiber.disposed();
+    public boolean isDisposed() {
+        return fiber != null && fiber.isDisposed();
     }
 
     // ==================== 内部 ====================
@@ -814,7 +817,34 @@ public final class PluginContext implements YuniContext {
      * @param type    状态类型
      * @param scopeId 作用域标识
      */
-    private record StateKey(Class<?> type, String scopeId) {
+    /**
+     * 作用域状态的键：状态类型 + 作用域标识。
+     *
+     * <p>原本是 record；为统一 JavaBean 访问器改为 {@code @Getter} 类。
+     * 作为 {@link java.util.concurrent.ConcurrentHashMap} 的键，必须实现
+     * {@code equals/hashCode}。</p>
+     */
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    private static final class StateKey {
+
+        /** 状态对象类型。 */
+        private final Class<?> type;
+
+        /** 作用域标识；根作用域为固定串。 */
+        private final String scopeId;
+
+        /**
+         * 构造键。
+         *
+         * @param type    状态类型
+         * @param scopeId 作用域标识
+         */
+        private StateKey(Class<?> type, String scopeId) {
+            this.type = type;
+            this.scopeId = scopeId;
+        }
     }
 
     /**
@@ -822,7 +852,7 @@ public final class PluginContext implements YuniContext {
      *
      * @return 注册表
      */
-    public ServiceRegistry serviceRegistry() {
+    public ServiceRegistry getServiceRegistry() {
         return services;
     }
 
@@ -831,7 +861,7 @@ public final class PluginContext implements YuniContext {
      *
      * @return 注册表
      */
-    public RegistrationTable registrationTable() {
+    public RegistrationTable getRegistrationTable() {
         return registrations;
     }
 
@@ -840,7 +870,7 @@ public final class PluginContext implements YuniContext {
      *
      * @return Fiber
      */
-    public PluginFiber fiber() {
+    public PluginFiber getFiber() {
         return fiber;
     }
 }

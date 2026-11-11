@@ -16,13 +16,13 @@ import java.util.List;
  * 本接口<b>只读</b>，发送用 {@code Reply}。</p>
  *
  * <h2>文本提取语义</h2>
- * <p>{@link #plainText()} 返回<b>全部文本段拼接</b>的结果，非文本段（图片、At、
+ * <p>{@link #getPlainText()} 返回<b>全部文本段拼接</b>的结果，非文本段（图片、At、
  * 表情等）被忽略。这是模式匹配最常用的输入：</p>
  * <pre>{@code
- * ctx.onMessage(ev -> ev.chain().plainText().contains("granbluefantasy.jp"),
+ * ctx.onMessage(ev -> ev.getChain().getPlainText().contains("granbluefantasy.jp"),
  *               (ev, reply) -> reply.text("大家不要信，这是骑空士的陷阱！"));
  * }</pre>
- * <p>注意：{@code null} 值会替换为占位符（{@link #nullSegmentPlaceholder()}），
+ * <p>注意：{@code null} 值会替换为占位符（{@link #getNullSegmentPlaceholder()}），
  * 避免拼接时抛 NPE——这是现行 {@code MessageChain.toString()} 会崩溃的场景
  * （{@code AnonymousSegment.toString()} 在 data 为 null 时曾返回空串，
  * 而部分段的 {@code toString()} 直接解引用字段）。</p>
@@ -37,7 +37,7 @@ public interface MessageChainView {
      *
      * @return 拼接后的纯文本
      */
-    String plainText();
+    String getPlainText();
 
     /**
      * 消息链是否为「纯文本」——即全部消息段都是文本类型。
@@ -63,7 +63,7 @@ public interface MessageChainView {
     /**
      * 消息链是否包含可读文本中指定的子串。
      *
-     * <p>与 {@code plainText().contains(s)} 等价，但避免重复拼接。</p>
+     * <p>与 {@code getPlainText().contains(s)} 等价，但避免重复拼接。</p>
      *
      * @param text 待查找子串；{@code null} 返回 {@code false}
      * @return 任一文本段含该子串时返回 {@code true}
@@ -124,7 +124,7 @@ public interface MessageChainView {
      *
      * @return 类型名列表，不可变
      */
-    List<String> segmentTypes();
+    List<String> getSegmentTypes();
 
     /**
      * 取指定位置消息段的**JSON 表示**。
@@ -146,7 +146,7 @@ public interface MessageChainView {
      *
      * @return JSON 字符串列表，不可变
      */
-    List<String> segmentJsonList();
+    List<String> getSegmentJsonList();
 
     /**
      * 拼接时用于替换 {@code null} 消息段的占位符。
@@ -156,7 +156,7 @@ public interface MessageChainView {
      *
      * @return 占位符
      */
-    default String nullSegmentPlaceholder() {
+    default String getNullSegmentPlaceholder() {
         return "";
     }
 }

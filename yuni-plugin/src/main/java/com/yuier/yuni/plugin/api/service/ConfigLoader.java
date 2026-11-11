@@ -12,7 +12,7 @@ import java.nio.file.Path;
  *   <li>{@code loadJsonConfigFromPlugin(file, clazz, pluginClass)} → {@link #load}</li>
  *   <li>{@code loadTextFromPluginFolder(file, pluginClass)} → {@link #loadText}</li>
  *   <li>{@code loadFontFromPlugin(file, size, pluginClass)} → 用 {@link #open} 自行处理</li>
- *   <li>{@code getPluginRootPath(pluginClass)} → {@link #dataDir()}</li>
+ *   <li>{@code getPluginRootPath(pluginClass)} → {@link #getDataDir()}</li>
  * </ul>
  *
  * <p>那些方法的签名都要额外传一个 {@code Class<? extends YuniPlugin>} 参数——
@@ -22,13 +22,13 @@ import java.nio.file.Path;
  * <h2>用法</h2>
  * <pre>{@code
  * // 读 JSON 配置（自动反序列化）
- * MaimaiConfig cfg = ctx.config().load("maimai_config.json", MaimaiConfig.class);
+ * MaimaiConfig cfg = ctx.getConfig().load("maimai_config.json", MaimaiConfig.class);
  *
  * // 读纯文本
- * String help = ctx.config().loadText("help-info.txt");
+ * String help = ctx.getConfig().loadText("help-info.txt");
  *
  * // 按需读取二进制资源（字体、图片）
- * try (InputStream in = ctx.config().open("font/Mamelon.otf")) {
+ * try (InputStream in = ctx.getConfig().open("font/Mamelon.otf")) {
  *     Font font = Font.createFont(Font.TRUETYPE_FONT, in).deriveFont(45f);
  * }
  * }</pre>
@@ -98,7 +98,7 @@ public interface ConfigLoader {
      *
      * @return 目录路径
      */
-    Path dataDir();
+    Path getDataDir();
 
     /**
      * 判断插件资源目录下是否存在指定文件。

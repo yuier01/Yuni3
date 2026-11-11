@@ -92,18 +92,18 @@ class PluginSchedulerTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
         // 定时任务也是一个 Effect，因此会被登记
-        assertEquals(1, fiber.effectCount());
+        assertEquals(1, fiber.getEffectCount());
         assertEquals(1, taskManager.taskCount());
 
         assertTrue(firstTick.await(5, TimeUnit.SECONDS), "任务应至少执行一次");
 
-        runtime.unload(fiber.id());
+        runtime.unload(fiber.getId());
 
         // 卸载即取消：不需要插件作者写 deleteJob 之类的清理代码
         assertEquals(0, taskManager.taskCount(), "卸载后定时任务必须被取消");
-        assertEquals(0, fiber.effectCount());
+        assertEquals(0, fiber.getEffectCount());
 
         // 再等一段时间，确认任务确实不再触发
         int ticksAfterUnload = ticks.get();
@@ -122,8 +122,8 @@ class PluginSchedulerTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.ACTIVE, fiber.state());
-        assertEquals(3, fiber.effectCount());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
+        assertEquals(3, fiber.getEffectCount());
         assertEquals(3, taskManager.taskCount(), "三个独立任务都应注册成功");
     }
 
@@ -134,7 +134,7 @@ class PluginSchedulerTest {
                 ctx.every(Duration.ofSeconds(30), () -> { }));
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
         assertEquals(1, taskManager.taskCount());
 
         // 亚秒级无法用 cron 表达：明确报错而不是静默降级成 1 秒
@@ -142,9 +142,9 @@ class PluginSchedulerTest {
                 ctx.every(Duration.ofMillis(200), () -> { }));
 
         PluginFiber fastFiber = runtime.load(tooFast, null, null, null);
-        assertEquals(FiberState.FAILED, fastFiber.state());
-        assertTrue(fastFiber.failureCause().orElseThrow().getMessage().contains("至少为 1 秒"),
-                fastFiber.failureCause().orElseThrow().getMessage());
+        assertEquals(FiberState.FAILED, fastFiber.getState());
+        assertTrue(fastFiber.getFailureCause().orElseThrow().getMessage().contains("至少为 1 秒"),
+                fastFiber.getFailureCause().orElseThrow().getMessage());
     }
 
     @Test
@@ -156,9 +156,9 @@ class PluginSchedulerTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.FAILED, fiber.state());
+        assertEquals(FiberState.FAILED, fiber.getState());
         assertEquals(0, taskManager.taskCount(), "注册失败的任务不应残留");
-        assertEquals(0, fiber.effectCount());
+        assertEquals(0, fiber.getEffectCount());
     }
 
     @Test
@@ -175,7 +175,7 @@ class PluginSchedulerTest {
 
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
         assertTrue(ran.await(5, TimeUnit.SECONDS), "runNow 任务应被执行");
         assertEquals(1, count.get());
 
@@ -183,7 +183,7 @@ class PluginSchedulerTest {
         Thread.sleep(300);
         assertEquals(1, count.get(), "runNow 应只执行一次");
         // 任务已提交，没有可撤销的资源
-        assertEquals(0, fiber.effectCount());
+        assertEquals(0, fiber.getEffectCount());
     }
 
     @Test
@@ -202,7 +202,7 @@ class PluginSchedulerTest {
 
         assertTrue(attempted.await(5, TimeUnit.SECONDS));
         // 异步任务的异常不得影响插件本身的加载结果
-        assertEquals(FiberState.ACTIVE, fiber.state());
+        assertEquals(FiberState.ACTIVE, fiber.getState());
     }
 
     @Test
@@ -212,7 +212,7 @@ class PluginSchedulerTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("无调度器").build();
             }
 
@@ -224,9 +224,9 @@ class PluginSchedulerTest {
 
         PluginFiber fiber = noScheduler.load(plugin, null, null, null);
 
-        assertEquals(FiberState.FAILED, fiber.state());
-        assertTrue(fiber.failureCause().orElseThrow().getMessage().contains("未注入"),
-                fiber.failureCause().orElseThrow().getMessage());
+        assertEquals(FiberState.FAILED, fiber.getState());
+        assertTrue(fiber.getFailureCause().orElseThrow().getMessage().contains("未注入"),
+                fiber.getFailureCause().orElseThrow().getMessage());
     }
 
     @Test

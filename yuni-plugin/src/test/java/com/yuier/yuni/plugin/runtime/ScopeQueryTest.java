@@ -178,13 +178,13 @@ class ScopeQueryTest {
         ScopeQuery[] captured = new ScopeQuery[1];
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("主动插件").defaultEnable(true).build();
             }
 
             @Override
             public void apply(YuniContext ctx) {
-                captured[0] = ctx.scope();
+                captured[0] = ctx.getScope();
             }
         };
         runtime.load(plugin, null, null, null, null, filter);
@@ -238,7 +238,7 @@ class ScopeQueryTest {
         ScopeQuery scope = loadPluginCapturingScope(
                 ScopeFilter.onlyGroups(200L, 999L))[0];
 
-        List<Long> groups = scope.enabledGroups();
+        List<Long> groups = scope.getEnabledGroups();
 
         // 999 不在机器人的群列表里，因此不应出现——避免向不存在的群发送
         assertEquals(List.of(200L), groups);
@@ -250,13 +250,13 @@ class ScopeQueryTest {
         ScopeQuery[] captured = new ScopeQuery[1];
         YuniPlugin disabled = new YuniPlugin() {
             @Override
-            public PluginMetadata metadata() {
+            public PluginMetadata getMetadata() {
                 return PluginMetadata.of("默认关闭的插件").defaultEnable(false).build();
             }
 
             @Override
             public void apply(YuniContext ctx) {
-                captured[0] = ctx.scope();
+                captured[0] = ctx.getScope();
             }
         };
         // 不传 filter，也不记录到 pluginScopeFilters

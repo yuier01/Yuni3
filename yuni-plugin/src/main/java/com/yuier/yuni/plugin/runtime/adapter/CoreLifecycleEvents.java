@@ -19,7 +19,6 @@ import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.NoticeEvent;
 import com.yuier.yuni.plugin.api.event.RequestEvent;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.Map;
 import java.util.Optional;
@@ -155,11 +154,10 @@ public final class CoreLifecycleEvents {
      * <p>OneBot 的 notice 事件有两层类型：{@code notice_type}（如 {@code notify}）
      * 与 {@code sub_type}（如 {@code poke}）。实际业务关注的是<b>后者</b>
      * ——戳一戳、群荣誉、幸运王都属于 {@code notify}。因此本实现把
-     * {@code subType()} 暴露为子类型，把 {@code notice_type} 保留在
-     * {@link NoticeEvent#noticeType()} 与字段表里。</p>
+     * {@code getSubType()} 暴露为子类型，把 {@code notice_type} 保留在
+     * {@link NoticeEvent#getNoticeType()} 与字段表里。</p>
      */
     @Getter
-    @Accessors(fluent = true)
     public static final class CoreNoticeEvent extends BaseCoreEvent implements NoticeEvent {
 
         /** 通知类型（notice_type）。 */
@@ -216,7 +214,7 @@ public final class CoreLifecycleEvents {
          *
          * <p>现行系统丢弃了这些字段，插件因此必须回头自己解 {@code rawJson}。
          * 这里按「凡是有 getter 的都搬运」的原则补齐。未覆盖的字段仍可通过
-         * {@link BaseCoreEvent#rawJson()} 访问。</p>
+         * {@link BaseCoreEvent#getRawJson()} 访问。</p>
          *
          * @param fields  字段表
          * @param matched 匹配到的具体事件；可为 {@code null}
@@ -254,7 +252,7 @@ public final class CoreLifecycleEvents {
         }
 
         @Override
-        public Optional<Long> operatorId() {
+        public Optional<Long> getOperatorId() {
             return Optional.ofNullable(operatorId);
         }
 
@@ -268,7 +266,6 @@ public final class CoreLifecycleEvents {
      * {@link RequestEvent} 的适配实现。
      */
     @Getter
-    @Accessors(fluent = true)
     public static final class CoreRequestEvent extends BaseCoreEvent implements RequestEvent {
 
         /** 请求类型（friend / group）。 */
@@ -323,7 +320,7 @@ public final class CoreLifecycleEvents {
         }
 
         @Override
-        public Optional<String> comment() {
+        public Optional<String> getComment() {
             return Optional.ofNullable(comment);
         }
 
@@ -339,12 +336,11 @@ public final class CoreLifecycleEvents {
      * <p>心跳事件的 {@code status} 与 {@code interval} 被现行翻译器丢弃，
      * 本实现保留：{@code interval} 存入字段表（键 {@code interval}），
      * {@code status} 的两个常用子项平铺为 {@code status.online} 与
-     * {@code status.good} 两个键，便于 {@link MetaEvent#statusOnline()} 之类的
+     * {@code status.good} 两个键，便于 {@link MetaEvent#isStatusOnline()} 之类的
      * 默认方法直接读取（{@link com.yuier.yuni.plugin.api.event.Event#booleanValueOr}
      * 支持含点号的键名，因为字段表就是普通 Map）。</p>
      */
     @Getter
-    @Accessors(fluent = true)
     public static final class CoreMetaEvent extends BaseCoreEvent implements MetaEvent {
 
         /** 元事件类型（heartbeat / lifecycle）。 */

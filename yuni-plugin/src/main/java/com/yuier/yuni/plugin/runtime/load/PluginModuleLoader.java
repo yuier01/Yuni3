@@ -52,7 +52,7 @@ import java.util.stream.Stream;
  * <h2>关于模块元数据</h2>
  * <p>{@code metadata.json} 只保留<b>模块级</b>信息：{@code module_id}、
  * {@code module_name}，以及可选的 {@code plugin_classes}（显式列出本模块的插件类，
- * 不填则全量扫描）。插件级的名称、版本、描述、作者由 {@code YuniPlugin.metadata()}
+ * 不填则全量扫描）。插件级的名称、版本、描述、作者由 {@code YuniPlugin.getMetadata()}
  * 提供——避免同一份信息两处维护。</p>
  *
  * @see PluginClassLoader
@@ -176,8 +176,8 @@ public final class PluginModuleLoader {
             }
 
             // 登记模块句柄，供管理端分组展示与热重载定位 jar
-            List<String> pluginIds = loaded.stream().map(PluginFiber::id).toList();
-            runtime.fibers().addModule(new FiberRegistry.ModuleHandle(
+            List<String> pluginIds = loaded.stream().map(PluginFiber::getId).toList();
+            runtime.getFibers().addModule(new FiberRegistry.ModuleHandle(
                     moduleId,
                     metadata.getModuleName(),
                     jarFile.getName(),

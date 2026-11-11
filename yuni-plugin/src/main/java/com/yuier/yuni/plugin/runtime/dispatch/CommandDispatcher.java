@@ -75,7 +75,7 @@ public final class CommandDispatcher {
      *
      * <p>注入而非直接依赖 {@code PermissionService}，是为了让本类可以在不启动
      * 权限模块的情况下被测试。语义上等价于
-     * {@code ctx.permission().resolve(userId, groupId, pluginId)}。</p>
+     * {@code ctx.getPermission().resolve(userId, groupId, pluginId)}。</p>
      */
     private final PermissionResolver permissionResolver;
 
@@ -187,9 +187,9 @@ public final class CommandDispatcher {
      *
      * @return 数量
      */
-    public int handlerCount() {
+    public int getHandlerCount() {
         int count = 0;
-        for (RegistrationTable.Entry entry : registrations.commandEntries()) {
+        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
             CommandNode tree = asCommandNode(entry);
             if (tree != null) {
                 count += countHandlers(tree);
@@ -229,7 +229,7 @@ public final class CommandDispatcher {
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
-        for (RegistrationTable.Entry entry : registrations.commandEntries()) {
+        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
             // 关卡：插件状态 + 作用域过滤。
             // 命令的「子类型过滤」不适用（命令靠命令树匹配，不是靠子类型）。
             // 作用域同时看「注册项自带的过滤器」与「运行时的当前作用域」——
@@ -251,7 +251,7 @@ public final class CommandDispatcher {
                 hit = detector.match(engineEvent);
             } catch (Throwable t) {
                 log.error("插件 {} 的命令匹配抛异常，跳过该命令树: {}",
-                        entry.owner() == null ? "?" : entry.owner().id(), t.toString(), t);
+                        entry.getOwner() == null ? "?" : entry.getOwner().getId(), t.toString(), t);
                 continue;
             }
             if (!Boolean.TRUE.equals(hit)) {
@@ -266,7 +266,7 @@ public final class CommandDispatcher {
                 if (reply != null) {
                     reply.text("权限不足，无法执行该命令。").send();
                 } else {
-                    log.info("权限不足，已拒绝命令: user={}, group={}", event.userId(), groupId);
+                    log.info("权限不足，已拒绝命令: user={}, group={}", event.getUserId(), groupId);
                 }
                 continue;
             }
@@ -275,7 +275,7 @@ public final class CommandDispatcher {
             if (handler == null) {
                 // 只声明不绑定处理器的命令树：合法的「纯帮助项」，不算命中
                 log.debug("命令树命中但未绑定处理器，视为帮助声明: {}",
-                        entry.owner() == null ? "?" : entry.owner().id());
+                        entry.getOwner() == null ? "?" : entry.getOwner().getId());
                 matched = false;
                 continue;
             }
@@ -285,7 +285,7 @@ public final class CommandDispatcher {
                 try {
                     handler.handle(finalEvent, reply);
                 } catch (Throwable t) {
-                    log.error("插件 {} 执行命令失败", entry.owner() == null ? "?" : entry.owner().id(), t);
+                    log.error("插件 {} 执行命令失败", entry.getOwner() == null ? "?" : entry.getOwner().getId(), t);
                     if (reply != null) {
                         reply.text("执行命令失败（" + t.getClass().getSimpleName() + "），请联系开发人员。")
                                 .send();
@@ -337,7 +337,7 @@ public final class CommandDispatcher {
         if (key == null) {
             return null;
         }
-        for (RegistrationTable.Entry entry : registrations.commandEntries()) {
+        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
             CommandNode tree = asCommandNode(entry);
             if (tree == null) {
                 continue;
@@ -395,12 +395,12 @@ public final class CommandDispatcher {
         if (result == null) {
             return true;
         }
-        String pluginId = entry.owner() == null ? null : entry.owner().id();
-        UserPermission userPermission = resolvePermission(event.userId(), event.groupId().orElse(null), pluginId);
+        String pluginId = entry.getOwner() == null ? null : entry.getOwner().getId();
+        UserPermission userPermission = resolvePermission(event.getUserId(), event.getGroupId().orElse(null), pluginId);
         UserPermission required = result.getRequiredPermission();
         if (required != null && userPermission.getPriority() < required.getPriority()) {
             log.info("权限不足: 用户 {} 执行 {} 需要 {}，实际 {}",
-                    event.userId(), result.getMatchedKey(), required, userPermission);
+                    event.getUserId(), result.getMatchedKey(), required, userPermission);
             return false;
         }
         for (CommandResult child : result.getChildren().values()) {
@@ -442,13 +442,13 @@ public final class CommandDispatcher {
      * @return 命令树；类型不符时返回 {@code null}
      */
     private CommandNode asCommandNode(RegistrationTable.Entry entry) {
-        Object payload = entry.payload();
+        Object payload = entry.getPayload();
         if (payload instanceof CommandNode node) {
             return node;
         }
         log.error("命令注册项载荷类型不符：{}（插件 {}）",
                 payload == null ? "null" : payload.getClass().getName(),
-                entry.owner() == null ? "?" : entry.owner().id());
+                entry.getOwner() == null ? "?" : entry.getOwner().getId());
         return null;
     }
 
@@ -464,18 +464,18 @@ public final class CommandDispatcher {
      */
     private YuniMessageEvent toEngineEvent(com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent event) {
         YuniMessageEvent engineEvent = new YuniMessageEvent();
-        engineEvent.setTime(event.time());
-        engineEvent.setSelfId(event.selfId());
-        engineEvent.setMessageType(event.messageType());
-        engineEvent.setSubType(event.subType());
-        engineEvent.setMessageId(event.messageId());
-        engineEvent.setUserId(event.userId());
-        engineEvent.setGroupId(event.groupId().orElse(null));
-        engineEvent.setRawMessage(event.rawMessage());
+        engineEvent.setTime(event.getTime());
+        engineEvent.setSelfId(event.getSelfId());
+        engineEvent.setMessageType(event.getMessageType());
+        engineEvent.setSubType(event.getSubType());
+        engineEvent.setMessageId(event.getMessageId());
+        engineEvent.setUserId(event.getUserId());
+        engineEvent.setGroupId(event.getGroupId().orElse(null));
+        engineEvent.setRawMessage(event.getRawMessage());
 
-        if (event.chain() instanceof com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
+        if (event.getChain() instanceof com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
             // 复用同一个内部链对象，避免 JSON 往返
-            List<com.yuier.yuni.core.model.message.MessageSegment> segments = view.rawSegments();
+            List<com.yuier.yuni.core.model.message.MessageSegment> segments = view.getRawSegments();
             engineEvent.setMessage(segments);
             com.yuier.yuni.core.model.message.MessageChain chain =
                     new com.yuier.yuni.core.model.message.MessageChain();
@@ -485,7 +485,7 @@ public final class CommandDispatcher {
             // 其他视图实现（测试替身等）：用纯文本构造一个等价的链
             com.yuier.yuni.core.model.message.MessageChain chain =
                     new com.yuier.yuni.core.model.message.MessageChain();
-            chain.addTextSegment(event.chain().plainText());
+            chain.addTextSegment(event.getChain().getPlainText());
             engineEvent.setMessage(chain.getContent());
             engineEvent.setMessageChain(chain);
         }
@@ -493,11 +493,11 @@ public final class CommandDispatcher {
         // 发送者：命令引擎不读它，但保留以便将来的节点级校验
         com.yuier.yuni.core.model.user.MessageSender sender =
                 new com.yuier.yuni.core.model.user.MessageSender();
-        sender.setUserId(event.userId());
-        sender.setNickname(event.sender().nickname());
-        sender.setCard(event.sender().card().orElse(null));
-        sender.setRole(event.sender().role().orElse(null));
-        sender.setTitle(event.sender().title().orElse(null));
+        sender.setUserId(event.getUserId());
+        sender.setNickname(event.getSender().getNickname());
+        sender.setCard(event.getSender().getCard().orElse(null));
+        sender.setRole(event.getSender().getRole().orElse(null));
+        sender.setTitle(event.getSender().getTitle().orElse(null));
         engineEvent.setSender(sender);
 
         return engineEvent;

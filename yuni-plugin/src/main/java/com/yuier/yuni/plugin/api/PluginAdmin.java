@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 插件管理服务——由 {@link YuniContext#plugins()} 提供。
+ * 插件管理服务——由 {@link YuniContext#getPlugins()} 提供。
  *
  * <h2>为什么插件 API 里要有「管理插件」的能力</h2>
  * <p>Yuni 自身有一个内置的 {@code plugin-manage} 模块，它的职责就是在聊天里
@@ -57,7 +57,7 @@ import java.util.Optional;
  * 而不是让每个调用方各自记着要判。</p>
  *
  * @see PluginView
- * @see YuniContext#plugins()
+ * @see YuniContext#getPlugins()
  */
 public interface PluginAdmin {
 
@@ -72,14 +72,14 @@ public interface PluginAdmin {
      *
      * @return 不可变列表；无模块时为空列表
      */
-    List<PluginModuleView> modules();
+    List<PluginModuleView> getModules();
 
     /**
      * 全部插件（跨模块），按模块 ID、再按加载顺序。
      *
      * @return 不可变列表；无插件时为空列表
      */
-    List<PluginView> plugins();
+    List<PluginView> getPlugins();
 
     /**
      * 按标识取单个插件。
@@ -151,7 +151,7 @@ public interface PluginAdmin {
      * 判定某插件在某个群是否生效。
      *
      * <p>判定链与分发路径完全一致（三层回落）：群例外 → 全局例外 →
-     * 元数据的 {@link PluginView#defaultEnable()}。<b>这是权威答案</b>——
+     * 元数据的 {@link PluginView#isDefaultEnable()}。<b>这是权威答案</b>——
      * 管理端展示、插件自查都应当以本方法为准，不要自己重算。</p>
      *
      * <p>插件不存在时返回 {@code false}（而非抛异常）：这是一个可以被问出的
@@ -184,7 +184,7 @@ public interface PluginAdmin {
      * 新系统里第三件事（插件回调）已随基类一起消失，第四件事就是本方法。</p>
      *
      * <h3>内置插件保护</h3>
-     * <p>当目标为 {@link PluginView#buildIn()} 且 {@code callerIsMaster} 为
+     * <p>当目标为 {@link PluginView#isBuildIn()} 且 {@code callerIsMaster} 为
      * {@code false} 时抛 {@link PluginAdminException}。把该标志放进签名是刻意的：
      * 它强制调用方在编译期就面对「你有没有验过这个人是不是拥有者」这个问题。</p>
      *
@@ -225,7 +225,7 @@ public interface PluginAdmin {
     void setGlobalEnabled(String pluginId, boolean enabled, boolean callerIsMaster);
 
     /**
-     * 清除某插件的全部群例外，回到元数据声明的 {@link PluginView#defaultEnable()}。
+     * 清除某插件的全部群例外，回到元数据声明的 {@link PluginView#isDefaultEnable()}。
      *
      * <p>与 {@link #setEnabled} 的分工：后者调整个别群的开关，本方法是
      * 「重置为默认」——管理端通常把它渲染成一个「恢复默认」按钮。</p>
@@ -275,5 +275,5 @@ public interface PluginAdmin {
      *
      * @return 形如 {@code "模块 13 / 插件 23 / 生效 21 / 失败 1 / 等待依赖 1"}
      */
-    String summary();
+    String getSummary();
 }

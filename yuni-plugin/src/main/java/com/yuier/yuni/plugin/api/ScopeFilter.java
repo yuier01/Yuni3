@@ -1,5 +1,9 @@
 package com.yuier.yuni.plugin.api;
 
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
+
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -164,19 +168,19 @@ public interface ScopeFilter {
      *
      * @return 群白名单；不可导出时为空
      */
-    default Optional<Set<Long>> explicitGroupWhitelist() {
+    default Optional<Set<Long>> getExplicitGroupWhitelist() {
         return Optional.empty();
     }
 
     /**
      * 尝试导出本过滤器为「显式群黑名单」。
      *
-     * <p>与 {@link #explicitGroupWhitelist()} 对称，只有 {@link #excludeGroups}
+     * <p>与 {@link #getExplicitGroupWhitelist()} 对称，只有 {@link #excludeGroups}
      * 产生的过滤器可以导出。</p>
      *
      * @return 群黑名单；不可导出时为空
      */
-    default Optional<Set<Long>> explicitGroupBlacklist() {
+    default Optional<Set<Long>> getExplicitGroupBlacklist() {
         return Optional.empty();
     }
 
@@ -192,12 +196,12 @@ public interface ScopeFilter {
         if (this == ALL) {
             return Optional.of(new PersistedScope(true, Set.of()));
         }
-        Optional<Set<Long>> white = explicitGroupWhitelist();
+        Optional<Set<Long>> white = getExplicitGroupWhitelist();
         if (white.isPresent()) {
             // 白名单语义：全局关闭，仅列出的群开启
             return Optional.of(new PersistedScope(false, white.get()));
         }
-        Optional<Set<Long>> black = explicitGroupBlacklist();
+        Optional<Set<Long>> black = getExplicitGroupBlacklist();
         if (black.isPresent()) {
             // 黑名单语义：全局开启，列出的群关闭
             return Optional.of(new PersistedScope(true, black.get()));
@@ -215,28 +219,42 @@ public interface ScopeFilter {
         if (persisted == null) {
             return ALL;
         }
-        if (persisted.enabledByDefault()) {
+        if (persisted.isEnabledByDefault()) {
             // 全局开启 + 黑名单
-            return persisted.exceptionGroups().isEmpty()
+            return persisted.getExceptionGroups().isEmpty()
                     ? ALL
-                    : excludeGroups(persisted.exceptionGroups());
+                    : excludeGroups(persisted.getExceptionGroups());
         }
         // 全局关闭 + 白名单
-        return onlyGroups(persisted.exceptionGroups());
+        return onlyGroups(persisted.getExceptionGroups());
     }
 
     /**
      * 作用域过滤器的持久化形态。
      *
-     * @param enabledByDefault 默认（全局）是否启用
-     * @param exceptionGroups  例外群列表：{@code enabledByDefault} 为真时是黑名单，
-     *                         为假时是白名单
+     * <p>原本是 record；为统一 JavaBean 访问器改为 {@code @Getter} 类。</p>
      */
-    record PersistedScope(boolean enabledByDefault, Set<Long> exceptionGroups) {
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    final class PersistedScope {
 
-        /** 紧凑构造器：防御性拷贝，保证不可变。 */
-        public PersistedScope {
-            exceptionGroups = exceptionGroups == null
+        /** 默认（全局）是否启用。 */
+        private final boolean enabledByDefault;
+
+        /** 例外群列表：{@code enabledByDefault} 为真时是黑名单，为假时是白名单。 */
+        private final Set<Long> exceptionGroups;
+
+        /**
+         * 构造持久化形态。
+         *
+         * @param enabledByDefault 默认是否启用
+         * @param exceptionGroups  例外群；{@code null} 视为空集
+         */
+        public PersistedScope(boolean enabledByDefault, Set<Long> exceptionGroups) {
+            this.enabledByDefault = enabledByDefault;
+            // 防御性拷贝，保证不可变
+            this.exceptionGroups = exceptionGroups == null
                     ? Set.of()
                     : Collections.unmodifiableSet(new HashSet<>(exceptionGroups));
         }
@@ -244,14 +262,23 @@ public interface ScopeFilter {
 
     /**
      * 白名单实现——具名类而非 lambda，以便被反向解析。
-     *
-     * @param groups 生效的群集合（已不可变）
      */
-    record OnlyGroups(Set<Long> groups) implements ScopeFilter {
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    final class OnlyGroups implements ScopeFilter {
 
-        /** 紧凑构造器：复制并冻结集合。 */
-        public OnlyGroups {
-            groups = Collections.unmodifiableSet(new HashSet<>(groups));
+        /** 生效的群集合（已不可变）。 */
+        private final Set<Long> groups;
+
+        /**
+         * 构造白名单。
+         *
+         * @param groups 生效的群集合
+         */
+        public OnlyGroups(Set<Long> groups) {
+            // 复制并冻结集合
+            this.groups = Collections.unmodifiableSet(new HashSet<>(groups));
         }
 
         @Override
@@ -261,21 +288,30 @@ public interface ScopeFilter {
         }
 
         @Override
-        public Optional<Set<Long>> explicitGroupWhitelist() {
+        public Optional<Set<Long>> getExplicitGroupWhitelist() {
             return Optional.of(groups);
         }
     }
 
     /**
      * 黑名单实现——具名类而非 lambda，以便被反向解析。
-     *
-     * @param groups 不生效的群集合（已不可变）
      */
-    record ExcludeGroups(Set<Long> groups) implements ScopeFilter {
+    @Getter
+    @ToString
+    @EqualsAndHashCode
+    final class ExcludeGroups implements ScopeFilter {
 
-        /** 紧凑构造器：复制并冻结集合。 */
-        public ExcludeGroups {
-            groups = Collections.unmodifiableSet(new HashSet<>(groups));
+        /** 不生效的群集合（已不可变）。 */
+        private final Set<Long> groups;
+
+        /**
+         * 构造黑名单。
+         *
+         * @param groups 不生效的群集合
+         */
+        public ExcludeGroups(Set<Long> groups) {
+            // 复制并冻结集合
+            this.groups = Collections.unmodifiableSet(new HashSet<>(groups));
         }
 
         @Override
@@ -285,7 +321,7 @@ public interface ScopeFilter {
         }
 
         @Override
-        public Optional<Set<Long>> explicitGroupBlacklist() {
+        public Optional<Set<Long>> getExplicitGroupBlacklist() {
             return Optional.of(groups);
         }
     }

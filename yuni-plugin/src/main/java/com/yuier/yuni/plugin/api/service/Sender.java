@@ -14,16 +14,16 @@ import com.yuier.yuni.plugin.api.event.MessageChainView;
  * <h2>用法</h2>
  * <pre>{@code
  * // 发群消息
- * ctx.sender().group(groupId).text("上线了").send();
+ * ctx.getSender().group(groupId).text("上线了").send();
  *
  * // 发私聊，并取回消息 ID 以便后续撤回
- * long msgId = ctx.sender().privateChat(userId).text("稍等").sendAndGetId();
+ * long msgId = ctx.getSender().privateChat(userId).text("稍等").sendAndGetId();
  *
  * // 引用回复某条历史消息
- * ctx.sender().group(groupId).quote(originalMsgId).text("收到").send();
+ * ctx.getSender().group(groupId).quote(originalMsgId).text("收到").send();
  *
  * // 已构建好的链直接发出
- * ctx.sender().group(groupId).chain(someChain).send();
+ * ctx.getSender().group(groupId).chain(someChain).send();
  * }</pre>
  *
  * <h2>与 {@code Reply} 的关系</h2>

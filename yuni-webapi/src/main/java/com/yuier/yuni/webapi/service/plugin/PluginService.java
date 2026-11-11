@@ -34,7 +34,7 @@ import java.util.List;
  *   <caption>旧 → 新</caption>
  *   <tr><th>旧实现</th><th>新实现</th></tr>
  *   <tr><td>{@code controller.listPlugins()} 遍历 {@code PluginContainer} 的八条类型列表</td>
- *       <td>{@code admin.modules()}</td></tr>
+ *       <td>{@code admin.getModules()}</td></tr>
  *   <tr><td>{@code pluginEnableProcessor.enablePlugin(...)}（且先调插件的 enable 回调）</td>
  *       <td>{@code admin.setGlobalEnabled(...)} / {@code admin.setEnabled(...)}</td></tr>
  *   <tr><td>170 行手工重载（清容器、取消定时任务、逐个重建索引）</td>
@@ -62,7 +62,7 @@ public class PluginService {
      * 插件运行时。
      *
      * <p>注入运行时而不是 {@link PluginAdmin}：后者由运行时按需提供
-     * （{@code runtime.admin()}），不是 Spring Bean——它的生命周期与插件系统
+     * （{@code runtime.getAdmin()}），不是 Spring Bean——它的生命周期与插件系统
      * 一致，而插件系统在启动流程的后段才就绪。这样也保证了本类拿到的
      * 一定是「当前生效」的那一份视图。</p>
      */
@@ -84,30 +84,30 @@ public class PluginService {
      * @return 插件模块列表，顺序与加载顺序一致
      */
     public List<PluginModuleInfo> listPlugins() {
-        PluginAdmin admin = pluginRuntime.admin();
+        PluginAdmin admin = pluginRuntime.getAdmin();
         List<PluginModuleInfo> result = new ArrayList<>();
-        for (PluginModuleView module : admin.modules()) {
+        for (PluginModuleView module : admin.getModules()) {
             List<PluginInfo> plugins = new ArrayList<>();
-            for (PluginView plugin : module.plugins()) {
+            for (PluginView plugin : module.getPlugins()) {
                 plugins.add(new PluginInfo(
-                        plugin.id(),
-                        plugin.name(),
-                        plugin.description(),
-                        plugin.tips(),
-                        plugin.version(),
-                        plugin.author(),
-                        plugin.moduleId(),
-                        plugin.buildIn(),
-                        plugin.state().name(),
+                        plugin.getId(),
+                        plugin.getName(),
+                        plugin.getDescription(),
+                        plugin.getTips(),
+                        plugin.getVersion(),
+                        plugin.getAuthor(),
+                        plugin.getModuleId(),
+                        plugin.isBuildIn(),
+                        plugin.getState().name(),
                         // 全局默认值。注意它<b>不是</b>「对所有群都生效」——
                         // 存在群例外时，个别群的结论由 enabledGroups 与按群接口给出。
                         // 字段名用 defaultEnabled 就是为了避免这个误读。
-                        admin.isGloballyEnabled(plugin.id()),
-                        new LinkedHashSet<>(admin.enabledGroups(plugin.id())),
-                        plugin.failureSummary().orElse(null),
-                        plugin.missingServices()));
+                        admin.isGloballyEnabled(plugin.getId()),
+                        new LinkedHashSet<>(admin.enabledGroups(plugin.getId())),
+                        plugin.getFailureSummary().orElse(null),
+                        plugin.getMissingServices()));
             }
-            result.add(new PluginModuleInfo(module.id(), module.name(), plugins));
+            result.add(new PluginModuleInfo(module.getId(), module.getName(), plugins));
         }
         return result;
     }
@@ -145,7 +145,7 @@ public class PluginService {
      * @throws IllegalArgumentException 插件不存在或为受保护的内置插件
      */
     private void applyEnabled(String pluginId, Long groupId, boolean enabled) {
-        PluginAdmin admin = pluginRuntime.admin();
+        PluginAdmin admin = pluginRuntime.getAdmin();
         try {
             if (groupId == null) {
                 admin.setGlobalEnabled(pluginId, enabled, CALLER_IS_MASTER);
@@ -182,7 +182,7 @@ public class PluginService {
      * @throws RuntimeException         重载过程中发生异常
      */
     public void reloadPlugin(String pluginId) {
-        PluginAdmin admin = pluginRuntime.admin();
+        PluginAdmin admin = pluginRuntime.getAdmin();
         if (pluginId == null || pluginId.isBlank()) {
             reloadAll(admin);
             return;
@@ -190,7 +190,7 @@ public class PluginService {
 
         PluginView plugin = admin.plugin(pluginId).orElseThrow(() ->
                 new IllegalArgumentException("未找到插件: " + pluginId));
-        String moduleId = plugin.moduleId();
+        String moduleId = plugin.getModuleId();
         if (moduleId == null || moduleId.isBlank()) {
             throw new IllegalArgumentException(
                     "插件 " + pluginId + " 不属于任何模块，无法重载（它可能是通过代码直接加载的）");
@@ -209,13 +209,13 @@ public class PluginService {
     private void reloadAll(PluginAdmin admin) {
         List<String> failed = new ArrayList<>();
         int succeeded = 0;
-        for (PluginModuleView module : admin.modules()) {
+        for (PluginModuleView module : admin.getModules()) {
             try {
-                admin.reload(module.id());
+                admin.reload(module.getId());
                 succeeded++;
             } catch (PluginAdminException e) {
-                log.error("重载模块 {} 失败: {}", module.id(), e.getMessage());
-                failed.add(module.id() + ": " + e.getMessage());
+                log.error("重载模块 {} 失败: {}", module.getId(), e.getMessage());
+                failed.add(module.getId() + ": " + e.getMessage());
             }
         }
         log.info("已重载 {} 个插件模块", succeeded);

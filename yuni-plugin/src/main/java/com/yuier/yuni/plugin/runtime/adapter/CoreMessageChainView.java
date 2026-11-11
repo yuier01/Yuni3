@@ -76,19 +76,19 @@ public final class CoreMessageChainView implements MessageChainView {
     }
 
     @Override
-    public String plainText() {
+    public String getPlainText() {
         StringBuilder builder = new StringBuilder();
         for (MessageSegment segment : segments) {
             if (segment == null) {
                 // 空段按占位符处理，而不是让拼接整体失败
-                builder.append(nullSegmentPlaceholder());
+                builder.append(getNullSegmentPlaceholder());
                 continue;
             }
             if (isText(segment)) {
                 String text = ((TextSegment) segment).getText();
                 // 文本段内部的 null/空白保留原样，只有 null 才替换：
                 // 空白是用户真实输入的一部分，做命令匹配时需要保留
-                builder.append(text == null ? nullSegmentPlaceholder() : text);
+                builder.append(text == null ? getNullSegmentPlaceholder() : text);
             }
         }
         return builder.toString();
@@ -127,7 +127,7 @@ public final class CoreMessageChainView implements MessageChainView {
         if (text == null || text.isEmpty()) {
             return false;
         }
-        return plainText().contains(text);
+        return getPlainText().contains(text);
     }
 
     @Override
@@ -163,7 +163,7 @@ public final class CoreMessageChainView implements MessageChainView {
     }
 
     @Override
-    public List<String> segmentTypes() {
+    public List<String> getSegmentTypes() {
         List<String> types = new ArrayList<>(segments.size());
         for (MessageSegment segment : segments) {
             if (segment == null) {
@@ -191,7 +191,7 @@ public final class CoreMessageChainView implements MessageChainView {
     }
 
     @Override
-    public List<String> segmentJsonList() {
+    public List<String> getSegmentJsonList() {
         if (jsonCodec == null || segments.isEmpty()) {
             return List.of();
         }
@@ -221,7 +221,7 @@ public final class CoreMessageChainView implements MessageChainView {
      *
      * @return 不可变列表
      */
-    public List<MessageSegment> rawSegments() {
+    public List<MessageSegment> getRawSegments() {
         return segments;
     }
 

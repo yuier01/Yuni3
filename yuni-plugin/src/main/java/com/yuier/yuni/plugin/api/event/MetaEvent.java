@@ -19,7 +19,7 @@ import java.util.Optional;
  * // 记录心跳，用于观测前端是否存活
  * ctx.onMeta("heartbeat", (ev, reply) -> {
  *     log.debug("心跳: online={}, interval={}ms",
- *               ev.statusOnline(), ev.heartbeatInterval().orElse(0L));
+ *               ev.isStatusOnline(), ev.getHeartbeatInterval().orElse(0L));
  * });
  * }</pre>
  *
@@ -27,7 +27,7 @@ import java.util.Optional;
  * <p>现行 {@code EventTranslator.buildYuniMetaEvent} 只搬运 {@code metaEventType}
  * 与 {@code subType}，<b>丢弃了 {@code status} 与 {@code interval}</b>，
  * 于是 {@code HeartBeatEvent} 插件实际上拿不到心跳间隔。新系统保留这两个字段
- * （通过 {@link #heartbeatInterval()} 与 {@link #statusOnline()}）。</p>
+ * （通过 {@link #getHeartbeatInterval()} 与 {@link #isStatusOnline()}）。</p>
  */
 public interface MetaEvent extends Event {
 
@@ -42,7 +42,7 @@ public interface MetaEvent extends Event {
      *
      * @return {@link #TYPE_HEARTBEAT} 或 {@link #TYPE_LIFECYCLE}
      */
-    String metaEventType();
+    String getMetaEventType();
 
     /**
      * 是否为心跳事件。
@@ -50,7 +50,7 @@ public interface MetaEvent extends Event {
      * @return 心跳返回 {@code true}
      */
     default boolean isHeartbeat() {
-        return TYPE_HEARTBEAT.equals(metaEventType());
+        return TYPE_HEARTBEAT.equals(getMetaEventType());
     }
 
     /**
@@ -59,7 +59,7 @@ public interface MetaEvent extends Event {
      * @return 生命周期返回 {@code true}
      */
     default boolean isLifecycle() {
-        return TYPE_LIFECYCLE.equals(metaEventType());
+        return TYPE_LIFECYCLE.equals(getMetaEventType());
     }
 
     /**
@@ -70,7 +70,7 @@ public interface MetaEvent extends Event {
      *
      * @return 心跳间隔；非心跳事件或未提供时为空
      */
-    default Optional<Long> heartbeatInterval() {
+    default Optional<Long> getHeartbeatInterval() {
         Object v = value("interval").orElse(null);
         return v == null ? Optional.empty() : Optional.of(longValue("interval"));
     }
@@ -80,7 +80,7 @@ public interface MetaEvent extends Event {
      *
      * @return 在线返回 {@code true}；非心跳事件或未提供时返回 {@code false}
      */
-    default boolean statusOnline() {
+    default boolean isStatusOnline() {
         return booleanValueOr("status.online", false);
     }
 
@@ -89,7 +89,7 @@ public interface MetaEvent extends Event {
      *
      * @return 正常返回 {@code true}；非心跳事件或未提供时返回 {@code false}
      */
-    default boolean statusGood() {
+    default boolean isStatusGood() {
         return booleanValueOr("status.good", false);
     }
 
@@ -98,7 +98,7 @@ public interface MetaEvent extends Event {
      *
      * @return {@code connect} / {@code enable} / {@code disable}；非生命周期事件时为空
      */
-    default Optional<String> lifecyclePhase() {
-        return isLifecycle() ? Optional.ofNullable(subType()) : Optional.empty();
+    default Optional<String> getLifecyclePhase() {
+        return isLifecycle() ? Optional.ofNullable(getSubType()) : Optional.empty();
     }
 }

@@ -29,7 +29,7 @@ public class BotConfig {
     private BotApp botApp;
 
     @Bean
-    public Bot bot() {
+    public Bot getBot() {
         Bot bot = new Bot();
         bot.setId(id);
         bot.setNickName(nickName);

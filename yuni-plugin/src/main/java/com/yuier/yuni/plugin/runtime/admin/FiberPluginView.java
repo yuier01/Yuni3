@@ -5,7 +5,6 @@ import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.FiberState;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,7 +19,7 @@ import java.util.Optional;
  *   <li><b>不泄漏内部类型</b>：{@link PluginFiber} 有 {@code dispose()}、
  *       {@code effects()}、{@code rollbackEffects()} 等仅供运行时使用的成员。
  *       管理端拿到 Fiber 就能调它们，而契约里没有这些承诺；</li>
- *   <li><b>不泄漏插件实例</b>：{@link PluginFiber#plugin()} 返回
+ *   <li><b>不泄漏插件实例</b>：{@link PluginFiber#getPlugin()} 返回
  *       {@code YuniPlugin} 实例。视图<b>不</b>把它暴露出去，因此管理端无法持有
  *       一个已卸载插件的实例引用——那会让它的 ClassLoader 无法回收
  *       （设计文档 §9.4 的 P0 事故正是这类问题）；</li>
@@ -38,7 +37,6 @@ import java.util.Optional;
  * @see PluginView
  */
 @Getter
-@Accessors(fluent = true)
 public final class FiberPluginView implements PluginView {
 
     /** 插件标识。 */
@@ -72,23 +70,23 @@ public final class FiberPluginView implements PluginView {
      * @param moduleId 所属模块 ID；不属于任何模块时传 {@code null}
      */
     public FiberPluginView(PluginFiber fiber, String moduleId) {
-        this.id = fiber.id();
+        this.id = fiber.getId();
         this.moduleId = moduleId == null ? "" : moduleId;
 
-        var metadata = fiber.metadata();
-        this.name = metadata.name();
-        this.version = metadata.version();
-        this.description = metadata.description();
-        this.tips = metadata.tips();
-        this.author = metadata.author();
-        this.buildIn = metadata.buildIn();
-        this.defaultEnable = metadata.defaultEnable();
+        var metadata = fiber.getMetadata();
+        this.name = metadata.getName();
+        this.version = metadata.getVersion();
+        this.description = metadata.getDescription();
+        this.tips = metadata.getTips();
+        this.author = metadata.getAuthor();
+        this.buildIn = metadata.isBuildIn();
+        this.defaultEnable = metadata.isDefaultEnable();
 
-        this.state = translate(fiber.state());
-        this.missingServices = fiber.pendingDependencies().stream()
+        this.state = translate(fiber.getState());
+        this.missingServices = fiber.getPendingDependencies().stream()
                 .map(Class::getName)
                 .toList();
-        this.failureSummary = fiber.failureCause()
+        this.failureSummary = fiber.getFailureCause()
                 .map(t -> t.getClass().getSimpleName()
                         + (t.getMessage() == null ? "" : ": " + t.getMessage()))
                 .orElse(null);
@@ -126,12 +124,12 @@ public final class FiberPluginView implements PluginView {
      */
 
     @Override
-    public Optional<String> failureSummary() {
+    public Optional<String> getFailureSummary() {
         return Optional.ofNullable(failureSummary);
     }
 
     @Override
     public String toString() {
-        return "PluginView{" + id + "[" + state.displayName() + "]}";
+        return "PluginView{" + id + "[" + state.getDisplayName() + "]}";
     }
 }

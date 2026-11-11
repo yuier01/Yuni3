@@ -1,7 +1,6 @@
 package com.yuier.yuni.plugin.runtime;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 /**
  * 插件实例（Fiber）的生命状态。
@@ -34,7 +33,6 @@ import lombok.experimental.Accessors;
  * @see PluginFiber
  */
 @Getter
-@Accessors(fluent = true)
 public enum FiberState {
 
     /**

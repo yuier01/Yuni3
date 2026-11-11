@@ -14,7 +14,7 @@ import java.util.Optional;
  * <pre>{@code
  * // 只处理加好友请求
  * ctx.onRequest("friend", (ev, reply) -> {
- *     if (ev.comment().orElse("").contains("暗号")) {
+ *     if (ev.getComment().orElse("").contains("暗号")) {
  *         reply.approve();          // 批准
  *     }
  * });
@@ -24,7 +24,7 @@ import java.util.Optional;
  * <p>现行 {@code PassivePluginMatcher.matchRequestEvent} 既不检查插件启停也不检查权限
  * （审计报告已记录该不一致），且 {@code EventTranslator} 翻译时丢弃了
  * {@code sub_type}，导致插件无法区分「主动加群」与「被邀请入群」。
- * 新系统中 {@link Event#subType()} 保留该字段。</p>
+ * 新系统中 {@link Event#getSubType()} 保留该字段。</p>
  */
 public interface RequestEvent extends Event {
 
@@ -33,14 +33,14 @@ public interface RequestEvent extends Event {
      *
      * @return {@code friend}（加好友）或 {@code group}（加群/被邀请入群）
      */
-    String requestType();
+    String getRequestType();
 
     /**
      * 发起请求的用户账号。
      *
      * @return 用户 QQ 号
      */
-    long userId();
+    long getUserId();
 
     /**
      * 验证信息 / 附言。
@@ -50,7 +50,7 @@ public interface RequestEvent extends Event {
      *
      * @return 验证信息；未提供时为空
      */
-    Optional<String> comment();
+    Optional<String> getComment();
 
     /**
      * 请求标识（OneBot {@code flag}）。
@@ -59,7 +59,7 @@ public interface RequestEvent extends Event {
      *
      * @return 请求标识；未提供时为 {@code null}
      */
-    String flag();
+    String getFlag();
 
     /**
      * 是否为加好友请求。
@@ -67,7 +67,7 @@ public interface RequestEvent extends Event {
      * @return {@code requestType} 为 {@code friend} 时返回 {@code true}
      */
     default boolean isFriendRequest() {
-        return "friend".equals(requestType());
+        return "friend".equals(getRequestType());
     }
 
     /**
@@ -76,7 +76,7 @@ public interface RequestEvent extends Event {
      * @return {@code requestType} 为 {@code group} 时返回 {@code true}
      */
     default boolean isGroupRequest() {
-        return "group".equals(requestType());
+        return "group".equals(getRequestType());
     }
 
     /**
@@ -87,7 +87,7 @@ public interface RequestEvent extends Event {
      * @return 被邀请入群时返回 {@code true}
      */
     default boolean isInviteToGroup() {
-        return isGroupRequest() && "invite".equals(subType());
+        return isGroupRequest() && "invite".equals(getSubType());
     }
 
     /**
@@ -98,6 +98,6 @@ public interface RequestEvent extends Event {
      * @return 申请入群时返回 {@code true}
      */
     default boolean isAddGroup() {
-        return isGroupRequest() && "add".equals(subType());
+        return isGroupRequest() && "add".equals(getSubType());
     }
 }

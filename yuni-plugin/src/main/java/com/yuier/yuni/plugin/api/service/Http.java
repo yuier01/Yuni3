@@ -1,7 +1,6 @@
 package com.yuier.yuni.plugin.api.service;
 
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.time.Duration;
 import java.util.Map;
@@ -25,20 +24,20 @@ import java.util.Map;
  * <h2>用法</h2>
  * <pre>{@code
  * // GET，带查询参数
- * PigImageList list = ctx.http()
+ * PigImageList list = ctx.getHttp()
  *         .get("https://api.example.com/images")
  *         .query("page", 1)
  *         .query("size", 20)
  *         .execute(PigImageList.class);
  *
  * // POST JSON
- * LoliconApiResponse resp = ctx.http()
+ * LoliconApiResponse resp = ctx.getHttp()
  *         .post("https://api.lolicon.app/setu/v2")
  *         .jsonBody(Map.of("r18", 0, "num", 1))
  *         .execute(LoliconApiResponse.class);
  *
  * // 直接取字符串（非 JSON 响应）
- * String text = ctx.http().get(url).executeAsString();
+ * String text = ctx.getHttp().get(url).executeAsString();
  * }</pre>
  *
  * <h2>默认行为</h2>
@@ -154,17 +153,16 @@ public interface Http {
      * {@code RuntimeException}。</p>
      */
     @Getter
-    @Accessors(fluent = true)
     class HttpException extends RuntimeException {
 
         private static final long serialVersionUID = 1L;
 
         /** 出错的请求 URL；非网络阶段失败时可能为 {@code null}。
-         *  访问器 {@code url()} 由 @Getter + @Accessors(fluent) 生成。 */
+         *  访问器 {@code getUrl()} 由 @Getter + @Accessors(fluent) 生成。 */
         private final String url;
 
         /** HTTP 状态码；未收到响应时为 {@code -1}。
-         *  访问器 {@code statusCode()} 由 @Getter + @Accessors(fluent) 生成。 */
+         *  访问器 {@code getStatusCode()} 由 @Getter + @Accessors(fluent) 生成。 */
         private final int statusCode;
 
         /**

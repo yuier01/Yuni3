@@ -46,14 +46,14 @@ public interface Event {
      *
      * @return 事件发生时间；协议未提供时为 {@code 0}
      */
-    long time();
+    long getTime();
 
     /**
      * 收到/产生本事件的机器人账号 ID。
      *
      * @return 机器人自身 QQ 号
      */
-    long selfId();
+    long getSelfId();
 
     /**
      * 事件来源的群号。
@@ -63,7 +63,7 @@ public interface Event {
      *
      * @return 群号；非群事件为空
      */
-    Optional<Long> groupId();
+    Optional<Long> getGroupId();
 
     /**
      * 事件子类型标识，用于「匹配到哪一类具体事件」的判定。
@@ -77,13 +77,13 @@ public interface Event {
      *
      * @return 子类型标识，永不为 {@code null}（无子类型时返回空串）
      */
-    String subType();
+    String getSubType();
 
     /**
      * 判定本事件的子类型是否匹配。
      *
      * <p>与 {@link MatchToken#is(String)} 对称。在处理器里做二次判定时比
-     * {@code "poke".equals(ev.subType())} 更简洁，且 {@code null} 安全。</p>
+     * {@code "poke".equals(ev.getSubType())} 更简洁，且 {@code null} 安全。</p>
      *
      * <pre>{@code
      * ctx.onNotice((ev, reply) -> {
@@ -95,7 +95,7 @@ public interface Event {
      * @return 子类型相等时返回 {@code true}
      */
     default boolean is(String expected) {
-        return expected != null && expected.equals(subType());
+        return expected != null && expected.equals(getSubType());
     }
 
     /**
@@ -190,7 +190,7 @@ public interface Event {
      *
      * @return 不可变的字段映射
      */
-    default Map<String, Object> rawFields() {
+    default Map<String, Object> getRawFields() {
         return Collections.emptyMap();
     }
 
@@ -203,7 +203,7 @@ public interface Event {
      *
      * @return 原始 JSON 字符串，可能为 {@code null}
      */
-    default String rawJson() {
+    default String getRawJson() {
         return null;
     }
 
@@ -215,7 +215,7 @@ public interface Event {
      *
      * @return 匹配令牌，可能为 {@code null}
      */
-    default MatchToken matched() {
+    default MatchToken getMatched() {
         return null;
     }
 
@@ -236,8 +236,8 @@ public interface Event {
      * @return 人类可读的事件摘要
      */
     default String toLogString() {
-        return getClass().getSimpleName() + "{time=" + time() + ", selfId=" + selfId()
-                + ", groupId=" + groupId().orElse(null) + ", subType='" + subType() + "'}";
+        return getClass().getSimpleName() + "{time=" + getTime() + ", selfId=" + getSelfId()
+                + ", groupId=" + getGroupId().orElse(null) + ", subType='" + getSubType() + "'}";
     }
 
     /**

@@ -12,7 +12,7 @@ import com.yuier.yuni.plugin.api.event.MetaEvent;
  * <pre>{@code
  * ctx.onMeta("heartbeat", (ev, reply) ->
  *         log.debug("心跳: online={}, interval={}ms",
- *                   ev.statusOnline(), ev.heartbeatInterval().orElse(0L)));
+ *                   ev.isStatusOnline(), ev.getHeartbeatInterval().orElse(0L)));
  * }</pre>
  *
  * <h2>注意</h2>

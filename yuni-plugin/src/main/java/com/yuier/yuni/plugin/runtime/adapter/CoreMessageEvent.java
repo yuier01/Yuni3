@@ -6,7 +6,6 @@ import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 import java.util.Optional;
 
@@ -17,12 +16,12 @@ import java.util.Optional;
  * <table border="1">
  *   <caption>core → 插件侧</caption>
  *   <tr><th>插件侧方法</th><th>来源</th></tr>
- *   <tr><td>{@link #messageType()}</td><td>{@code YuniMessageEvent.messageType}</td></tr>
- *   <tr><td>{@link #messageId()}</td><td>{@code messageId}</td></tr>
- *   <tr><td>{@link #userId()}</td><td>{@code userId}</td></tr>
- *   <tr><td>{@link #chain()}</td><td>{@code messageChain}（经 {@link CoreMessageChainView} 包装）</td></tr>
- *   <tr><td>{@link #sender()}</td><td>{@code sender}（nickname/card/role/title）</td></tr>
- *   <tr><td>{@link #reply()}</td><td>新建 {@link CoreReply}，绑定本消息的会话与消息 ID</td></tr>
+ *   <tr><td>{@link #getMessageType()}</td><td>{@code YuniMessageEvent.messageType}</td></tr>
+ *   <tr><td>{@link #getMessageId()}</td><td>{@code messageId}</td></tr>
+ *   <tr><td>{@link #getUserId()}</td><td>{@code userId}</td></tr>
+ *   <tr><td>{@link #getChain()}</td><td>{@code messageChain}（经 {@link CoreMessageChainView} 包装）</td></tr>
+ *   <tr><td>{@link #getSender()}</td><td>{@code sender}（nickname/card/role/title）</td></tr>
+ *   <tr><td>{@link #getReply()}</td><td>新建 {@link CoreReply}，绑定本消息的会话与消息 ID</td></tr>
  * </table>
  *
  * <h2>差异字段</h2>
@@ -33,7 +32,6 @@ import java.util.Optional;
  * @see MessageEvent
  */
 @Getter
-@Accessors(fluent = true)
 public final class CoreMessageEvent extends BaseCoreEvent implements MessageEvent {
 
     /** 消息类型（group / private）。 */
@@ -99,8 +97,8 @@ public final class CoreMessageEvent extends BaseCoreEvent implements MessageEven
     }
 
     /*
-     * messageType() / messageId() / userId() / chain() / sender() / reply() /
-     * rawMessage() 由类上的 @Getter + @Accessors(fluent) 生成。
+     * getMessageType() / getMessageId() / getUserId() / getChain() / getSender() / getReply() /
+     * getRawMessage() 由类上的 @Getter + @Accessors(fluent) 生成。
      */
 
     @Override
@@ -130,7 +128,7 @@ public final class CoreMessageEvent extends BaseCoreEvent implements MessageEven
         }
 
         @Override
-        public long userId() {
+        public long getUserId() {
             if (source != null && source.getUserId() != null) {
                 return source.getUserId();
             }
@@ -138,24 +136,24 @@ public final class CoreMessageEvent extends BaseCoreEvent implements MessageEven
         }
 
         @Override
-        public String nickname() {
+        public String getNickname() {
             return source == null ? null : source.getNickname();
         }
 
         @Override
-        public Optional<String> card() {
+        public Optional<String> getCard() {
             return Optional.ofNullable(source).map(MessageSender::getCard)
                     .filter(s -> !s.isBlank());
         }
 
         @Override
-        public Optional<String> role() {
+        public Optional<String> getRole() {
             return Optional.ofNullable(source).map(MessageSender::getRole)
                     .filter(s -> !s.isBlank());
         }
 
         @Override
-        public Optional<String> title() {
+        public Optional<String> getTitle() {
             return Optional.ofNullable(source).map(MessageSender::getTitle)
                     .filter(s -> !s.isBlank());
         }

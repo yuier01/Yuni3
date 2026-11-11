@@ -12,15 +12,15 @@ import com.yuier.yuni.plugin.api.event.NoticeEvent;
  * <h2>示例</h2>
  * <pre>{@code
  * ctx.onNotice("poke", (ev, reply) -> {
- *     if (ev.targetId().filter(t -> t == ev.selfId()).isEmpty()) return;   // 不是戳机器人
- *     reply.at(ev.userId()).text("戳我干嘛？").send();
+ *     if (ev.getTargetId().filter(t -> t == ev.getSelfId()).isEmpty()) return;   // 不是戳机器人
+ *     reply.at(ev.getUserId()).text("戳我干嘛？").send();
  * });
  * }</pre>
  *
  * <h2>不要在处理器里再解 rawJson</h2>
  * <p>现行 {@code PokeNotice} 因为事件模型字段缺失，被迫把 {@code rawJson}
  * 反序列化两次来判断子类型。新系统中子类型已由适配器写入
- * {@link NoticeEvent#subType()}，且判定在注册时就完成了（用
+ * {@link NoticeEvent#getSubType()}，且判定在注册时就完成了（用
  * {@code ctx.onNotice("poke", ...)}），处理器拿到的必定是目标子类型。</p>
  *
  * <h2>权限</h2>

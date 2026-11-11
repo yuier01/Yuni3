@@ -5,7 +5,6 @@ import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
 import lombok.Getter;
-import lombok.experimental.Accessors;
 
 /**
  * {@link MessageSentEvent} 的适配实现——机器人自身已发出消息的视图。
@@ -21,7 +20,6 @@ import lombok.experimental.Accessors;
  * @see MessageSentEvent
  */
 @Getter
-@Accessors(fluent = true)
 public final class CoreMessageSentEvent extends BaseCoreEvent implements MessageSentEvent {
 
     /** 消息类型（group / private）。 */
@@ -88,7 +86,7 @@ public final class CoreMessageSentEvent extends BaseCoreEvent implements Message
     }
 
     /*
-     * messageType() / messageId() / userId() / chain() / rawMessage() / reply()
+     * getMessageType() / getMessageId() / getUserId() / getChain() / getRawMessage() / getReply()
      * 由类上的 @Getter + @Accessors(fluent) 生成。
      */
 

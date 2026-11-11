@@ -73,7 +73,7 @@ public final class PluginEventAdapter {
      *
      * @return 机器人实例；不可用时返回 {@code null}
      */
-    private YuniBot bot() {
+    private YuniBot getBot() {
         if (botSupplier == null) {
             return null;
         }
@@ -193,17 +193,17 @@ public final class PluginEventAdapter {
      * @return 回复入口；无法构造时返回 {@code null}
      */
     private Reply replyFor(Long groupId, Long userId, String messageType, Long sourceMessageId) {
-        if (bot() == null) {
+        if (getBot() == null) {
             // 测试或未接线场景：事件可翻译但没有可发送的 Reply。
             // 返回 null 而不是抛异常——事件翻译本身仍有价值（供条件判定）。
             return null;
         }
         if ("group".equals(messageType) && groupId != null) {
-            return new CoreReply(bot(), MessageTarget.group(groupId), sourceMessageId, jsonCodec);
+            return new CoreReply(getBot(), MessageTarget.group(groupId), sourceMessageId, jsonCodec);
         }
         if (userId != null) {
             // 私聊；也覆盖「messageType 未知但有 userId」的情况
-            return new CoreReply(bot(), MessageTarget.privateChat(userId), sourceMessageId, jsonCodec);
+            return new CoreReply(getBot(), MessageTarget.privateChat(userId), sourceMessageId, jsonCodec);
         }
         return null;
     }
@@ -215,8 +215,8 @@ public final class PluginEventAdapter {
      *
      * @return 机器人 ID；bot 缺失时为空
      */
-    public Optional<String> botId() {
-        YuniBot current = bot();
+    public Optional<String> getBotId() {
+        YuniBot current = getBot();
         return current == null ? Optional.empty() : Optional.ofNullable(current.getBotId());
     }
 }

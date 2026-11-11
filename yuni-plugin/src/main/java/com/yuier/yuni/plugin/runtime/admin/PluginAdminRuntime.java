@@ -56,30 +56,30 @@ public final class PluginAdminRuntime implements PluginAdmin {
     // ==================== 查询 ====================
 
     @Override
-    public List<PluginModuleView> modules() {
-        FiberRegistry fibers = runtime.fibers();
-        return fibers.allModules().stream()
+    public List<PluginModuleView> getModules() {
+        FiberRegistry fibers = runtime.getFibers();
+        return fibers.getAllModules().stream()
                 .map(handle -> (PluginModuleView) new FiberModuleView(handle, fibers))
                 .toList();
     }
 
     @Override
-    public List<PluginView> plugins() {
-        return runtime.fibers().all().stream()
-                .filter(fiber -> fiber.parent() == null)
+    public List<PluginView> getPlugins() {
+        return runtime.getFibers().getAll().stream()
+                .filter(fiber -> fiber.getParent() == null)
                 .map(this::viewOf)
                 .toList();
     }
 
     @Override
     public Optional<PluginView> plugin(String pluginId) {
-        return runtime.fibers().byId(pluginId).map(this::viewOf);
+        return runtime.getFibers().byId(pluginId).map(this::viewOf);
     }
 
     @Override
     public List<PluginView> pluginsOfModule(String moduleId) {
-        return runtime.fibers().ofModule(moduleId).stream()
-                .filter(fiber -> fiber.parent() == null)
+        return runtime.getFibers().ofModule(moduleId).stream()
+                .filter(fiber -> fiber.getParent() == null)
                 .map(this::viewOf)
                 .toList();
     }
@@ -91,7 +91,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
      * @return 视图
      */
     private PluginView viewOf(PluginFiber fiber) {
-        return new FiberPluginView(fiber, runtime.moduleIdOf(fiber.id()).orElse(null));
+        return new FiberPluginView(fiber, runtime.moduleIdOf(fiber.getId()).orElse(null));
     }
 
     // ==================== 群粒度启停 ====================
@@ -99,7 +99,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @Override
     public boolean isGloballyEnabled(String pluginId) {
         // 插件不存在时返回 false：与 isEnabledIn 的「可以问出一个否定的答案」一致
-        if (runtime.fibers().byId(pluginId).isEmpty()) {
+        if (runtime.getFibers().byId(pluginId).isEmpty()) {
             return false;
         }
         return runtime.isGloballyEnabled(pluginId);
@@ -107,7 +107,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
 
     @Override
     public boolean isEnabledIn(String pluginId, long groupId) {
-        Optional<PluginFiber> fiber = runtime.fibers().byId(pluginId);
+        Optional<PluginFiber> fiber = runtime.getFibers().byId(pluginId);
         if (fiber.isEmpty()) {
             // 插件不存在是一个可以被问出的普通问题（用户输入错 id），
             // 不应该变成一次异常——返回 false 即可
@@ -115,8 +115,8 @@ public final class PluginAdminRuntime implements PluginAdmin {
         }
         Boolean explicit = runtime.isPluginEnabledIn(pluginId, groupId);
         // 无显式配置时回落到元数据的默认值。判定链的唯一实现在这里，
-        // 管理端与 ctx.scope() 走同一条路径，因此不会给出矛盾答案
-        return explicit != null ? explicit : fiber.get().metadata().defaultEnable();
+        // 管理端与 ctx.getScope() 走同一条路径，因此不会给出矛盾答案
+        return explicit != null ? explicit : fiber.get().getMetadata().isDefaultEnable();
     }
 
     @Override
@@ -126,7 +126,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
          *
          * 为什么不返回「全部生效群」：那需要向机器人查询群列表（一次网络调用），
          * 而本方法在管理端列表渲染时会被每个插件调用一次——N 个插件就是 N 次
-         * 群列表查询。需要全部生效群时应当用 ctx.scope().enabledGroups()，
+         * 群列表查询。需要全部生效群时应当用 ctx.getScope().getEnabledGroups()，
          * 那个方法与「本插件」绑定，调用次数天然受控。
          *
          * 三态模型下「显式开启」有两种来源：白名单里的群（默认关闭 + 该群开启），
@@ -136,14 +136,14 @@ public final class PluginAdminRuntime implements PluginAdmin {
          */
         java.util.LinkedHashSet<Long> enabled = new java.util.LinkedHashSet<>();
         for (com.yuier.yuni.plugin.api.ScopeFilter filter : runtime.scopeExceptionsOf(pluginId)) {
-            filter.explicitGroupWhitelist().ifPresent(enabled::addAll);
+            filter.getExplicitGroupWhitelist().ifPresent(enabled::addAll);
         }
         return List.copyOf(enabled);
     }
 
     @Override
     public void setEnabled(String pluginId, long groupId, boolean enabled, boolean callerIsMaster) {
-        PluginFiber fiber = runtime.fibers().byId(pluginId).orElseThrow(() ->
+        PluginFiber fiber = runtime.getFibers().byId(pluginId).orElseThrow(() ->
                 new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。"));
         requireMasterForBuiltIn(pluginId, fiber, callerIsMaster);
         runtime.setPluginEnabledIn(pluginId, groupId, enabled);
@@ -151,7 +151,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
 
     @Override
     public void setGlobalEnabled(String pluginId, boolean enabled, boolean callerIsMaster) {
-        PluginFiber fiber = runtime.fibers().byId(pluginId).orElseThrow(() ->
+        PluginFiber fiber = runtime.getFibers().byId(pluginId).orElseThrow(() ->
                 new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。"));
         requireMasterForBuiltIn(pluginId, fiber, callerIsMaster);
         runtime.setPluginGlobalEnabled(pluginId, enabled);
@@ -170,17 +170,17 @@ public final class PluginAdminRuntime implements PluginAdmin {
      * @throws PluginAdminException 内置插件被非拥有者操作
      */
     private static void requireMasterForBuiltIn(String pluginId, PluginFiber fiber, boolean callerIsMaster) {
-        if (fiber.metadata().buildIn() && !callerIsMaster) {
+        if (fiber.getMetadata().isBuildIn() && !callerIsMaster) {
             // 结构性保护：内置插件随框架发布，误关会让管理端自己失效
             // （plugin-manage 与 help 都是内置插件）
             throw new PluginAdminException(pluginId,
-                    "插件「" + fiber.metadata().name() + "」为内置插件，只有 bot 拥有者有权开启或关闭。");
+                    "插件「" + fiber.getMetadata().getName() + "」为内置插件，只有 bot 拥有者有权开启或关闭。");
         }
     }
 
     @Override
     public void resetScope(String pluginId) {
-        if (runtime.fibers().byId(pluginId).isEmpty()) {
+        if (runtime.getFibers().byId(pluginId).isEmpty()) {
             throw new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。");
         }
         if (!runtime.resetPluginScope(pluginId)) {
@@ -192,7 +192,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
 
     @Override
     public void reload(String moduleId) {
-        if (runtime.fibers().module(moduleId).isEmpty()) {
+        if (runtime.getFibers().module(moduleId).isEmpty()) {
             throw new PluginAdminException(null, "没有标识为 " + moduleId + " 的模块。");
         }
         try {
@@ -206,9 +206,9 @@ public final class PluginAdminRuntime implements PluginAdmin {
 
     @Override
     public void unload(String pluginId) {
-        PluginFiber fiber = runtime.fibers().byId(pluginId).orElseThrow(() ->
+        PluginFiber fiber = runtime.getFibers().byId(pluginId).orElseThrow(() ->
                 new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。"));
-        if (fiber.metadata().buildIn()) {
+        if (fiber.getMetadata().isBuildIn()) {
             /*
              * 内置插件不允许单独卸载。
              *
@@ -218,18 +218,18 @@ public final class PluginAdminRuntime implements PluginAdmin {
              * 需要替换内置插件请走 reload，那里有完整的卸载 + 重装流程。
              */
             throw new PluginAdminException(pluginId,
-                    "插件「" + fiber.metadata().name() + "」为内置插件，不能单独卸载。"
+                    "插件「" + fiber.getMetadata().getName() + "」为内置插件，不能单独卸载。"
                             + "如需更新请使用重载（它会卸载并重新加载整个模块）。");
         }
         runtime.unload(pluginId);
     }
 
     @Override
-    public String summary() {
-        FiberRegistry fibers = runtime.fibers();
+    public String getSummary() {
+        FiberRegistry fibers = runtime.getFibers();
         var counts = fibers.countByState();
-        return "模块 " + fibers.moduleCount()
-                + " / 插件 " + fibers.pluginCount()
+        return "模块 " + fibers.getModuleCount()
+                + " / 插件 " + fibers.getPluginCount()
                 + " / 运行中 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.ACTIVE, 0)
                 + " / 失败 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.FAILED, 0)
                 + " / 等待依赖 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.PENDING, 0);
@@ -248,8 +248,8 @@ public final class PluginAdminRuntime implements PluginAdmin {
         for (PluginState state : PluginState.values()) {
             result.put(state, 0);
         }
-        for (PluginFiber fiber : runtime.fibers().all()) {
-            PluginState state = new FiberPluginView(fiber, null).state();
+        for (PluginFiber fiber : runtime.getFibers().getAll()) {
+            PluginState state = new FiberPluginView(fiber, null).getState();
             result.merge(state, 1, Integer::sum);
         }
         return java.util.Collections.unmodifiableMap(result);
