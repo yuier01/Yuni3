@@ -167,7 +167,7 @@ public final class PluginSystem {
 
         PluginRuntime newRuntime = new PluginRuntime(taskManager, jsonCodec);
         // 运行时需要的是「怎么取 bot」而不是 bot 本身：插件处理事件时才解析
-        newRuntime.bindBot(() -> botProvider.getIfAvailable(), botApp);
+        newRuntime.bindBot(botProvider::getIfAvailable, botApp);
 
         // 内置服务登记进运行时：插件拿到的都是同一份共享实例
         newRuntime.registerService(Cache.class, cache);
