@@ -55,11 +55,8 @@ public interface PluginScopeStore {
     /**
      * 一个插件的完整作用域配置。
      *
-     * @param globalEnabled   全局（不限群）是否生效；{@code null} 表示用户未设置过，
-     *                        此时由插件的元数据 {@code defaultEnable} 决定
-     * @param exceptionGroups 群例外集合——每个群的值与全局开关<b>相反</b>。
-     *                        例如全局开启时，集合里的群是「被关闭的群」；
-     *                        全局关闭时，集合里的群是「被开启的群」
+     * <p>原本是 record；为统一 JavaBean 访问器改为 {@code @Getter} 类，
+     * 构造期对例外集合做防御性拷贝。字段含义见各字段注释与构造器参数。</p>
      */
     @Getter
     @ToString
