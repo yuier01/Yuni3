@@ -2,14 +2,14 @@ package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniPlugin;
-import lombok.Getter;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.Getter;
 
 /**
  * 插件实例运行时句柄（Fiber）。
@@ -220,7 +220,7 @@ public final class PluginFiber {
      *
      * @return 失败原因；非 FAILED 状态时为空
      */
-    public java.util.Optional<Throwable> getFailureCause() {
+    public Optional<Throwable> getFailureCause() {
         return java.util.Optional.ofNullable(failureCause.get());
     }
 

@@ -1,13 +1,15 @@
 package com.yuier.yuni.plugin.api;
 
-import com.yuier.yuni.plugin.api.event.MetaEvent;
+import com.yuier.yuni.core.bot.YuniBot;
+import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
+import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.NoticeEvent;
 import com.yuier.yuni.plugin.api.event.RequestEvent;
-import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
+import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
 import com.yuier.yuni.plugin.api.service.Cache;
@@ -15,12 +17,13 @@ import com.yuier.yuni.plugin.api.service.ConfigLoader;
 import com.yuier.yuni.plugin.api.service.Http;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.api.service.Sender;
-import org.slf4j.Logger;
-
+import com.yuier.yuni.plugin.data.PluginDataService;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import org.slf4j.Logger;
 
 /**
  * 插件上下文——插件与框架交互的<b>唯一</b>入口。
@@ -242,7 +245,7 @@ public interface YuniContext {
      * @param tree 命令树根节点
      * @return 撤销句柄
      */
-    Disposable command(com.yuier.yuni.event.detector.message.command.model.CommandNode tree);
+    Disposable command(CommandNode tree);
 
     // ==================== 调度 ====================
 
@@ -383,7 +386,7 @@ public interface YuniContext {
      * @param <T>     服务类型
      * @return 撤销句柄
      */
-    <T> Disposable provide(Class<T> type, java.util.function.Function<Class<T>, T> factory);
+    <T> Disposable provide(Class<T> type, Function<Class<T>, T> factory);
 
     /**
      * 作用域查询——「本插件在某个群是否生效」。
@@ -477,7 +480,7 @@ public interface YuniContext {
      *
      * @return 机器人实例
      */
-    com.yuier.yuni.core.bot.YuniBot getBot();
+    YuniBot getBot();
 
     /**
      * 消息发送门面。
@@ -503,7 +506,7 @@ public interface YuniContext {
      *
      * @return 数据访问门面，永不为 {@code null}
      */
-    com.yuier.yuni.plugin.data.PluginDataService getDb();
+    PluginDataService getDb();
 
     /**
      * Redis 缓存门面。

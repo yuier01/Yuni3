@@ -2,6 +2,7 @@ package com.yuier.yuni.adapter.onebot.transport;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * @Title: OneBotTransport
@@ -39,7 +40,7 @@ public interface OneBotTransport {
      * 注册事件回调（传输层收到事件推送时调用）
      * @param callback 事件回调，接收原始 JSON 字符串
      */
-    void setEventCallback(java.util.function.Consumer<String> callback);
+    void setEventCallback(Consumer<String> callback);
 
     /**
      * 是否已连接

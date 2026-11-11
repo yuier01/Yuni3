@@ -3,12 +3,12 @@ package com.yuier.yuni.plugin.runtime.adapter;
 import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.event.Event;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
-import lombok.Getter;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.Getter;
 
 /**
  * 插件侧事件的<b>公共基类</b>——承载公共字段与差异字段的通用访问。
@@ -252,7 +252,7 @@ public abstract class BaseCoreEvent implements Event {
         }
 
         @Override
-        public java.util.List<String> getSegmentTypes() {
+        public List<String> getSegmentTypes() {
             return java.util.List.of();
         }
 
@@ -262,7 +262,7 @@ public abstract class BaseCoreEvent implements Event {
         }
 
         @Override
-        public java.util.List<String> getSegmentJsonList() {
+        public List<String> getSegmentJsonList() {
             return java.util.List.of();
         }
     }

@@ -10,6 +10,7 @@ import com.yuier.yuni.event.persistence.YuniEventSaver;
 import com.yuier.yuni.event.util.EventLogUtil;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.PluginSystem;
+import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -81,7 +82,7 @@ public class YuniEventDispatcher {
      *
      * @param action 分发动作
      */
-    private void dispatchIfReady(java.util.function.Consumer<PluginRuntime> action) {
+    private void dispatchIfReady(Consumer<PluginRuntime> action) {
         pluginSystem.runtimeIfReady().ifPresent(action);
     }
 

@@ -1,5 +1,6 @@
 package com.yuier.yuni.plugin.api.handler;
 
+import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 
 /**
@@ -41,5 +42,5 @@ public interface MessageHandler {
      * @param reply 回复入口，绑定到本消息所在的会话
      * @throws Exception 处理失败时抛出；框架会捕获并回复用户
      */
-    void handle(MessageEvent event, com.yuier.yuni.plugin.api.Reply reply) throws Exception;
+    void handle(MessageEvent event, Reply reply) throws Exception;
 }

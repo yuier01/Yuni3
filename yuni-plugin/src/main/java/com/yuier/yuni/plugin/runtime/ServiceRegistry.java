@@ -1,9 +1,12 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.service.PermissionService;
-
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -127,13 +130,13 @@ public final class ServiceRegistry {
      * @param provider 提供者 Fiber
      * @return 被注销的服务类型列表
      */
-    public java.util.List<Class<?>> unregisterAll(PluginFiber provider) {
-        java.util.List<Class<?>> removed = new java.util.ArrayList<>();
+    public List<Class<?>> unregisterAll(PluginFiber provider) {
+        List<Class<?>> removed = new ArrayList<>();
         if (provider == null) {
             return removed;
         }
         // 先快照 key，避免在遍历中修改 Map
-        for (Class<?> type : new java.util.ArrayList<>(providers.keySet())) {
+        for (Class<?> type : new ArrayList<>(providers.keySet())) {
             if (providers.get(type) == provider) {
                 providers.remove(type);
                 services.remove(type);
@@ -148,8 +151,8 @@ public final class ServiceRegistry {
      *
      * @return 不可变快照
      */
-    public java.util.Set<Class<?>> getRegisteredTypes() {
-        return java.util.Collections.unmodifiableSet(new java.util.LinkedHashSet<>(services.keySet()));
+    public Set<Class<?>> getRegisteredTypes() {
+        return java.util.Collections.unmodifiableSet(new LinkedHashSet<>(services.keySet()));
     }
 
     /**

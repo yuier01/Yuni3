@@ -7,9 +7,9 @@ import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.Event;
-import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
+import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
@@ -19,11 +19,11 @@ import com.yuier.yuni.plugin.runtime.adapter.CoreLifecycleEvents;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageSentEvent;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Predicate;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 事件分发流水线——取代现行系统的 {@code PassivePluginMatcher}。
@@ -280,7 +280,7 @@ public final class EventPipeline {
      */
     @SuppressWarnings("unchecked")
     private boolean matchesPredicate(RegistrationTable.Entry entry, Event event) {
-        java.util.function.Predicate<Object> predicate = entry.getPredicate();
+        Predicate<Object> predicate = entry.getPredicate();
         if (predicate == null) {
             return true;
         }

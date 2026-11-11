@@ -4,6 +4,7 @@ import com.yuier.yuni.core.event.YuniMessageSentEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
+import java.util.Map;
 import lombok.Getter;
 
 /**
@@ -68,8 +69,8 @@ public final class CoreMessageSentEvent extends BaseCoreEvent implements Message
      * @param source 核心事件
      * @return 字段表
      */
-    private static java.util.Map<String, Object> buildFields(YuniMessageSentEvent source) {
-        java.util.Map<String, Object> fields = fieldsBuilder();
+    private static Map<String, Object> buildFields(YuniMessageSentEvent source) {
+        Map<String, Object> fields = fieldsBuilder();
         putIfPresent(fields, "raw_message", source.getRawMessage());
         putIfPresent(fields, "message_id", source.getMessageId());
         // 发出消息的 sender 就是机器人自己；仍按协议字段名放进表里，

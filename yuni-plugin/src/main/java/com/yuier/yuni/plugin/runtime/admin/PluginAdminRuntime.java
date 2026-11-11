@@ -5,15 +5,18 @@ import com.yuier.yuni.plugin.api.PluginAdminException;
 import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
+import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.List;
-import java.util.Optional;
 
 /**
  * {@link PluginAdmin} 的默认实现——把 {@link PluginRuntime} 的内部状态投影为
@@ -134,8 +137,8 @@ public final class PluginAdminRuntime implements PluginAdmin {
          * 因此这里只返回白名单里的群。这与旧 group_plugin_ability 表
          * 「ability = true 的行」语义一致。
          */
-        java.util.LinkedHashSet<Long> enabled = new java.util.LinkedHashSet<>();
-        for (com.yuier.yuni.plugin.api.ScopeFilter filter : runtime.scopeExceptionsOf(pluginId)) {
+        LinkedHashSet<Long> enabled = new LinkedHashSet<>();
+        for (ScopeFilter filter : runtime.scopeExceptionsOf(pluginId)) {
             filter.getExplicitGroupWhitelist().ifPresent(enabled::addAll);
         }
         return List.copyOf(enabled);
@@ -243,8 +246,8 @@ public final class PluginAdminRuntime implements PluginAdmin {
      *
      * @return 不可变映射
      */
-    public java.util.Map<PluginState, Integer> countByState() {
-        java.util.Map<PluginState, Integer> result = new java.util.LinkedHashMap<>();
+    public Map<PluginState, Integer> countByState() {
+        Map<PluginState, Integer> result = new LinkedHashMap<>();
         for (PluginState state : PluginState.values()) {
             result.put(state, 0);
         }

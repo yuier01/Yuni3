@@ -7,17 +7,17 @@ import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.MessageTarget;
 import com.yuier.yuni.core.constants.MessageSegmentTypes;
 import com.yuier.yuni.core.model.message.MessageChain;
+import com.yuier.yuni.core.model.message.MessageSegment;
 import com.yuier.yuni.core.model.message.segment.AtSegment;
 import com.yuier.yuni.core.model.message.segment.ImageSegment;
 import com.yuier.yuni.core.model.message.segment.TextSegment;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
 import com.yuier.yuni.plugin.api.Reply;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -58,9 +58,9 @@ class CoreAdapterTest {
      * @param segments 消息段
      * @return 消息链
      */
-    private static MessageChain chainOf(com.yuier.yuni.core.model.message.MessageSegment... segments) {
+    private static MessageChain chainOf(MessageSegment... segments) {
         MessageChain chain = new MessageChain();
-        for (com.yuier.yuni.core.model.message.MessageSegment segment : segments) {
+        for (MessageSegment segment : segments) {
             chain.addSegment(segment);
         }
         return chain;
@@ -220,7 +220,7 @@ class CoreAdapterTest {
         assertEquals(MessageTarget.TargetType.GROUP, sent.getTarget().getTargetType());
         assertEquals(456L, sent.getTarget().getTargetId());
         List<String> types = sent.getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         // 第 3 段是 addAt 自动补的空格文本段：避免「@某人你好」被客户端
         // 渲染成「@某人的你好」。这是刻意保留的现行行为。
@@ -244,7 +244,7 @@ class CoreAdapterTest {
         reply.text("内容").quote().send();
 
         List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         assertEquals("reply", types.get(0), "QQ 客户端要求回复段必须在第一位");
         assertEquals(List.of("reply", "text"), types);
@@ -258,7 +258,7 @@ class CoreAdapterTest {
         reply.quote().text("定时播报").send();
 
         List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text"), types);
     }
@@ -272,7 +272,7 @@ class CoreAdapterTest {
         reply.face(123).send();
 
         List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         assertEquals(List.of("face"), types);
     }
@@ -285,7 +285,7 @@ class CoreAdapterTest {
         reply.text(null).text("有效").send();
 
         List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text"), types);
     }
@@ -300,7 +300,7 @@ class CoreAdapterTest {
         reply.chain(source).send();
 
         List<String> types = bot.lastMessage().orElseThrow().getChain().getContent().stream()
-                .map(com.yuier.yuni.core.model.message.MessageSegment::getType)
+                .map(MessageSegment::getType)
                 .toList();
         assertEquals(List.of("text", "image"), types);
     }

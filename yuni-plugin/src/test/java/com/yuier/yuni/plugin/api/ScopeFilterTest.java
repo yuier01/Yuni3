@@ -1,10 +1,10 @@
 package com.yuier.yuni.plugin.api;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,7 +82,7 @@ class ScopeFilterTest {
     @Test
     @DisplayName("构造后修改传入集合不影响过滤器（防御性拷贝）")
     void defensivelyCopiesInput() {
-        java.util.Set<Long> mutable = new java.util.HashSet<>(Set.of(1L, 2L));
+        Set<Long> mutable = new HashSet<>(Set.of(1L, 2L));
         ScopeFilter filter = ScopeFilter.onlyGroups(mutable);
 
         mutable.add(99L);
@@ -191,7 +191,7 @@ class ScopeFilterTest {
     @Test
     @DisplayName("PersistedScope 防御性拷贝且不可变")
     void persistedScopeIsImmutable() {
-        java.util.Set<Long> mutable = new java.util.HashSet<>(Set.of(1L));
+        Set<Long> mutable = new HashSet<>(Set.of(1L));
         ScopeFilter.PersistedScope persisted = new ScopeFilter.PersistedScope(true, mutable);
 
         mutable.add(2L);

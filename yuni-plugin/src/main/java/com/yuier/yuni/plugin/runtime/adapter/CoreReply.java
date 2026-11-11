@@ -6,21 +6,21 @@ import com.yuier.yuni.core.bot.MessageTarget;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.message.MessageSegment;
+import com.yuier.yuni.core.model.message.data.PokeData;
 import com.yuier.yuni.core.model.message.segment.ImageSegment;
 import com.yuier.yuni.core.model.message.segment.PokeSegment;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.ToString;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * {@link Reply} 的默认实现——把插件侧的构建调用翻译成框架内部
@@ -123,8 +123,8 @@ public final class CoreReply implements Reply {
     @Override
     public Reply poke(long userId) {
         PokeSegment segment = new PokeSegment();
-        com.yuier.yuni.core.model.message.data.PokeData data =
-                new com.yuier.yuni.core.model.message.data.PokeData();
+        PokeData data =
+                new PokeData();
         data.setQq(userId);
         segment.setData(data);
         chain.addSegment(segment);

@@ -1,14 +1,20 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 能力注册总表——框架侧持有「所有插件注册了什么能力」的唯一索引。
@@ -131,7 +137,7 @@ public final class RegistrationTable {
         private final ScopeFilter filter;
 
         /** 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）。 */
-        private final java.util.function.Predicate<Object> predicate;
+        private final Predicate<Object> predicate;
 
         /** 子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤。 */
         private final String subType;
@@ -152,7 +158,7 @@ public final class RegistrationTable {
         public Entry(Kind kind,
                      PluginFiber owner,
                      ScopeFilter filter,
-                     java.util.function.Predicate<Object> predicate,
+                     Predicate<Object> predicate,
                      String subType,
                      Object payload) {
             this.kind = kind;
@@ -193,7 +199,7 @@ public final class RegistrationTable {
          * @return 两道判定都通过时返回 {@code true}
          */
         public boolean scopeMatches(Long groupId,
-                                    java.util.function.Function<String, java.util.Optional<ScopeFilter>> runtimeScopes) {
+                                    Function<String, Optional<ScopeFilter>> runtimeScopes) {
             if (!filter.matches(groupId)) {
                 return false;
             }
@@ -238,7 +244,7 @@ public final class RegistrationTable {
      * @param entry 注册项
      * @return 撤销句柄；调用后从对应桶中移除该条目
      */
-    public com.yuier.yuni.plugin.api.Disposable add(Entry entry) {
+    public Disposable add(Entry entry) {
         List<Entry> bucket = bucketOf(entry.getKind());
         bucket.add(entry);
         // 撤销时只做移除；桶是 CopyOnWriteArrayList，remove 是安全且幂等的
@@ -372,8 +378,8 @@ public final class RegistrationTable {
      *
      * @return 种类 → 条目数（全部 Kind 都有键，无条目时为 0）
      */
-    public java.util.Map<Kind, Integer> countByKind() {
-        java.util.Map<Kind, Integer> counts = new java.util.LinkedHashMap<>();
+    public Map<Kind, Integer> countByKind() {
+        Map<Kind, Integer> counts = new LinkedHashMap<>();
         for (Kind kind : Kind.values()) {
             counts.put(kind, bucketOf(kind).size());
         }
@@ -388,8 +394,8 @@ public final class RegistrationTable {
      * @param owner 插件 Fiber
      * @return 该插件贡献的种类集合（保持 Kind 声明顺序）
      */
-    public java.util.Set<Kind> kindsOf(PluginFiber owner) {
-        java.util.Set<Kind> kinds = java.util.EnumSet.noneOf(Kind.class);
+    public Set<Kind> kindsOf(PluginFiber owner) {
+        Set<Kind> kinds = java.util.EnumSet.noneOf(Kind.class);
         for (Kind kind : Kind.values()) {
             for (Entry entry : bucketOf(kind)) {
                 if (entry.getOwner() == owner) {

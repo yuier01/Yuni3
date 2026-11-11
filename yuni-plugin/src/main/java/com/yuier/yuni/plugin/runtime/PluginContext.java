@@ -1,22 +1,25 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.Effect;
+import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import com.yuier.yuni.plugin.api.ScopeQuery;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
-import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
+import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.NoticeEvent;
 import com.yuier.yuni.plugin.api.event.RequestEvent;
-import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
+import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
 import com.yuier.yuni.plugin.api.service.Cache;
@@ -24,18 +27,25 @@ import com.yuier.yuni.plugin.api.service.ConfigLoader;
 import com.yuier.yuni.plugin.api.service.Http;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.api.service.Sender;
+import com.yuier.yuni.plugin.data.PluginDataService;
+import com.yuier.yuni.plugin.runtime.service.CoreSender;
+import com.yuier.yuni.plugin.runtime.service.FileConfigLoader;
+import com.yuier.yuni.plugin.runtime.service.RedisCache;
+import com.yuier.yuni.plugin.runtime.service.RestTemplateHttp;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
-
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Predicate;
 
 /**
  * {@link YuniContext} 的默认实现。
@@ -112,7 +122,7 @@ public final class PluginContext implements YuniContext {
     private PluginRuntime runtime;
 
     /** 作用域查询的缓存实例（惰性构造）。 */
-    private volatile com.yuier.yuni.plugin.api.ScopeQuery scopeQuery;
+    private volatile ScopeQuery scopeQuery;
 
     /**
      * 作用域状态表，键为「状态类型 + 作用域标识」。
@@ -131,7 +141,7 @@ public final class PluginContext implements YuniContext {
      * <p>供 {@code getConfig()} / {@code getCache()} / {@code getHttp()} 以及原始消息段
      * 构造使用。为 {@code null} 时相关能力会给出明确错误（测试场景）。</p>
      */
-    private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
+    private final JsonCodec jsonCodec;
 
     /**
      * 构造根上下文。
@@ -164,7 +174,7 @@ public final class PluginContext implements YuniContext {
                          RegistrationTable registrations,
                          DynamicTaskManager taskManager,
                          Path dataDir,
-                         com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
+                         JsonCodec jsonCodec) {
         this.services = services;
         this.registrations = registrations;
         this.taskManager = taskManager;
@@ -192,7 +202,7 @@ public final class PluginContext implements YuniContext {
                                          RegistrationTable registrations,
                                          DynamicTaskManager taskManager,
                                          Path dataDir,
-                                         com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
+                                         JsonCodec jsonCodec) {
         PluginContext ctx = new PluginContext(services, registrations, taskManager, dataDir, jsonCodec);
         ctx.fiber = fiber;
         return ctx;
@@ -377,7 +387,7 @@ public final class PluginContext implements YuniContext {
          * 现行系统以 pluginFullId 作任务 ID，导致一个插件只能有一个定时任务；
          * 而新系统中一个插件完全可以注册多个（例如 steam 插件既轮询状态又做日报）。
          */
-        java.util.concurrent.ScheduledFuture<?> future =
+        ScheduledFuture<?> future =
                 taskManager.scheduleCron(cron, wrapTask(task));
         return registerDisposable(() -> taskManager.cancelTask(future));
     }
@@ -400,7 +410,7 @@ public final class PluginContext implements YuniContext {
             throw new IllegalArgumentException("执行间隔至少为 1 秒（cron 最小粒度），当前: " + interval);
         }
         String cron = "0/" + seconds + " * * * * ?";
-        java.util.concurrent.ScheduledFuture<?> future =
+        ScheduledFuture<?> future =
                 taskManager.scheduleCron(cron, wrapTask(task));
         return registerDisposable(() -> taskManager.cancelTask(future));
     }
@@ -521,7 +531,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public <T> Disposable provide(Class<T> type, java.util.function.Function<Class<T>, T> factory) {
+    public <T> Disposable provide(Class<T> type, Function<Class<T>, T> factory) {
         if (type == null || factory == null) {
             throw new IllegalArgumentException("服务类型与工厂均不能为 null");
         }
@@ -533,19 +543,19 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public com.yuier.yuni.plugin.api.ScopeQuery getScope() {
+    public ScopeQuery getScope() {
         // 惰性构造并缓存：作用域查询在广播场景下会被反复调用（每个群一次）
-        com.yuier.yuni.plugin.api.ScopeQuery cached = this.scopeQuery;
+        ScopeQuery cached = this.scopeQuery;
         if (cached != null) {
             return cached;
         }
-        com.yuier.yuni.plugin.api.ScopeQuery created = new DefaultScopeQuery();
+        ScopeQuery created = new DefaultScopeQuery();
         this.scopeQuery = created;
         return created;
     }
 
     @Override
-    public com.yuier.yuni.plugin.api.PluginAdmin getPlugins() {
+    public PluginAdmin getPlugins() {
         /*
          * 不缓存，每次新建。
          *
@@ -593,7 +603,7 @@ public final class PluginContext implements YuniContext {
      * {@link #getPlugins()} 的 {@code setEnabled} / {@code setGlobalEnabled}——
      * 那是管理端职责（见设计文档 §10.5）。</p>
      */
-    private final class DefaultScopeQuery implements com.yuier.yuni.plugin.api.ScopeQuery {
+    private final class DefaultScopeQuery implements ScopeQuery {
 
         @Override
         public boolean isEnabledIn(long groupId) {
@@ -611,7 +621,7 @@ public final class PluginContext implements YuniContext {
         }
 
         @Override
-        public java.util.List<Long> getEnabledGroups() {
+        public List<Long> getEnabledGroups() {
             if (runtime == null) {
                 return java.util.List.of();
             }
@@ -688,11 +698,11 @@ public final class PluginContext implements YuniContext {
          * BotManager 在启动流程中动态创建并注册为单例，时机晚于 PluginContext
          * 的构造。因此这里在首次访问时从服务表取 bot 并即时包装。
          */
-        return new com.yuier.yuni.plugin.runtime.service.CoreSender(getBot(), jsonCodec());
+        return new CoreSender(getBot(), jsonCodec());
     }
 
     @Override
-    public com.yuier.yuni.plugin.data.PluginDataService getDb() {
+    public PluginDataService getDb() {
         return service(com.yuier.yuni.plugin.data.PluginDataService.class);
     }
 
@@ -704,7 +714,7 @@ public final class PluginContext implements YuniContext {
          * 若每个插件各持一个 HttpClient，连接池就被割裂了。
          */
         return services.resolve(Cache.class)
-                .orElseGet(() -> new com.yuier.yuni.plugin.runtime.service.RedisCache(jsonCodec()));
+                .orElseGet(() -> new RedisCache(jsonCodec()));
     }
 
     @Override
@@ -715,7 +725,7 @@ public final class PluginContext implements YuniContext {
                     "插件资源目录未注入，无法读取配置文件。"
                             + "若插件不需要读取资源，请勿调用 ctx.getConfig()。" + MISSING_DEPENDENCY_NOTE);
         }
-        return new com.yuier.yuni.plugin.runtime.service.FileConfigLoader(dataDir, jsonCodec());
+        return new FileConfigLoader(dataDir, jsonCodec());
     }
 
     @Override
@@ -726,7 +736,7 @@ public final class PluginContext implements YuniContext {
          * 不复用连接池——这正是本设计要修掉的问题之一。
          */
         return services.resolve(Http.class)
-                .orElseGet(() -> new com.yuier.yuni.plugin.runtime.service.RestTemplateHttp(jsonCodec()));
+                .orElseGet(() -> new RestTemplateHttp(jsonCodec()));
     }
 
     @Override
@@ -751,7 +761,7 @@ public final class PluginContext implements YuniContext {
      *
      * @return 编解码器
      */
-    private com.yuier.yuni.core.bot.JsonCodec jsonCodec() {
+    private JsonCodec jsonCodec() {
         if (jsonCodec == null) {
             throw new IllegalStateException(
                     "JsonCodec 未注入，无法执行需要 JSON 编解码的操作" + MISSING_DEPENDENCY_NOTE);

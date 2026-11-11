@@ -1,8 +1,9 @@
 package com.yuier.yuni.plugin.runtime.service;
 
+import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.MessageTarget;
 import com.yuier.yuni.core.bot.YuniBot;
-import com.yuier.yuni.core.bot.JsonCodec;
+import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.service.Sender;
@@ -83,7 +84,7 @@ public final class CoreSender implements Sender {
      * @param chain 核心消息链
      * @return 插件侧只读视图
      */
-    public CoreMessageChainView wrap(com.yuier.yuni.core.model.message.MessageChain chain) {
+    public CoreMessageChainView wrap(MessageChain chain) {
         return new CoreMessageChainView(chain, jsonCodec);
     }
 }

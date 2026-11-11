@@ -2,12 +2,12 @@ package com.yuier.yuni.plugin.data;
 
 import com.yuier.yuni.plugin.data.schema.ColumnDef;
 import com.yuier.yuni.plugin.data.schema.TableSchema;
+import java.util.List;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.statement.Query;
-
-import java.util.List;
 
 /**
  * CrudRepository 的通用实现。
@@ -124,11 +124,11 @@ public class CrudRepositoryImpl<T> implements CrudRepository<T> {
     // ---- Jdbi 执行模板 ----
 
     /** 需要 Jdbi 实例，从 PluginDataService 持有的单例获取 */
-    private <R> R executeQuery(java.util.function.Function<Handle, R> fn) {
+    private <R> R executeQuery(Function<Handle, R> fn) {
         return getJdbi().withHandle(handle -> fn.apply(handle));
     }
 
-    private void executeUpdate(java.util.function.Function<Handle, Integer> fn) {
+    private void executeUpdate(Function<Handle, Integer> fn) {
         getJdbi().useHandle(handle -> fn.apply(handle));
     }
 

@@ -5,9 +5,9 @@ import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
-import lombok.Getter;
-
+import java.util.Map;
 import java.util.Optional;
+import lombok.Getter;
 
 /**
  * {@link MessageEvent} 的适配实现——把 {@link YuniMessageEvent} 包装为插件侧视图。
@@ -85,8 +85,8 @@ public final class CoreMessageEvent extends BaseCoreEvent implements MessageEven
      * @param source 核心事件
      * @return 字段表
      */
-    private static java.util.Map<String, Object> buildFields(YuniMessageEvent source) {
-        java.util.Map<String, Object> fields = fieldsBuilder();
+    private static Map<String, Object> buildFields(YuniMessageEvent source) {
+        Map<String, Object> fields = fieldsBuilder();
         putIfPresent(fields, "raw_message", source.getRawMessage());
         putIfPresent(fields, "font", source.getFont());
         putIfPresent(fields, "message_format", source.getMessageFormat());

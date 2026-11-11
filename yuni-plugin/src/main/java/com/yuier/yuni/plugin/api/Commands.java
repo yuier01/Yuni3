@@ -1,6 +1,7 @@
 package com.yuier.yuni.plugin.api;
 
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
+import java.util.Optional;
 
 /**
  * 命令树的流式绑定辅助。
@@ -98,7 +99,7 @@ public final class Commands {
      * @param node 命令节点
      * @return 处理器；未绑定或绑定了错误类型时为空
      */
-    public static java.util.Optional<CommandHandler> handlerOf(CommandNode node) {
+    public static Optional<CommandHandler> handlerOf(CommandNode node) {
         if (node == null) {
             return java.util.Optional.empty();
         }

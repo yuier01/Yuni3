@@ -1,19 +1,39 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.core.bot.BotGroupInfo;
+import com.yuier.yuni.core.bot.JsonCodec;
+import com.yuier.yuni.core.bot.YuniBot;
+import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.plugin.api.Disposable;
+import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
+import com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
+import com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle;
+import com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord;
+import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
+import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
+import com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher;
+import com.yuier.yuni.plugin.runtime.dispatch.EventPipeline;
+import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 插件运行时——加载、依赖解析、卸载、重载的总入口。
@@ -80,7 +100,7 @@ public final class PluginRuntime {
     private final FiberRegistry fibers = new FiberRegistry();
 
     /** 插件标识 → 资源目录；用于依赖推进时重建上下文。 */
-    private final java.util.Map<String, Path> pluginDataDirs = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Path> pluginDataDirs = new ConcurrentHashMap<>();
 
     /**
      * 插件作用域配置表——「每个插件在哪些群被显式开启 / 关闭」。
@@ -98,8 +118,8 @@ public final class PluginRuntime {
      * 单个过滤器无法同时表达「一部分群显式开启、另一部分显式关闭」，
      * 而管理端的实际配置正是这个三态模型（见该类的说明）。</p>
      */
-    private final com.yuier.yuni.plugin.runtime.PluginScopes pluginScopes =
-            new com.yuier.yuni.plugin.runtime.PluginScopes();
+    private final PluginScopes pluginScopes =
+            new PluginScopes();
 
     /**
      * 插件标识 → 该插件注册时自带的基线作用域配置（可为 {@code null}）。
@@ -112,8 +132,8 @@ public final class PluginRuntime {
      * </ul>
      * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
      */
-    private final java.util.Map<String, com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope>
-            baseScopeFilters = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, PersistedScope>
+            baseScopeFilters = new ConcurrentHashMap<>();
 
     /**
      * 「基线是白名单形态」的插件标识集合。
@@ -128,7 +148,7 @@ public final class PluginRuntime {
      * 判定逻辑（{@link #isPluginEnabledIn} / {@link #isGloballyEnabled}）
      * 不依赖它，只看默认值与例外集合本身。</p>
      */
-    private final java.util.Set<String> whitelistBaselines =
+    private final Set<String> whitelistBaselines =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
@@ -137,7 +157,7 @@ public final class PluginRuntime {
      * <p>为 {@code null} 时作用域配置仅存在于内存——测试场景与未装配数据库的
      * 集成场景都是这样，因此不视为错误。</p>
      */
-    private volatile com.yuier.yuni.plugin.runtime.PluginScopeStore scopeStore;
+    private volatile PluginScopeStore scopeStore;
 
     /**
      * 机器人实例供应函数。
@@ -146,25 +166,25 @@ public final class PluginRuntime {
      * 而非直接持有实例：bot 由 engine 的 {@code BotManager} 动态创建，
      * 时机晚于本运行时的构造。</p>
      */
-    private volatile java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> botSupplier;
+    private volatile Supplier<YuniBot> botSupplier;
 
     /** 事件分发流水线；首次访问时构造并缓存。 */
-    private volatile com.yuier.yuni.plugin.runtime.dispatch.EventPipeline pipeline;
+    private volatile EventPipeline pipeline;
 
     /** 命令分发器；由 {@link #getPipeline()} 惰性构造。 */
-    private volatile com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher commandDispatcher;
+    private volatile CommandDispatcher commandDispatcher;
 
     /** 事件适配工厂；由 {@link #getPipeline()} 惰性构造。 */
-    private volatile com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter eventAdapter;
+    private volatile PluginEventAdapter eventAdapter;
 
     /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
-    private volatile com.yuier.yuni.core.model.bot.BotApp botApp;
+    private volatile BotApp botApp;
 
     /** 定时任务管理器；由外部注入，可为 {@code null}（测试场景）。 */
     private final DynamicTaskManager taskManager;
 
     /** JSON 编解码器；可为 {@code null}（测试场景，则依赖它的能力不可用）。 */
-    private final com.yuier.yuni.core.bot.JsonCodec jsonCodec;
+    private final JsonCodec jsonCodec;
 
     /**
      * 模块加载器；用于热重载时重新读取 jar。
@@ -172,7 +192,7 @@ public final class PluginRuntime {
      * <p>为 {@code null} 时 {@link #reload} 会抛出可读的错误而不是 NPE——
      * 测试场景通常不装配它，因此这是常见情况而非异常情况。</p>
      */
-    private volatile com.yuier.yuni.plugin.runtime.load.PluginModuleLoader moduleLoader;
+    private volatile PluginModuleLoader moduleLoader;
 
     /**
      * 构造运行时（不带 JSON 编解码器）。
@@ -300,7 +320,7 @@ public final class PluginRuntime {
              * 两者看起来相近，但后者会把「未列出的群」当成显式关闭，
              * 从而干扰 PluginAdmin.setEnabled 的默认值推导。
              */
-            com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope baseline =
+            PersistedScope baseline =
                     toBaseline(id, filter, metadata.isDefaultEnable());
             if (baseline != null) {
                 baseScopeFilters.put(id, baseline);
@@ -357,7 +377,7 @@ public final class PluginRuntime {
             return;
         }
         synchronized (moduleHandles) {
-            com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle existing =
+            ModuleHandle existing =
                     fibers.module(moduleId).orElse(null);
             if (existing != null && existing.getJarFileName() != null) {
                 // 已经有携带完整信息（jar 名）的句柄——它由 loadModule 建立，不要覆盖
@@ -374,14 +394,14 @@ public final class PluginRuntime {
              * 直接按模块 ID 过滤全部 Fiber：这一步不经过 moduleIdOf，
              * 因为 moduleIdOf 本身依赖模块句柄，此时可能还没建好（会死循环）。
              */
-            java.util.List<String> pluginIds = new java.util.ArrayList<>();
+            List<String> pluginIds = new ArrayList<>();
             for (PluginFiber fiber : fibers.getAll()) {
                 if (moduleId.equals(moduleIdOfRaw(fiber.getId()))) {
                     pluginIds.add(fiber.getId());
                 }
             }
 
-            fibers.addModule(new com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle(
+            fibers.addModule(new ModuleHandle(
                     moduleId,
                     // 显示名暂用模块 ID：真正的名字在 metadata.json 里，
                     // 由 loadModule 覆盖。这里不能瞎猜，只能如实填 ID
@@ -406,7 +426,7 @@ public final class PluginRuntime {
      * @return 模块 ID；无法判定时返回 {@code null}
      */
     private String moduleIdOfRaw(String pluginId) {
-        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.getAllModules()) {
+        for (ModuleHandle handle : fibers.getAllModules()) {
             if (handle.getPluginIds().contains(pluginId)) {
                 return handle.getModuleId();
             }
@@ -445,21 +465,21 @@ public final class PluginRuntime {
      * @param defaultEnabled 插件元数据的默认启用值
      * @return 基线配置；过滤器不携带基线信息时返回 {@code null}
      */
-    private static com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope toBaseline(
+    private static PersistedScope toBaseline(
             String pluginId,
-            com.yuier.yuni.plugin.api.ScopeFilter filter,
+            ScopeFilter filter,
             boolean defaultEnabled) {
-        java.util.Optional<java.util.Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
+        Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
         if (whitelist.isPresent()) {
-            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(false, whitelist.get());
+            return new PersistedScope(false, whitelist.get());
         }
-        java.util.Optional<java.util.Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
+        Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
         if (blacklist.isPresent()) {
-            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(true, blacklist.get());
+            return new PersistedScope(true, blacklist.get());
         }
         if (filter == com.yuier.yuni.plugin.api.ScopeFilter.NONE) {
             // 显式「全部不生效」：默认关闭且无例外
-            return new com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope(false, java.util.Set.of());
+            return new PersistedScope(false, java.util.Set.of());
         }
         // ALL 或 lambda 组合：不携带可持久化信息
         return null;
@@ -610,7 +630,7 @@ public final class PluginRuntime {
      * @param dataDirResolver 由插件标识解析资源目录的函数；可为 {@code null}
      * @return 本次新激活的插件数量
      */
-    public int activatePending(java.util.function.Function<String, Path> dataDirResolver) {
+    public int activatePending(Function<String, Path> dataDirResolver) {
         int activated = 0;
         boolean progressed = true;
         while (progressed) {
@@ -790,7 +810,7 @@ public final class PluginRuntime {
                     "热重载需要 PluginModuleLoader，但本运行时未装配它"
                             + "（集成场景应调用 bindModuleLoader）。");
         }
-        com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle = fibers.module(moduleId)
+        ModuleHandle handle = fibers.module(moduleId)
                 .orElseThrow(() -> new IllegalStateException("模块不存在: " + moduleId));
 
         Path moduleDir = handle.getJarParentPath() == null ? null : Path.of(handle.getJarParentPath());
@@ -803,17 +823,17 @@ public final class PluginRuntime {
 
         // 第 2 步：快照作用域例外。重启加载时新实例的 defaultEnable 可能与旧实例
         // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
-        java.util.Map<String, java.util.List<com.yuier.yuni.plugin.api.ScopeFilter>> scopeSnapshot =
-                new java.util.LinkedHashMap<>();
+        Map<String, List<ScopeFilter>> scopeSnapshot =
+                new LinkedHashMap<>();
         for (String pluginId : handle.getPluginIds()) {
-            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = pluginScopes.all(pluginId);
+            List<ScopeFilter> filters = pluginScopes.all(pluginId);
             if (!filters.isEmpty()) {
                 scopeSnapshot.put(pluginId, filters);
             }
         }
 
         // 第 3 步：逐个卸载。逆序，与加载顺序对称（子插件先于父插件消失）
-        List<String> pluginIds = new java.util.ArrayList<>(handle.getPluginIds());
+        List<String> pluginIds = new ArrayList<>(handle.getPluginIds());
         for (int i = pluginIds.size() - 1; i >= 0; i--) {
             unload(pluginIds.get(i));
         }
@@ -834,7 +854,7 @@ public final class PluginRuntime {
         // 只要模块没有增删插件，标识就保持一致。
         int restored = 0;
         for (PluginFiber fiber : loaded) {
-            java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> filters = scopeSnapshot.get(fiber.getId());
+            List<ScopeFilter> filters = scopeSnapshot.get(fiber.getId());
             if (filters != null) {
                 pluginScopes.putAll(fiber.getId(), filters);
                 restored++;
@@ -874,8 +894,8 @@ public final class PluginRuntime {
      * @param botApp      机器人业务配置（提供命令前缀）；可为 {@code null}
      * @return {@code this}，便于链式配置
      */
-    public PluginRuntime bindBot(java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> botSupplier,
-                                 com.yuier.yuni.core.model.bot.BotApp botApp) {
+    public PluginRuntime bindBot(Supplier<YuniBot> botSupplier,
+                                 BotApp botApp) {
         this.botSupplier = botSupplier;
         this.botApp = botApp;
         // 使已构造的流水线失效，下次访问时用新的 bot 重建
@@ -897,16 +917,16 @@ public final class PluginRuntime {
      *
      * @return 流水线，永不为 {@code null}
      */
-    public com.yuier.yuni.plugin.runtime.dispatch.EventPipeline getPipeline() {
-        com.yuier.yuni.plugin.runtime.dispatch.EventPipeline current = this.pipeline;
+    public EventPipeline getPipeline() {
+        EventPipeline current = this.pipeline;
         if (current != null) {
             return current;
         }
         synchronized (this) {
             if (this.pipeline == null) {
-                this.eventAdapter = new com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter(
+                this.eventAdapter = new PluginEventAdapter(
                         botSupplier, jsonCodec);
-                this.commandDispatcher = new com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher(
+                this.commandDispatcher = new CommandDispatcher(
                         registrations,
                         // 命令引擎需要 bot 的具体实例（用于回复段解析）；
                         // 这里即时解析一次，未就绪时传 null，由引擎的静态回退兜住
@@ -919,7 +939,7 @@ public final class PluginRuntime {
                         // 作用域判定委托给本运行时的当前配置——用户的群粒度启停
                         // 随时可变，因此必须在分发时查而不是注册时定
                         this::scopeFilterOf);
-                this.pipeline = new com.yuier.yuni.plugin.runtime.dispatch.EventPipeline(
+                this.pipeline = new EventPipeline(
                         registrations, this, eventAdapter, commandDispatcher);
             }
             return this.pipeline;
@@ -937,7 +957,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 过滤器；插件不存在或从未注册时为空
      */
-    public java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter> scopeFilterOf(String pluginId) {
+    public Optional<ScopeFilter> scopeFilterOf(String pluginId) {
         return fibers.byId(pluginId).map(fiber ->
                 pluginScopes.composite(pluginId, effectiveDefaultEnabled(pluginId)));
     }
@@ -948,7 +968,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 例外列表；无例外时为空列表
      */
-    public java.util.List<com.yuier.yuni.plugin.api.ScopeFilter> scopeExceptionsOf(String pluginId) {
+    public List<ScopeFilter> scopeExceptionsOf(String pluginId) {
         return pluginScopes.all(pluginId);
     }
 
@@ -965,7 +985,7 @@ public final class PluginRuntime {
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
         // ① 用户显式配置的群例外优先级最高
-        java.util.Optional<Boolean> explicit = pluginScopes.explicitValue(pluginId, groupId);
+        Optional<Boolean> explicit = pluginScopes.explicitValue(pluginId, groupId);
         if (explicit.isPresent()) {
             return explicit.get();
         }
@@ -978,7 +998,7 @@ public final class PluginRuntime {
          * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
          * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
          */
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        PersistedScope base = baseScopeOf(pluginId);
         if (base != null && !base.getExceptionGroups().isEmpty()) {
             boolean listed = base.getExceptionGroups().contains(groupId);
             // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
@@ -1006,12 +1026,12 @@ public final class PluginRuntime {
      */
     private boolean effectiveDefaultEnabled(String pluginId) {
         // 用户显式设置过全局开关 → 以它为准
-        java.util.Optional<Boolean> userGlobal = pluginScopes.explicitGlobalDefault(pluginId);
+        Optional<Boolean> userGlobal = pluginScopes.explicitGlobalDefault(pluginId);
         if (userGlobal.isPresent()) {
             return userGlobal.get();
         }
         // 其次看插件注册时的基线
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        PersistedScope base = baseScopeOf(pluginId);
         if (base != null) {
             return base.isEnabledByDefault();
         }
@@ -1028,7 +1048,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 基线配置；没有时为 {@code null}
      */
-    private com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope baseScopeOf(String pluginId) {
+    private PersistedScope baseScopeOf(String pluginId) {
         return pluginId == null ? null : baseScopeFilters.get(pluginId);
     }
 
@@ -1084,16 +1104,16 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 群号列表，不可变；无法判定时为空列表
      */
-    public java.util.List<Long> groupsWhereEnabled(String pluginId) {
-        com.yuier.yuni.core.bot.YuniBot bot = resolveBot();
+    public List<Long> groupsWhereEnabled(String pluginId) {
+        YuniBot bot = resolveBot();
         if (bot == null || pluginId == null) {
             return java.util.List.of();
         }
         try {
-            java.util.List<com.yuier.yuni.core.bot.BotGroupInfo> groups =
+            List<BotGroupInfo> groups =
                     bot.getGroupList().orElse(java.util.List.of());
-            java.util.List<Long> enabled = new java.util.ArrayList<>();
-            for (com.yuier.yuni.core.bot.BotGroupInfo group : groups) {
+            List<Long> enabled = new ArrayList<>();
+            for (BotGroupInfo group : groups) {
                 Boolean hit = isPluginEnabledIn(pluginId, group.getGroupId());
                 // 无显式设置时回落到插件的 defaultEnable——与 ctx.getScope() 一致
                 boolean effective = hit != null ? hit : effectiveDefaultEnabled(pluginId);
@@ -1119,7 +1139,7 @@ public final class PluginRuntime {
          * 优先描述基线：插件注册时传的 filter 是更强的意图表达
          * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
          */
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope base = baseScopeOf(pluginId);
+        PersistedScope base = baseScopeOf(pluginId);
         if (base != null) {
             if (whitelistBaselines.contains(pluginId)) {
                 return "仅限群 " + base.getExceptionGroups();
@@ -1130,7 +1150,7 @@ public final class PluginRuntime {
         }
 
         // 再看用户配置的群例外
-        com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope persisted =
+        PersistedScope persisted =
                 pluginScopes.toPersisted(pluginId, effectiveDefaultEnabled(pluginId));
         if (persisted.getExceptionGroups().isEmpty()) {
             return persisted.isEnabledByDefault() ? "全部群" : "未记录";
@@ -1227,7 +1247,7 @@ public final class PluginRuntime {
      * @return {@code this}，便于链式配置
      */
     public PluginRuntime bindScopeStore(
-            com.yuier.yuni.plugin.runtime.PluginScopeStore store) {
+            PluginScopeStore store) {
         this.scopeStore = store;
         return this;
     }
@@ -1250,11 +1270,11 @@ public final class PluginRuntime {
      * @return 恢复了配置的插件数量；未装配存储时返回 0
      */
     public int restoreScopes() {
-        com.yuier.yuni.plugin.runtime.PluginScopeStore store = this.scopeStore;
+        PluginScopeStore store = this.scopeStore;
         if (store == null) {
             return 0;
         }
-        java.util.Map<String, com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord> stored;
+        Map<String, PluginScopeRecord> stored;
         try {
             stored = store.loadAll();
         } catch (Exception e) {
@@ -1268,7 +1288,7 @@ public final class PluginRuntime {
 
         int restored = 0;
         for (PluginFiber fiber : fibers.getAll()) {
-            com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord record =
+            PluginScopeRecord record =
                     stored.get(fiber.getId());
             if (record == null || record.isEmpty()) {
                 continue;
@@ -1294,9 +1314,9 @@ public final class PluginRuntime {
      * @param globalEnabled   全局是否生效
      * @return 群号 → 是否生效
      */
-    private static java.util.Map<Long, Boolean> toValueMap(java.util.Set<Long> exceptionGroups,
+    private static Map<Long, Boolean> toValueMap(Set<Long> exceptionGroups,
                                                            boolean globalEnabled) {
-        java.util.Map<Long, Boolean> values = new java.util.LinkedHashMap<>();
+        Map<Long, Boolean> values = new LinkedHashMap<>();
         for (Long groupId : exceptionGroups) {
             // 例外群的值与全局开关相反——这正是「例外」的定义
             values.put(groupId, !globalEnabled);
@@ -1313,7 +1333,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      */
     private void persistScope(String pluginId) {
-        com.yuier.yuni.plugin.runtime.PluginScopeStore store = this.scopeStore;
+        PluginScopeStore store = this.scopeStore;
         if (store == null) {
             return;
         }
@@ -1326,13 +1346,13 @@ public final class PluginRuntime {
             Boolean global = pluginScopes.explicitGlobalDefault(pluginId).orElse(null);
             boolean effectiveGlobal = global != null ? global : pluginDefault;
             // 例外群 = 与有效全局值相反的那些群
-            java.util.Set<Long> exceptionGroups = new java.util.LinkedHashSet<>();
+            Set<Long> exceptionGroups = new LinkedHashSet<>();
             pluginScopes.all(pluginId).forEach(filter -> {
                 filter.getExplicitGroupWhitelist().ifPresent(exceptionGroups::addAll);
                 filter.getExplicitGroupBlacklist().ifPresent(exceptionGroups::addAll);
             });
             store.save(pluginId,
-                    new com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord(
+                    new PluginScopeRecord(
                             global, exceptionGroups));
         } catch (Exception e) {
             // 不回滚内存：用户已经看到操作成功，回滚只会让内存与实际反馈不一致。
@@ -1350,8 +1370,8 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 模块 ID；插件不属于任何模块或不存在时为空
      */
-    public java.util.Optional<String> moduleIdOf(String pluginId) {
-        for (com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle handle : fibers.getAllModules()) {
+    public Optional<String> moduleIdOf(String pluginId) {
+        for (ModuleHandle handle : fibers.getAllModules()) {
             if (handle.getPluginIds().contains(pluginId)) {
                 return java.util.Optional.of(handle.getModuleId());
             }
@@ -1368,8 +1388,8 @@ public final class PluginRuntime {
      *
      * @return 插件管理服务
      */
-    public com.yuier.yuni.plugin.api.PluginAdmin getAdmin() {
-        return new com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime(this, moduleLoader);
+    public PluginAdmin getAdmin() {
+        return new PluginAdminRuntime(this, moduleLoader);
     }
 
     /**
@@ -1382,7 +1402,7 @@ public final class PluginRuntime {
      * @return {@code this}，便于链式配置
      */
     public PluginRuntime bindModuleLoader(
-            com.yuier.yuni.plugin.runtime.load.PluginModuleLoader moduleLoader) {
+            PluginModuleLoader moduleLoader) {
         this.moduleLoader = moduleLoader;
         return this;
     }
@@ -1395,8 +1415,8 @@ public final class PluginRuntime {
      *
      * @return 机器人实例；未就绪时返回 {@code null}
      */
-    public com.yuier.yuni.core.bot.YuniBot resolveBot() {
-        java.util.function.Supplier<com.yuier.yuni.core.bot.YuniBot> supplier = this.botSupplier;
+    public YuniBot resolveBot() {
+        Supplier<YuniBot> supplier = this.botSupplier;
         if (supplier == null) {
             return null;
         }
@@ -1415,7 +1435,7 @@ public final class PluginRuntime {
      *
      * @return 命令分发器，永不为 {@code null}
      */
-    public com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher getCommandDispatcher() {
+    public CommandDispatcher getCommandDispatcher() {
         getPipeline();
         return commandDispatcher;
     }
@@ -1442,7 +1462,7 @@ public final class PluginRuntime {
                         .filter(m -> m.getPluginIds().contains(pluginId))
                         .findFirst())
                 .map(m -> m.getJarParentPath() == null ? null : Path.of(m.getJarParentPath()))
-                .filter(java.util.Objects::nonNull);
+                .filter(Objects::nonNull);
     }
 
     /**

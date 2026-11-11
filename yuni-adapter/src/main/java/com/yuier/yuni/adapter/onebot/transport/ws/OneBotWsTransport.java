@@ -2,12 +2,19 @@ package com.yuier.yuni.adapter.onebot.transport.ws;
 
 import com.yuier.yuni.adapter.config.OneBotProperties;
 import com.yuier.yuni.adapter.onebot.transport.OneBotTransport;
+import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.net.ws.yuni.ConnectionLostException;
+import com.yuier.yuni.core.net.ws.yuni.WsRequestModel;
+import com.yuier.yuni.core.net.ws.yuni.YuniBusinessProxyListener;
 import com.yuier.yuni.core.net.ws.yuni.YuniWebSocketConnector;
 import com.yuier.yuni.core.net.ws.yuni.YuniWebSocketManager;
-import com.yuier.yuni.core.net.ws.yuni.YuniBusinessProxyListener;
-import com.yuier.yuni.core.net.ws.yuni.WsRequestModel;
-import com.yuier.yuni.core.bot.JsonCodec;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -17,13 +24,6 @@ import okhttp3.WebSocket;
 import okio.ByteString;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 /**
  * @Title: OneBotWsTransport
@@ -215,7 +215,7 @@ public class OneBotWsTransport implements OneBotTransport {
     // ==================== 请求构建 ====================
 
     private String buildRequestJson(String action, Map<String, Object> params) {
-        Map<String, Object> request = new java.util.LinkedHashMap<>();
+        Map<String, Object> request = new LinkedHashMap<>();
         request.put("action", action);
         request.put("params", params != null ? params : Map.of());
         request.put("echo", java.util.UUID.randomUUID().toString());

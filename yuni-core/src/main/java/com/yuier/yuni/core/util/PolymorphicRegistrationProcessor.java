@@ -4,13 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.NamedType;
 import com.yuier.yuni.core.anno.PolymorphicSubType;
 import com.yuier.yuni.core.model.message.MessageSegment;
+import java.util.*;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.stereotype.Component;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
@@ -80,7 +80,7 @@ public class PolymorphicRegistrationProcessor {
         // 扫描路径 — 覆盖所有模块以自动发现多态子类型
         String packageToScan = "com.yuier.yuni";
         // 执行扫描
-        java.util.Set<org.springframework.beans.factory.config.BeanDefinition> candidates =
+        Set<org.springframework.beans.factory.config.BeanDefinition> candidates =
                 scanner.findCandidateComponents(packageToScan);
 
         // 遍历所有候选类

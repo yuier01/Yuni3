@@ -7,28 +7,32 @@ import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.enums.CommandArgRequireType;
 import com.yuier.yuni.core.enums.UserPermission;
 import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.YuniMessageSentEvent;
 import com.yuier.yuni.core.event.notice.PokeEvent;
 import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
+import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.ArgDef;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.RegistrationTable;
+import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -120,7 +124,7 @@ class EventPipelineTest {
      * @param condition 条件
      * @param timeoutMs 超时毫秒
      */
-    private static void await(java.util.function.BooleanSupplier condition, long timeoutMs) {
+    private static void await(BooleanSupplier condition, long timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             if (condition.getAsBoolean()) {
@@ -212,14 +216,14 @@ class EventPipelineTest {
                 RegistrationTable.Kind.NOTICE, inScope,
                 com.yuier.yuni.plugin.api.ScopeFilter.onlyGroups(999L),
                 null, null,
-                (com.yuier.yuni.plugin.api.handler.NoticeHandler)
+                (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
         runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, outOfScope,
                 com.yuier.yuni.plugin.api.ScopeFilter.excludeGroups(999L),
                 null, null,
-                (com.yuier.yuni.plugin.api.handler.NoticeHandler)
+                (NoticeHandler)
                         (ev, reply) -> outOfScopeHits.incrementAndGet()));
 
         // 事件来自群 123
@@ -618,8 +622,8 @@ class EventPipelineTest {
                 ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
                 null, null, null);
 
-        com.yuier.yuni.core.event.YuniMessageSentEvent sent =
-                new com.yuier.yuni.core.event.YuniMessageSentEvent();
+        YuniMessageSentEvent sent =
+                new YuniMessageSentEvent();
         sent.setTime(1L);
         sent.setSelfId(10000L);
         sent.setMessageType("group");
@@ -644,8 +648,8 @@ class EventPipelineTest {
                 ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
                 null, null, null);
 
-        com.yuier.yuni.core.event.YuniMessageSentEvent sent =
-                new com.yuier.yuni.core.event.YuniMessageSentEvent();
+        YuniMessageSentEvent sent =
+                new YuniMessageSentEvent();
         sent.setTime(1L);
         sent.setSelfId(10000L);
         sent.setMessageType("private");
@@ -697,14 +701,14 @@ class EventPipelineTest {
         var adapted = adapter.adapt(groupMessage("/测试"));
         var engineEvent = new YuniMessageEvent();
         engineEvent.setMessageChain(adapted.getChain() instanceof
-                com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view
+                CoreMessageChainView view
                 ? buildChain(view) : new MessageChain());
         engineEvent.setMessageType("group");
         engineEvent.setSubType("normal");
         engineEvent.setUserId(10001L);
         engineEvent.setGroupId(123L);
 
-        var detector = new com.yuier.yuni.event.detector.message.command.CommandDetector(tree, bot, null);
+        var detector = new CommandDetector(tree, bot, null);
         IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalStateException.class, () -> detector.match(engineEvent));
 
@@ -718,7 +722,7 @@ class EventPipelineTest {
      * @return 核心消息链
      */
     private static MessageChain buildChain(
-            com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
+            CoreMessageChainView view) {
         MessageChain chain = new MessageChain();
         chain.addAll(view.getRawSegments());
         return chain;

@@ -5,20 +5,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.MessageTarget;
+import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
+import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -201,12 +202,12 @@ class PluginServicesTest {
         RecordingYuniBot bot = new RecordingYuniBot();
         CoreSender sender = new CoreSender(bot, jsonCodec);
 
-        com.yuier.yuni.core.model.message.MessageChain chain =
-                new com.yuier.yuni.core.model.message.MessageChain();
+        MessageChain chain =
+                new MessageChain();
         chain.addTextSegment("转发的内容");
 
         Reply.SentResult result = sender.sendToGroup(
-                789L, new com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView(chain, jsonCodec));
+                789L, new CoreMessageChainView(chain, jsonCodec));
 
         assertTrue(result.isSuccess());
         assertEquals(1, bot.sentCount());
@@ -229,8 +230,8 @@ class PluginServicesTest {
         RecordingYuniBot bot = new RecordingYuniBot();
         CoreSender sender = new CoreSender(bot, jsonCodec);
 
-        com.yuier.yuni.core.model.message.MessageChain chain =
-                new com.yuier.yuni.core.model.message.MessageChain();
+        MessageChain chain =
+                new MessageChain();
         chain.addTextSegment("hello");
 
         assertEquals("hello", sender.wrap(chain).getPlainText());

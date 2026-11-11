@@ -4,24 +4,26 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.yuier.yuni.core.bot.JsonCodec;
+import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.user.MessageSender;
-import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-
-import java.lang.reflect.Field;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -130,7 +132,7 @@ class PluginLifecycleIntegrationTest {
      * @param condition 条件
      * @param timeoutMs 超时
      */
-    private static void await(java.util.function.BooleanSupplier condition, long timeoutMs) {
+    private static void await(BooleanSupplier condition, long timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             if (condition.getAsBoolean()) {
@@ -224,7 +226,7 @@ class PluginLifecycleIntegrationTest {
         assertTrue(plugin.scheduleHits.get() > 0, "定时任务应被执行");
 
         // 卸载：插件作者没有写任何清理代码
-        java.util.List<String> failures = runtime.unload(fiber.getId());
+        List<String> failures = runtime.unload(fiber.getId());
 
         assertTrue(failures.isEmpty(), "清理不应失败: " + failures);
         assertEquals(0, fiber.getEffectCount(), "Effect 必须归零");
@@ -240,7 +242,7 @@ class PluginLifecycleIntegrationTest {
     void abilitiesAreDerivableFromRegistrations() {
         PluginFiber fiber = runtime.load(new MultiAbilityPlugin(), null, null, null);
 
-        java.util.Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
+        Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
 
         // 「这个插件是什么类型」由它注册了什么推导得出，而不是由它 extends 了什么声明
         assertTrue(kinds.contains(RegistrationTable.Kind.MESSAGE));
@@ -395,7 +397,7 @@ class PluginLifecycleIntegrationTest {
             }
 
             @Override
-            public java.util.List<Class<?>> inject() {
+            public List<Class<?>> inject() {
                 return java.util.List.of(Comparable.class);
             }
 
@@ -405,8 +407,8 @@ class PluginLifecycleIntegrationTest {
             }
         }, null, null, null);
 
-        java.util.List<String> failed = runtime.reportFailedPlugins();
-        java.util.List<String> pending = runtime.reportPendingPlugins();
+        List<String> failed = runtime.reportFailedPlugins();
+        List<String> pending = runtime.reportPendingPlugins();
 
         assertEquals(1, failed.size());
         assertTrue(failed.get(0).contains("必失败插件"));

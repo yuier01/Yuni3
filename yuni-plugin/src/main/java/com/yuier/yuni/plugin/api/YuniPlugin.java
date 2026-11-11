@@ -1,12 +1,15 @@
 package com.yuier.yuni.plugin.api;
 
+import com.yuier.yuni.plugin.api.event.MessageEvent;
+import com.yuier.yuni.plugin.api.event.MessageSentEvent;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
-
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * 插件接口——新插件系统中的<b>唯一</b>插件形态。
@@ -155,7 +158,7 @@ public interface YuniPlugin {
      * @param apply    能力注册函数
      * @return 插件实例
      */
-    static YuniPlugin of(PluginMetadata metadata, java.util.function.Consumer<YuniContext> apply) {
+    static YuniPlugin of(PluginMetadata metadata, Consumer<YuniContext> apply) {
         return new YuniPlugin() {
             @Override
             public void apply(YuniContext ctx) {
@@ -176,7 +179,7 @@ public interface YuniPlugin {
      * @param apply 能力注册函数
      * @return 插件实例
      */
-    static YuniPlugin of(String name, java.util.function.Consumer<YuniContext> apply) {
+    static YuniPlugin of(String name, Consumer<YuniContext> apply) {
         return of(PluginMetadata.of(name).build(), apply);
     }
 
@@ -194,7 +197,7 @@ public interface YuniPlugin {
      * @return 插件实例
      */
     static YuniPlugin onMessage(String name,
-                                java.util.function.Predicate<com.yuier.yuni.plugin.api.event.MessageEvent> when,
+                                Predicate<MessageEvent> when,
                                 MessageHandler handler) {
         return of(name, ctx -> ctx.onMessage(when, handler));
     }
@@ -244,7 +247,7 @@ public interface YuniPlugin {
      * @return 插件实例
      */
     static YuniPlugin onMessageSent(String name,
-                                    java.util.function.Predicate<com.yuier.yuni.plugin.api.event.MessageSentEvent> when,
+                                    Predicate<MessageSentEvent> when,
                                     MessageSentHandler handler) {
         return of(name, ctx -> ctx.onMessageSent(when, handler));
     }

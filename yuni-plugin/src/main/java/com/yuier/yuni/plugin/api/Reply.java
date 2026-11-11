@@ -1,9 +1,9 @@
 package com.yuier.yuni.plugin.api;
 
 import com.yuier.yuni.plugin.api.event.MessageChainView;
-
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 消息构建门面。
@@ -209,6 +209,6 @@ public interface Reply {
          *
          * @return 失败描述；成功时为空
          */
-        java.util.Optional<String> getErrorMessage();
+        Optional<String> getErrorMessage();
     }
 }

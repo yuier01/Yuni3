@@ -1,20 +1,29 @@
 package com.yuier.yuni.plugin.runtime.dispatch;
 
+import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.enums.UserPermission;
 import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.event.matched.CommandResult;
+import com.yuier.yuni.core.model.bot.BotApp;
+import com.yuier.yuni.core.model.message.MessageChain;
+import com.yuier.yuni.core.model.message.MessageSegment;
+import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.CommandHandler;
 import com.yuier.yuni.plugin.api.Commands;
 import com.yuier.yuni.plugin.api.Reply;
+import com.yuier.yuni.plugin.api.ScopeFilter;
+import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.RegistrationTable;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
+import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
+import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 命令分发器——把注册的命令树接到现有匹配引擎上。
@@ -67,10 +76,10 @@ public final class CommandDispatcher {
     private final RegistrationTable registrations;
 
     /** 机器人实例，传给 {@link CommandDetector} 以支持回复段解析。 */
-    private final com.yuier.yuni.core.bot.YuniBot bot;
+    private final YuniBot bot;
 
     /** 机器人业务配置，提供命令前缀。 */
-    private final com.yuier.yuni.core.model.bot.BotApp botApp;
+    private final BotApp botApp;
 
     /**
      * 权限判定函数：给定（用户、群、插件标识）返回权限等级。
@@ -92,7 +101,7 @@ public final class CommandDispatcher {
      * 而注册项在插件加载时就固定了。只在注册时定会导致管理端的启停不生效——
      * 这是 P6 上线前真实存在的缺陷。</p>
      */
-    private final java.util.function.Function<String, java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter>>
+    private final Function<String, Optional<ScopeFilter>>
             scopeResolver;
 
     /**
@@ -121,8 +130,8 @@ public final class CommandDispatcher {
      * @param permissionResolver 权限判定函数；可为 {@code null}（则一律视为 USER）
      */
     public CommandDispatcher(RegistrationTable registrations,
-                             com.yuier.yuni.core.bot.YuniBot bot,
-                             com.yuier.yuni.core.model.bot.BotApp botApp,
+                             YuniBot bot,
+                             BotApp botApp,
                              PermissionResolver permissionResolver) {
         this(registrations, bot, botApp, permissionResolver, null);
     }
@@ -205,7 +214,7 @@ public final class CommandDispatcher {
      * @param reply   回复入口；可为 {@code null}
      * @return 是否命中并执行了至少一个命令（用于决定是否短路模式插件）
      */
-    public boolean dispatch(com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent event,
+    public boolean dispatch(CoreMessageEvent event,
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
@@ -370,7 +379,7 @@ public final class CommandDispatcher {
      * @return 全部节点权限满足时返回 {@code true}
      */
     private boolean checkNodePermission(CommandResult result,
-                                        com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent event,
+                                        CoreMessageEvent event,
                                         RegistrationTable.Entry entry) {
         if (result == null) {
             return true;
@@ -442,7 +451,7 @@ public final class CommandDispatcher {
      * @param event 插件侧事件
      * @return 引擎事件
      */
-    private YuniMessageEvent toEngineEvent(com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent event) {
+    private YuniMessageEvent toEngineEvent(CoreMessageEvent event) {
         YuniMessageEvent engineEvent = new YuniMessageEvent();
         engineEvent.setTime(event.getTime());
         engineEvent.setSelfId(event.getSelfId());
@@ -453,26 +462,26 @@ public final class CommandDispatcher {
         engineEvent.setGroupId(event.getGroupId().orElse(null));
         engineEvent.setRawMessage(event.getRawMessage());
 
-        if (event.getChain() instanceof com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView view) {
+        if (event.getChain() instanceof CoreMessageChainView view) {
             // 复用同一个内部链对象，避免 JSON 往返
-            List<com.yuier.yuni.core.model.message.MessageSegment> segments = view.getRawSegments();
+            List<MessageSegment> segments = view.getRawSegments();
             engineEvent.setMessage(segments);
-            com.yuier.yuni.core.model.message.MessageChain chain =
-                    new com.yuier.yuni.core.model.message.MessageChain();
+            MessageChain chain =
+                    new MessageChain();
             chain.addAll(segments);
             engineEvent.setMessageChain(chain);
         } else {
             // 其他视图实现（测试替身等）：用纯文本构造一个等价的链
-            com.yuier.yuni.core.model.message.MessageChain chain =
-                    new com.yuier.yuni.core.model.message.MessageChain();
+            MessageChain chain =
+                    new MessageChain();
             chain.addTextSegment(event.getChain().getPlainText());
             engineEvent.setMessage(chain.getContent());
             engineEvent.setMessageChain(chain);
         }
 
         // 发送者：命令引擎不读它，但保留以便将来的节点级校验
-        com.yuier.yuni.core.model.user.MessageSender sender =
-                new com.yuier.yuni.core.model.user.MessageSender();
+        MessageSender sender =
+                new MessageSender();
         sender.setUserId(event.getUserId());
         sender.setNickname(event.getSender().getNickname());
         sender.setCard(event.getSender().getCard().orElse(null));
@@ -499,7 +508,7 @@ public final class CommandDispatcher {
      * @return 判定函数
      */
     public static PermissionResolver fromService(
-            com.yuier.yuni.plugin.api.service.PermissionService service) {
+            PermissionService service) {
         if (service == null) {
             return permissiveResolver();
         }

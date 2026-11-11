@@ -16,17 +16,17 @@ import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.message.segment.TextSegment;
 import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
+import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
 import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.NoticeEvent;
 import com.yuier.yuni.plugin.api.event.RequestEvent;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -406,7 +406,7 @@ class CoreEventAdapterTest {
         // 初始未回填
         assertEquals(null, event.getMatched());
 
-        event.setMatched(new com.yuier.yuni.plugin.api.MatchToken() {
+        event.setMatched(new MatchToken() {
             @Override
             public String getType() {
                 return "poke";

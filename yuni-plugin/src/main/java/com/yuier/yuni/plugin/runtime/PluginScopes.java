@@ -1,9 +1,9 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.ScopeFilter;
-
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -292,7 +292,7 @@ public final class PluginScopes {
             if (existing.isEmpty()) {
                 continue;
             }
-            Set<Long> merged = new java.util.LinkedHashSet<>(existing.get());
+            Set<Long> merged = new LinkedHashSet<>(existing.get());
             merged.add(groupId);
             filters.set(i, whitelist
                     ? ScopeFilter.onlyGroups(merged)
@@ -317,7 +317,7 @@ public final class PluginScopes {
             if (groups == null || !groups.contains(groupId)) {
                 continue;
             }
-            Set<Long> remaining = new java.util.LinkedHashSet<>(groups);
+            Set<Long> remaining = new LinkedHashSet<>(groups);
             remaining.remove(groupId);
             if (remaining.isEmpty()) {
                 filters.remove(i);
@@ -382,7 +382,7 @@ public final class PluginScopes {
      * @return 持久化描述
      */
     public ScopeFilter.PersistedScope toPersisted(String pluginId, boolean defaultEnabled) {
-        Set<Long> opposite = new java.util.LinkedHashSet<>();
+        Set<Long> opposite = new LinkedHashSet<>();
         for (ScopeFilter filter : all(pluginId)) {
             filter.getExplicitGroupWhitelist().ifPresent(opposite::addAll);
             filter.getExplicitGroupBlacklist().ifPresent(opposite::addAll);
@@ -404,8 +404,8 @@ public final class PluginScopes {
         if (records == null || records.isEmpty()) {
             return List.of();
         }
-        Set<Long> enabled = new java.util.LinkedHashSet<>();
-        Set<Long> disabled = new java.util.LinkedHashSet<>();
+        Set<Long> enabled = new LinkedHashSet<>();
+        Set<Long> disabled = new LinkedHashSet<>();
         records.forEach((groupId, value) -> {
             if (groupId == null || value == null || value == defaultEnabled) {
                 // 与默认值一致的记录不产生例外

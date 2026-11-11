@@ -1,16 +1,16 @@
 package com.yuier.yuni.core.task;
 
 import com.yuier.yuni.core.util.LogStringUtil;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
-
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
 
 /**
  * @Title: DynamicTaskManager
@@ -38,7 +38,7 @@ public class DynamicTaskManager {
      * 句柄自行取消，无需字符串 ID。这里额外留一份引用是为了让
      * {@link #cancelAllTasks()} 能覆盖到它们。</p>
      */
-    private final java.util.Set<ScheduledFuture<?>> trackedFutures =
+    private final Set<ScheduledFuture<?>> trackedFutures =
             ConcurrentHashMap.newKeySet();
 
     /**
