@@ -5,6 +5,8 @@ import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Path;
@@ -62,15 +64,19 @@ import java.util.Optional;
  * @see com.yuier.yuni.plugin.runtime.PluginScopes
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class PluginRuntime {
 
     /** 能力注册总表：所有插件注册的事件处理器与命令树。 */
+    @Getter
     private final RegistrationTable registrations = new RegistrationTable();
 
     /** 服务注册表：框架内置服务与插件提供的服务。 */
+    @Getter
     private final ServiceRegistry services = new ServiceRegistry();
 
     /** Fiber 容器：树形索引 + 模块索引。 */
+    @Getter
     private final FiberRegistry fibers = new FiberRegistry();
 
     /** 插件标识 → 资源目录；用于依赖推进时重建上下文。 */
@@ -169,23 +175,15 @@ public final class PluginRuntime {
     private volatile com.yuier.yuni.plugin.runtime.load.PluginModuleLoader moduleLoader;
 
     /**
-     * 构造运行时。
+     * 构造运行时（不带 JSON 编解码器）。
+     *
+     * <p>两参构造器（含 {@code JsonCodec}）由 {@link RequiredArgsConstructor}
+     * 生成，参数说明见 {@code taskManager} / {@code jsonCodec} 字段注释。</p>
      *
      * @param taskManager 定时任务管理器；{@code null} 时 {@code ctx.schedule(...)} 不可用
      */
     public PluginRuntime(DynamicTaskManager taskManager) {
         this(taskManager, null);
-    }
-
-    /**
-     * 构造运行时（含 JSON 编解码器）。
-     *
-     * @param taskManager 定时任务管理器；{@code null} 时调度能力不可用
-     * @param jsonCodec   JSON 编解码器；{@code null} 时配置/缓存/HTTP 能力不可用
-     */
-    public PluginRuntime(DynamicTaskManager taskManager, com.yuier.yuni.core.bot.JsonCodec jsonCodec) {
-        this.taskManager = taskManager;
-        this.jsonCodec = jsonCodec;
     }
 
     // ==================== 注册基础设施 ====================
@@ -1423,33 +1421,7 @@ public final class PluginRuntime {
     }
 
     // ==================== 访问器 ====================
-
-    /**
-     * 能力注册总表。
-     *
-     * @return 注册表
-     */
-    public RegistrationTable getRegistrations() {
-        return registrations;
-    }
-
-    /**
-     * 服务注册表。
-     *
-     * @return 注册表
-     */
-    public ServiceRegistry getServices() {
-        return services;
-    }
-
-    /**
-     * Fiber 容器。
-     *
-     * @return 容器
-     */
-    public FiberRegistry getFibers() {
-        return fibers;
-    }
+    // getRegistrations() / getServices() / getFibers() 由字段上的 @Getter 生成。
 
     /**
      * 按插件标识取其资源目录。

@@ -8,13 +8,12 @@ import com.yuier.yuni.core.util.SpringContextUtil;
 import com.yuier.yuni.event.domain.entity.ReceiveMessageEntity;
 import com.yuier.yuni.event.service.ReceiveMessageService;
 import com.yuier.yuni.plugin.api.PluginView;
-import com.yuier.yuni.plugin.runtime.PluginRuntime;
+import com.yuier.yuni.plugin.runtime.PluginSystem;
 import com.yuier.yuni.webapi.dto.group.GroupMessageItem;
 import com.yuier.yuni.webapi.dto.group.GroupMessagesResp;
 import com.yuier.yuni.webapi.dto.group.GroupPluginStatusItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,27 +31,14 @@ public class GroupService {
 
     private final ReceiveMessageService receiveMessageService;
     /**
-     * 插件运行时的查找句柄。
+     * 插件系统（super Bean）——运行时的唯一持有者。
      *
-     * <p>运行时由启动编排在 bot 就绪后手动组装并注册，本 Bean 装配时还不存在，
-     * 因此用 provider 在使用时解析。</p>
+     * <p>运行时由启动编排在 bot 就绪后创建，本 Bean 装配时还不存在，
+     * 因此持有 super Bean，在请求时经它的 {@code getAdmin()} 取值。</p>
      */
-    private final ObjectProvider<PluginRuntime> pluginRuntimeProvider;
+    private final PluginSystem pluginSystem;
     private final ObjectMapper objectMapper;
     private final ImageRkeyService imageRkeyService;
-
-    /**
-     * 取插件运行时；若启动流程尚未完成装配则抛出明确错误。
-     *
-     * @return 插件运行时
-     */
-    private PluginRuntime requireRuntime() {
-        PluginRuntime runtime = pluginRuntimeProvider.getIfAvailable();
-        if (runtime == null) {
-            throw new IllegalStateException("插件系统尚未完成初始化，请等待启动流程结束");
-        }
-        return runtime;
-    }
 
     /**
      * 获取群组列表。
@@ -128,7 +114,7 @@ public class GroupService {
          *    字段名保持 type 不变以免破坏前端契约。
          */
         List<GroupPluginStatusItem> result = new ArrayList<>();
-        var admin = requireRuntime().getAdmin();
+        var admin = pluginSystem.getAdmin();
         for (PluginView plugin : admin.getPlugins()) {
             result.add(new GroupPluginStatusItem(
                     plugin.getId(),

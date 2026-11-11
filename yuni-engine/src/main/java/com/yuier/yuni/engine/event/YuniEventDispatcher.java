@@ -9,8 +9,8 @@ import com.yuier.yuni.core.event.ws.YuniMessagePushEvent;
 import com.yuier.yuni.event.persistence.YuniEventSaver;
 import com.yuier.yuni.event.util.EventLogUtil;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
+import com.yuier.yuni.plugin.runtime.PluginSystem;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -39,11 +39,11 @@ import org.springframework.stereotype.Component;
  *       <td>{@code runtime.getPipeline().onMessageSent(event)}</td></tr>
  * </table>
  *
- * <h2>为什么注入 {@code ObjectProvider<PluginRuntime>} 而不是运行时本身</h2>
- * <p>插件运行时<b>不是</b>容器在 refresh 期创建的 Bean：它必须等
- * {@code BotManager.startBot()} 建好机器人后，由 {@code SystemInitializeRunner}
- * 手动组装并通过 {@code registerSingleton} 交回容器。因此本 Bean 装配时
- * 运行时还不存在，只能持有一个「查找句柄」，在每次事件到达时解析。</p>
+ * <h2>为什么注入 {@code PluginSystem} 而不是运行时本身</h2>
+ * <p>插件运行时由 {@link PluginSystem#initialize} 在机器人就绪后创建，本 Bean
+ * 装配时它还不存在。{@code PluginSystem} 本身在 refresh 期就存在，因此直接注入
+ * 它、用 {@link PluginSystem#runtimeIfReady()} 取运行时——既不需要
+ * 「找容器要一个可能还不存在的 Bean」，也让「谁持有运行时」只有一个答案。</p>
  *
  * <p>运行时为空不会丢事件——事件落库与推送照常进行，只是插件分发被跳过。
  * 这在启动早期（bot 尚未就绪）是正确行为：此时本就不该有插件在监听。</p>
@@ -65,31 +65,24 @@ import org.springframework.stereotype.Component;
 public class YuniEventDispatcher {
 
     /**
-     * 插件运行时的查找句柄。
-     *
-     * <p>运行时由 {@code SystemInitializeRunner} 在 bot 就绪后手动组装并注册，
-     * 因此这里注入 provider 而非实例。</p>
+     * 插件系统（super Bean）——运行时的唯一持有者。
      */
     @Autowired
-    ObjectProvider<PluginRuntime> pluginRuntimeProvider;
+    PluginSystem pluginSystem;
     @Autowired
     YuniEventSaver eventSaver;
     @Autowired
     ApplicationEventPublisher eventPublisher;
 
     /**
-     * 若插件系统已装配完成，则执行分发动作。
+     * 若插件系统已就绪，则执行分发动作。
      *
-     * <p>启动早期（运行时尚未注册）静默跳过——此时还没有任何插件在监听。</p>
+     * <p>启动早期（运行时尚未创建）静默跳过——此时还没有任何插件在监听。</p>
      *
      * @param action 分发动作
      */
     private void dispatchIfReady(java.util.function.Consumer<PluginRuntime> action) {
-        PluginRuntime runtime = pluginRuntimeProvider.getIfAvailable();
-        if (runtime == null) {
-            return;
-        }
-        action.accept(runtime);
+        pluginSystem.runtimeIfReady().ifPresent(action);
     }
 
     @EventListener

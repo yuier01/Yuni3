@@ -3,7 +3,7 @@ package com.yuier.yuni.engine.manager.init;
 import com.yuier.yuni.contact.manage.YuniContactManager;
 import com.yuier.yuni.event.init.EventManager;
 import com.yuier.yuni.permission.manage.UserPermissionManager;
-import com.yuier.yuni.plugin.runtime.config.PluginSystemInitializer;
+import com.yuier.yuni.plugin.runtime.PluginSystem;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  *   <li>{@code eventManager.init()}</li>
  *   <li>{@code botManager.startBot()}</li>
  *   <li>{@code yuniContactManager.init()}</li>
- *   <li>{@code pluginSystemInitializer.initialize(botManager::getBot)}</li>
+ *   <li>{@code pluginSystem.initialize(botManager::getBot)}</li>
  * </ul>
  *
  * <h2>为什么插件系统排在最后</h2>
@@ -39,7 +39,7 @@ import org.springframework.stereotype.Component;
  *
  * <h2>插件子系统的内部流程</h2>
  * <p>组装运行时、注册单例、扫描插件目录、推进依赖、恢复作用域配置、
- * 报告 PENDING / FAILED——全部收在 {@link PluginSystemInitializer} 内部。
+ * 报告 PENDING / FAILED——全部收在 {@link PluginSystem} 内部。
  * 本类只负责在正确的时机调它一次。</p>
  */
 @Component
@@ -57,7 +57,7 @@ public class SystemInitializeRunner implements ApplicationRunner {
     @Autowired
     private YuniContactManager yuniContactManager;
     @Autowired
-    private PluginSystemInitializer pluginSystemInitializer;
+    private PluginSystem pluginSystem;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
@@ -72,7 +72,7 @@ public class SystemInitializeRunner implements ApplicationRunner {
         log.info("初始化联系人系统...");
         yuniContactManager.init();
         log.info("初始化插件系统...");
-        pluginSystemInitializer.initialize(botManager::getBot);
+        pluginSystem.initialize(botManager::getBot);
 
         log.info("""
                 Yuni 启动完毕 Ciallo～(∠・ω< )⌒★!""");

@@ -79,7 +79,7 @@ import java.util.function.Predicate;
  *       {@code JsonCodec}（未注册共享实例时按需构造）；</li>
  *   <li>{@link #plugin(YuniPlugin)} —— 需要上下文已绑定运行时。</li>
  * </ul>
- * <p>生产环境下这些依赖由 {@code PluginSystemConfig} 在启动时全部装配。</p>
+ * <p>生产环境下这些依赖由 {@code PluginSystem}（super Bean）在启动时装配。</p>
  *
  * @see YuniContext
  * @see PluginRuntime

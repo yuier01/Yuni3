@@ -20,9 +20,9 @@ import java.util.List;
  * 也便于热重载时复用同一运行时。</p>
  *
  * <h2>调用时机</h2>
- * <p>本类由 {@link PluginSystemAssembler} 在机器人就绪后创建，
- * 随后由 {@link PluginSystemInitializer} 调用 {@link #initialize()}。
- * 它不是 Spring Bean——创建时机必须晚于容器 refresh。</p>
+ * <p>本类由 {@link com.yuier.yuni.plugin.runtime.PluginSystem} 在机器人就绪后
+ * 创建，并随即调用 {@link #initialize()}。它不是 Spring Bean——创建时机必须
+ * 晚于容器 refresh。</p>
  */
 @Slf4j
 public final class PluginBootstrap {
