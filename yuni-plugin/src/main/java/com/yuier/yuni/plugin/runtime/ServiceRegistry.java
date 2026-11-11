@@ -3,6 +3,7 @@ package com.yuier.yuni.plugin.runtime;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -23,9 +24,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><b>与插件加载器冲突</b>：插件提供的服务由插件 ClassLoader 加载的类实现，
  *       注册进 Spring 容器会给容器的类加载语义带来麻烦。</li>
  * </ol>
- * <p>本表是一个独立、扁平的「类型 → 实例」注册表，专供插件系统使用。
+ * <p>本表是一个独立、扁平的「类型 → 注册项」表，专供插件系统使用。
  * 框架内置服务（bot / cache / http / …）在启动时预注册；插件通过
  * {@code ctx.provide(...)} 注册自己的服务。</p>
+ *
+ * <h2>为什么只有一个 Map</h2>
+ * <p>「服务实例」与「提供者 Fiber」是同一次注册的两个属性，因此合并为
+ * {@link ServiceEntry} 存进同一个表：</p>
+ * <ul>
+ *   <li>注册是原子的——不会出现「新实例 + 旧提供者」的中间态；</li>
+ *   <li>注销用 {@code remove(key, expectedEntry)} 做 CAS，避免并发注册后被误删；</li>
+ *   <li>不存在「忘同步另一张表」的隐患。</li>
+ * </ul>
  *
  * <h2>覆盖语义</h2>
  * <p>同一类型重复注册时<b>后者覆盖前者</b>，并返回被覆盖的实例供调用方决定
@@ -33,7 +43,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 的静默覆盖不同——这里把决策权交给调用方。</p>
  *
  * <h2>线程安全</h2>
- * <p>插件加载与卸载可能并发发生，使用 {@link ConcurrentHashMap}。</p>
+ * <p>插件加载与卸载可能并发发生，使用 {@link ConcurrentHashMap}；
+ * 注册项的替换与移除都以单条 map 操作为准。</p>
  *
  * @see com.yuier.yuni.plugin.api.YuniContext#service(Class)
  */
@@ -44,7 +55,8 @@ public final class ServiceRegistry {
      *
      * <p>框架内置服务（bot / cache / http / …）没有对应的插件 Fiber。不能直接用
      * {@code null} 表示——{@link ConcurrentHashMap} 的 value 不接受 {@code null}，
-     * 存 null 会抛 NPE。这里用一个私有哨兵对象区分「内置」与「插件提供」。</p>
+     * 且 {@code null} 在注销路径上还有别的含义。这里用一个私有哨兵对象
+     * 区分「内置」与「插件提供」。</p>
      */
     private static final PluginFiber BUILTIN = new PluginFiber(
             "<builtin>",
@@ -52,11 +64,17 @@ public final class ServiceRegistry {
             PluginMetadata.of("<builtin>").build(),
             null);
 
-    /** 服务类型 → 实例。 */
-    private final Map<Class<?>, Object> services = new ConcurrentHashMap<>();
+    /**
+     * 一个注册项：服务实例 + 提供者。
+     *
+     * @param instance 服务实现
+     * @param provider 提供者 Fiber；框架内置服务为 {@link #BUILTIN}
+     */
+    private record ServiceEntry(Object instance, PluginFiber provider) {
+    }
 
-    /** 服务类型 → 提供者（内置服务为 {@link #BUILTIN}），用于卸载时归因。 */
-    private final Map<Class<?>, PluginFiber> providers = new ConcurrentHashMap<>();
+    /** 服务类型 → 注册项。 */
+    private final Map<Class<?>, ServiceEntry> entries = new ConcurrentHashMap<>();
 
     /**
      * 注册一个<b>框架内置</b>服务。
@@ -88,9 +106,8 @@ public final class ServiceRegistry {
         }
         Objects.requireNonNull(provider,
                 "provider 不能为 null；框架内置服务请用 register(type, impl)");
-        Object previous = services.put(type, impl);
-        providers.put(type, provider);
-        return Optional.ofNullable(previous);
+        ServiceEntry previous = entries.put(type, new ServiceEntry(impl, provider));
+        return previous == null ? Optional.empty() : Optional.of(previous.instance());
     }
 
     /**
@@ -122,7 +139,7 @@ public final class ServiceRegistry {
     }
 
     /**
-     * 移除服务。
+     * 移除注册项。
      *
      * @param type             服务类型
      * @param expectedProvider 期望的提供者；{@code null} 表示不校验
@@ -132,13 +149,16 @@ public final class ServiceRegistry {
         if (type == null) {
             return false;
         }
-        PluginFiber current = providers.get(type);
-        if (expectedProvider != null && current != null && current != expectedProvider) {
+        ServiceEntry current = entries.get(type);
+        if (current == null) {
+            return false;
+        }
+        if (expectedProvider != null && current.provider() != expectedProvider) {
             // 已被其他插件覆盖注册，本插件的卸载不应影响它
             return false;
         }
-        providers.remove(type);
-        return services.remove(type) != null;
+        // 两参 remove 是 CAS：若期间被并发覆盖，则不移除新注册项
+        return entries.remove(type, current);
     }
 
     /**
@@ -153,7 +173,8 @@ public final class ServiceRegistry {
         if (type == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable((T) services.get(type));
+        ServiceEntry entry = entries.get(type);
+        return entry == null ? Optional.empty() : Optional.of((T) entry.instance());
     }
 
     /**
@@ -163,7 +184,7 @@ public final class ServiceRegistry {
      * @return 已注册返回 {@code true}
      */
     public boolean contains(Class<?> type) {
-        return type != null && services.containsKey(type);
+        return type != null && entries.containsKey(type);
     }
 
     /**
@@ -179,12 +200,11 @@ public final class ServiceRegistry {
         if (provider == null) {
             return removed;
         }
-        // 先快照 key，避免在遍历中修改 Map
-        for (Class<?> type : new ArrayList<>(providers.keySet())) {
-            if (providers.get(type) == provider) {
-                providers.remove(type);
-                services.remove(type);
-                removed.add(type);
+        // 先快照 entrySet，避免在遍历中修改 Map
+        for (Map.Entry<Class<?>, ServiceEntry> entry : new ArrayList<>(entries.entrySet())) {
+            if (entry.getValue().provider() == provider
+                    && entries.remove(entry.getKey(), entry.getValue())) {
+                removed.add(entry.getKey());
             }
         }
         return removed;
@@ -196,7 +216,7 @@ public final class ServiceRegistry {
      * @return 不可变快照
      */
     public Set<Class<?>> getRegisteredTypes() {
-        return java.util.Collections.unmodifiableSet(new LinkedHashSet<>(services.keySet()));
+        return Collections.unmodifiableSet(new LinkedHashSet<>(entries.keySet()));
     }
 
     /**
@@ -205,7 +225,7 @@ public final class ServiceRegistry {
      * @return 数量
      */
     public int size() {
-        return services.size();
+        return entries.size();
     }
 
     /**
@@ -214,8 +234,7 @@ public final class ServiceRegistry {
      * <p>仅用于测试。</p>
      */
     public void clear() {
-        services.clear();
-        providers.clear();
+        entries.clear();
     }
 
     // ==================== 便捷工厂 ====================
