@@ -73,6 +73,9 @@ public final class RecordingYuniBot implements YuniBot {
     /** 是否让发送抛异常（模拟 Error），用于测试兜底。 */
     private boolean throwOnNextSend;
 
+    /** 群成员角色；{@code null} 表示 {@code getGroupMemberInfo} 返回空。 */
+    private String groupMemberRole;
+
     @Override
     public String getPlatform() {
         return "test";
@@ -142,14 +145,33 @@ public final class RecordingYuniBot implements YuniBot {
         return Optional.empty();
     }
 
+    /**
+     * 配置群成员角色；配置后 {@link #getGroupMemberInfo} 会返回该角色的成员。
+     *
+     * <p>用于验证「权限服务按群角色映射权限」的路径。{@code null} 表示保持
+     * 默认行为（返回空），例如「bot 尚未就绪」或协议不提供成员信息。</p>
+     *
+     * @param role 角色字符串（{@code owner} / {@code admin} / {@code member}）
+     */
+    public void setGroupMemberRole(String role) {
+        this.groupMemberRole = role;
+    }
+
     @Override
     public Optional<BotGroupMemberInfo> getGroupMemberInfo(String groupId, String userId) {
-        return Optional.empty();
+        if (groupMemberRole == null) {
+            return Optional.empty();
+        }
+        BotGroupMemberInfo info = new BotGroupMemberInfo();
+        info.setGroupId(groupId == null ? null : Long.valueOf(groupId));
+        info.setUserId(userId == null ? null : Long.valueOf(userId));
+        info.setRole(groupMemberRole);
+        return Optional.of(info);
     }
 
     @Override
     public Optional<BotGroupMemberInfo> getGroupMemberInfo(String groupId, String userId, boolean noCache) {
-        return Optional.empty();
+        return getGroupMemberInfo(groupId, userId);
     }
 
     @Override

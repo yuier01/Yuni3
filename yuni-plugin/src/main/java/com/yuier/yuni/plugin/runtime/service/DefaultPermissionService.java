@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * {@link PermissionService} 的默认实现。
@@ -59,8 +60,15 @@ public final class DefaultPermissionService implements PermissionService {
     /** 机器人配置，用于私聊场景判定 MASTER。 */
     private final Bot botConfig;
 
-    /** 机器人实例，用于群聊场景查询发送者角色。 */
-    private final YuniBot bot;
+    /**
+     * 机器人实例供应函数，用于群聊场景查询发送者角色。
+     *
+     * <p><b>必须是供应函数而不是实例</b>：本服务在容器 refresh 期就被创建，
+     * 而 {@code YuniBot} 要到启动编排的 {@code BotManager.startBot()} 才注册。
+     * 早期实现直接注入实例，得到的是 {@code null} 且永不复原，
+     * 导致群主/管理员一律被映射为 {@code USER}。</p>
+     */
+    private final Supplier<YuniBot> botSupplier;
 
     /**
      * 例外记录缓存：键 {@code userId@groupId:pluginId}。
@@ -71,7 +79,7 @@ public final class DefaultPermissionService implements PermissionService {
     private final Map<String, UserPermission> exceptionCache = new ConcurrentHashMap<>();
 
     /* 构造器由 @RequiredArgsConstructor 生成：
-     * (GroupUserPluginPermissionService, Bot, YuniBot)。
+     * (GroupUserPluginPermissionService, Bot, Supplier<YuniBot>)。
      * exceptionCache 有初始值，不参与生成。 */
 
     @Override
@@ -259,6 +267,8 @@ public final class DefaultPermissionService implements PermissionService {
      * @return 映射后的权限；查询失败时回落 USER
      */
     private UserPermission defaultGroupPermission(long userId, Long groupId) {
+        // 现取现用：bot 可能在服务创建之后才就绪
+        YuniBot bot = botSupplier == null ? null : botSupplier.get();
         if (bot == null || groupId == null) {
             return UserPermission.USER;
         }

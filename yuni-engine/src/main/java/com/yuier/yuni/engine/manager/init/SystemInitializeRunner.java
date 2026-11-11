@@ -1,15 +1,19 @@
 package com.yuier.yuni.engine.manager.init;
 
 import com.yuier.yuni.contact.manage.YuniContactManager;
+import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.event.init.EventManager;
 import com.yuier.yuni.permission.manage.UserPermissionManager;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
+import com.yuier.yuni.plugin.runtime.config.PluginSystemAssembler;
 import com.yuier.yuni.plugin.runtime.config.PluginSystemConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -50,9 +54,11 @@ import java.util.List;
 public class SystemInitializeRunner implements ApplicationRunner {
 
     @Autowired
-    private PluginSystemConfig.PluginBootstrap pluginBootstrap;
+    private PluginSystemAssembler pluginSystemAssembler;
     @Autowired
-    private PluginRuntime pluginRuntime;
+    private ApplicationContext applicationContext;
+    @Autowired
+    private BotApp botApp;
     @Autowired
     private SystemInitializeProcessor systemInitializeProcessor;
     @Autowired
@@ -76,8 +82,20 @@ public class SystemInitializeRunner implements ApplicationRunner {
         botManager.startBot();
         log.info("初始化联系人系统...");
         yuniContactManager.init();
+
+        /*
+         * 插件系统在这里才组装——而不是由容器在 refresh 期创建。
+         *
+         * 原因：运行时的流水线需要 bot 与权限服务，而 bot 刚刚才在
+         * startBot() 里创建。若交给容器的 eager 单例，就只能靠 @Lazy 与
+         * ObjectProvider 去对抗初始化顺序，正是「权限服务拿到 null bot」
+         * 这类缺陷的来源。
+         */
         log.info("初始化插件系统...");
-        initializePlugins();
+        PluginSystemAssembler.AssembledPluginSystem pluginSystem =
+                pluginSystemAssembler.assemble(botApp, botManager::getBot);
+        registerPluginRuntime(pluginSystem.getRuntime());
+        initializePlugins(pluginSystem.getBootstrap());
 
         /*
          * 启动完成后的诊断输出。
@@ -88,20 +106,41 @@ public class SystemInitializeRunner implements ApplicationRunner {
          * 用 warn 而非 error：一个插件加载失败不应该让整个启动流程看起来失败，
          * 但它确实需要被人看到。
          */
-        List<String> pending = pluginRuntime.reportPendingPlugins();
+        PluginRuntime runtime = pluginSystem.getRuntime();
+        List<String> pending = runtime.reportPendingPlugins();
         if (!pending.isEmpty()) {
             log.warn("有 {} 个插件因依赖未满足而未加载（可能是循环依赖或配置缺失）：", pending.size());
             pending.forEach(item -> log.warn("  - {}", item));
         }
-        List<String> failed = pluginRuntime.reportFailedPlugins();
+        List<String> failed = runtime.reportFailedPlugins();
         if (!failed.isEmpty()) {
             log.warn("有 {} 个插件加载失败：", failed.size());
             failed.forEach(item -> log.warn("  - {}", item));
         }
-        log.info("插件系统就绪：{}", pluginRuntime.describe());
+        log.info("插件系统就绪：{}", runtime.describe());
 
         log.info("""
                 Yuni 启动完毕 Ciallo～(∠・ω< )⌒★!""");
+    }
+
+    /**
+     * 把组装好的插件运行时注册进容器。
+     *
+     * <p>手工组装的对象要让 {@code ObjectProvider<PluginRuntime>} 在后续能查得到，
+     * 必须显式注册为单例——与 {@code BotManager} 注册 {@code yuniBot}
+     * 是同一手法（{@code startBot()} 里 {@code registerSingleton("yuniBot", bot)}）。</p>
+     *
+     * @param runtime 插件运行时
+     */
+    private void registerPluginRuntime(PluginRuntime runtime) {
+        ConfigurableListableBeanFactory beanFactory =
+                ((org.springframework.context.ConfigurableApplicationContext) applicationContext)
+                        .getBeanFactory();
+        if (beanFactory.containsBean("pluginRuntime")) {
+            log.warn("容器中已存在 pluginRuntime Bean，跳过注册（视为外部覆盖）");
+            return;
+        }
+        beanFactory.registerSingleton("pluginRuntime", runtime);
     }
 
     /**
@@ -111,10 +150,11 @@ public class SystemInitializeRunner implements ApplicationRunner {
      * 完全起不来。{@code PluginBootstrap} 内部已对每个模块单独捕获
      * {@code Throwable}（含类加载失败的 {@code Error}），因此这里只兜住
      * 「插件目录本身不可读」这类更外层的问题。</p>
+     * @param bootstrap 已组装好的插件启动器
      */
-    private void initializePlugins() {
+    private void initializePlugins(PluginSystemConfig.PluginBootstrap bootstrap) {
         try {
-            List<PluginFiber> loaded = pluginBootstrap.initialize();
+            List<PluginFiber> loaded = bootstrap.initialize();
             log.info("插件加载完成，共 {} 个插件实例", loaded.size());
         } catch (Throwable t) {
             // 必须捕获 Throwable：类加载失败抛的是 Error（2026-08 P0 事故的教训）

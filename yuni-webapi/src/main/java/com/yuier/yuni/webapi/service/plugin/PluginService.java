@@ -9,6 +9,7 @@ import com.yuier.yuni.webapi.dto.plugin.PluginInfo;
 import com.yuier.yuni.webapi.dto.plugin.PluginModuleInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -59,14 +60,26 @@ import java.util.List;
 public class PluginService {
 
     /**
-     * 插件运行时。
+     * 插件运行时的查找句柄。
      *
-     * <p>注入运行时而不是 {@link PluginAdmin}：后者由运行时按需提供
-     * （{@code runtime.getAdmin()}），不是 Spring Bean——它的生命周期与插件系统
-     * 一致，而插件系统在启动流程的后段才就绪。这样也保证了本类拿到的
-     * 一定是「当前生效」的那一份视图。</p>
+     * <p>运行时由 {@code SystemInitializeRunner} 在 bot 就绪后手动组装并
+     * {@code registerSingleton} 注册，因此本 Bean 装配时它还不存在——
+     * 只能持有 provider，在每次请求时解析。</p>
      */
-    private final PluginRuntime pluginRuntime;
+    private final ObjectProvider<PluginRuntime> pluginRuntimeProvider;
+
+    /**
+     * 取插件运行时；若启动流程尚未完成装配则抛出明确错误。
+     *
+     * @return 插件运行时
+     */
+    private PluginRuntime requireRuntime() {
+        PluginRuntime runtime = pluginRuntimeProvider.getIfAvailable();
+        if (runtime == null) {
+            throw new IllegalStateException("插件系统尚未完成初始化，请等待启动流程结束");
+        }
+        return runtime;
+    }
 
     /** 管理端接口的调用者视为 bot 拥有者。 */
     private static final boolean CALLER_IS_MASTER = true;
@@ -84,7 +97,7 @@ public class PluginService {
      * @return 插件模块列表，顺序与加载顺序一致
      */
     public List<PluginModuleInfo> listPlugins() {
-        PluginAdmin admin = pluginRuntime.getAdmin();
+        PluginAdmin admin = requireRuntime().getAdmin();
         List<PluginModuleInfo> result = new ArrayList<>();
         for (PluginModuleView module : admin.getModules()) {
             List<PluginInfo> plugins = new ArrayList<>();
@@ -145,7 +158,7 @@ public class PluginService {
      * @throws IllegalArgumentException 插件不存在或为受保护的内置插件
      */
     private void applyEnabled(String pluginId, Long groupId, boolean enabled) {
-        PluginAdmin admin = pluginRuntime.getAdmin();
+        PluginAdmin admin = requireRuntime().getAdmin();
         try {
             if (groupId == null) {
                 admin.setGlobalEnabled(pluginId, enabled, CALLER_IS_MASTER);
@@ -182,7 +195,7 @@ public class PluginService {
      * @throws RuntimeException         重载过程中发生异常
      */
     public void reloadPlugin(String pluginId) {
-        PluginAdmin admin = pluginRuntime.getAdmin();
+        PluginAdmin admin = requireRuntime().getAdmin();
         if (pluginId == null || pluginId.isBlank()) {
             reloadAll(admin);
             return;

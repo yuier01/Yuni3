@@ -10,6 +10,7 @@ import com.yuier.yuni.event.persistence.YuniEventSaver;
 import com.yuier.yuni.event.util.EventLogUtil;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -38,16 +39,20 @@ import org.springframework.stereotype.Component;
  *       <td>{@code runtime.getPipeline().onMessageSent(event)}</td></tr>
  * </table>
  *
- * <h2>为什么注入 {@code PluginRuntime} 而不是 {@code EventPipeline}</h2>
- * <p>流水线是<b>惰性构造</b>的（{@code PluginRuntime.getPipeline()} 在首次访问时
- * 才建适配器与命令分发器），因为它需要 bot 实例与权限服务——这两者可能晚于
- * 本 Bean 的装配时机就绪。若把 {@code EventPipeline} 声明为注入依赖，
- * Spring 会在启动早期就构造它，那时 bot 还是 {@code null}，
- * 于是「第一次事件到达时回复不了」这类问题会被固化在 Bean 装配顺序里。</p>
+ * <h2>为什么注入 {@code ObjectProvider<PluginRuntime>} 而不是运行时本身</h2>
+ * <p>插件运行时<b>不是</b>容器在 refresh 期创建的 Bean：它必须等
+ * {@code BotManager.startBot()} 建好机器人后，由 {@code SystemInitializeRunner}
+ * 手动组装并通过 {@code registerSingleton} 交回容器。因此本 Bean 装配时
+ * 运行时还不存在，只能持有一个「查找句柄」，在每次事件到达时解析。</p>
  *
- * <p>注入运行时并在每次事件里调 {@code pipeline()}，让「何时构造」由
- * <b>首次事件到达</b>决定——那时一切依赖必然就绪。代价是一次 volatile 读
- * 加一次 {@code null} 判断，相对于事件处理的整体开销可以忽略。</p>
+ * <p>运行时为空不会丢事件——事件落库与推送照常进行，只是插件分发被跳过。
+ * 这在启动早期（bot 尚未就绪）是正确行为：此时本就不该有插件在监听。</p>
+ *
+ * <h2>为什么拿到运行时后不缓存它</h2>
+ * <p>运行时的流水线是<b>惰性构造</b>的（{@code getPipeline()} 首次访问时才建
+ * 适配器与命令分发器），因为 bot 与权限服务可能更晚就绪。每次事件里调用
+ * {@code getPipeline()}，让「何时构造」由首次事件到达决定——那时一切依赖必然
+ * 就绪。代价是一次 volatile 读加一次空判断，相对事件处理开销可忽略。</p>
  *
  * <h2>保留未动的部分</h2>
  * <p>事件落库（{@code eventSaver}）、日志、以及向管理端推送的
@@ -59,18 +64,39 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class YuniEventDispatcher {
 
+    /**
+     * 插件运行时的查找句柄。
+     *
+     * <p>运行时由 {@code SystemInitializeRunner} 在 bot 就绪后手动组装并注册，
+     * 因此这里注入 provider 而非实例。</p>
+     */
     @Autowired
-    PluginRuntime pluginRuntime;
+    ObjectProvider<PluginRuntime> pluginRuntimeProvider;
     @Autowired
     YuniEventSaver eventSaver;
     @Autowired
     ApplicationEventPublisher eventPublisher;
 
+    /**
+     * 若插件系统已装配完成，则执行分发动作。
+     *
+     * <p>启动早期（运行时尚未注册）静默跳过——此时还没有任何插件在监听。</p>
+     *
+     * @param action 分发动作
+     */
+    private void dispatchIfReady(java.util.function.Consumer<PluginRuntime> action) {
+        PluginRuntime runtime = pluginRuntimeProvider.getIfAvailable();
+        if (runtime == null) {
+            return;
+        }
+        action.accept(runtime);
+    }
+
     @EventListener
     public void messageEventHandler(YuniMessageEvent event) {
         log.info(EventLogUtil.toLog(event));
         eventSaver.saveEvent(event);
-        pluginRuntime.getPipeline().onMessage(event);
+        dispatchIfReady(runtime -> runtime.getPipeline().onMessage(event));
         if (event.isGroup()) {  // TODO 为什么被写成只推送群聊消息？？？
             eventPublisher.publishEvent(YuniMessagePushEvent.from(event));
         }
@@ -80,7 +106,7 @@ public class YuniEventDispatcher {
     public void messageSentEventHandler(YuniMessageSentEvent event) {
         log.info(EventLogUtil.toLog(event));
         eventSaver.saveEvent(event);
-        pluginRuntime.getPipeline().onMessageSent(event);
+        dispatchIfReady(runtime -> runtime.getPipeline().onMessageSent(event));
         if (event.isGroup()) {
             eventPublisher.publishEvent(YuniMessagePushEvent.from(event));
         }
@@ -88,17 +114,17 @@ public class YuniEventDispatcher {
 
     @EventListener
     public void noticeEventHandler(YuniNoticeEvent event) {
-        pluginRuntime.getPipeline().onNotice(event);
+        dispatchIfReady(runtime -> runtime.getPipeline().onNotice(event));
     }
 
     @EventListener
     public void requestEventHandler(YuniRequestEvent event) {
         log.info(event.toLogString());
-        pluginRuntime.getPipeline().onRequest(event);
+        dispatchIfReady(runtime -> runtime.getPipeline().onRequest(event));
     }
 
     @EventListener
     public void metaEventHandler(YuniMetaEvent event) {
-        pluginRuntime.getPipeline().onMeta(event);
+        dispatchIfReady(runtime -> runtime.getPipeline().onMeta(event));
     }
 }

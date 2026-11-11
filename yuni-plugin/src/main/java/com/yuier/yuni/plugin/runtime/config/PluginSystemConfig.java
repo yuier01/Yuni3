@@ -22,7 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -55,7 +54,6 @@ import java.util.List;
  *
  * @see PluginRuntime
  */
-@Slf4j
 @Configuration
 public class PluginSystemConfig {
 
@@ -64,75 +62,41 @@ public class PluginSystemConfig {
     private String pluginDirectory;
 
     /**
-     * 构造插件运行时。
+     * 构造插件系统组装器。
      *
-     * @param taskManager   定时任务管理器（提供调度能力）
-     * @param jsonCodec     JSON 编解码器（提供配置/缓存/HTTP 能力）
-     * @param botProvider   机器人实例提供者（延迟解析）
-     * @param botApp        机器人业务配置（提供命令前缀）
-     * @return 插件运行时
+     * <p><b>不再直接声明 {@code PluginRuntime} / {@code PluginModuleLoader} /
+     * {@code PluginBootstrap} 三个 Bean</b>：它们的创建时机必须晚于
+     * {@code BotManager.startBot()}，因此改由 {@code SystemInitializeRunner}
+     * 在启动编排里显式调用 {@link PluginSystemAssembler#assemble} 组装，
+     * 组装完成后再 {@code registerSingleton} 交回容器。</p>
+     *
+     * <p>本 Bean 只持有基础设施依赖——它们没有时机问题，交给容器注入最省事。</p>
+     *
+     * @param taskManager   定时任务管理器
+     * @param jsonCodec     JSON 编解码器
+     * @param objectMapper  模块元数据解析
+     * @param cache         缓存门面（可选）
+     * @param http          HTTP 门面（可选）
+     * @param permission    权限服务（可选）
+     * @param scopeStore    作用域持久化端口
+     * @return 组装器
      */
     @Bean
     @ConditionalOnMissingBean
-    public PluginRuntime pluginRuntime(DynamicTaskManager taskManager,
-                                       JsonCodec jsonCodec,
-                                       ObjectProvider<YuniBot> botProvider,
-                                       ObjectProvider<BotApp> botApp,
-                                       ObjectProvider<Cache> cache,
-                                       ObjectProvider<Http> http,
-                                       ObjectProvider<PermissionService> permission) {
-        PluginRuntime runtime = new PluginRuntime(taskManager, jsonCodec);
-        // bot 与 BotApp 都可能晚于本 Bean 就绪，因此用供应函数而不是直接传实例
-        runtime.bindBot(
-                () -> botProvider.getIfAvailable(),
-                botApp.getIfAvailable());
-
-        // 把内置服务登记进运行时：插件通过 ctx.getCache() / ctx.getHttp() / ctx.getPermission()
-        // 拿到的是同一个共享实例，连接池与权限缓存因此不会被割裂
-        Cache cacheBean = cache.getIfAvailable();
-        if (cacheBean != null) {
-            runtime.registerService(Cache.class, cacheBean);
-        }
-        Http httpBean = http.getIfAvailable();
-        if (httpBean != null) {
-            runtime.registerService(Http.class, httpBean);
-        }
-        PermissionService permissionBean = permission.getIfAvailable();
-        if (permissionBean != null) {
-            runtime.registerService(PermissionService.class, permissionBean);
-        }
-
-        /*
-         * JSON 编解码器也登记为内置服务。
-         *
-         * 为什么需要：协议适配器类插件（maimai）必须处理「框架不理解的结构化数据」——
-         * 它接收 OneBot 客户端发来的任意 action 请求（形如 Map），并返回任意响应。
-         * 这类插件用一个中间层（yuni-plugin）无法预知的 JSON 结构，
-         * 因此需要一个明确的 JSON 编解码入口。
-         *
-         * 为何不放进 YuniContext 的快捷方法：那会让 JsonCodec（core 的类型）
-         * 出现在插件 API 的显式契约里，而只有极少数协议适配器需要它。
-         * 经 ctx.service(JsonCodec.class) 解析既满足需求，又不扩大 API 面。
-         * 这也修掉了旧实现里 PluginUtils.getBean(ObjectMapper.class) 那种
-         * 「从 Spring 容器里随手捞一个工具类」的隐式依赖。
-         */
-        runtime.registerService(JsonCodec.class, jsonCodec);
-
-        log.info("插件运行时已创建，插件目录: {}", pluginDirectory);
-        return runtime;
-    }
-
-    /**
-     * 构造插件模块加载器。
-     *
-     * @param objectMapper JSON 映射器（解析模块元数据）
-     * @param runtime      插件运行时
-     * @return 模块加载器
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public PluginModuleLoader pluginModuleLoader(ObjectMapper objectMapper, PluginRuntime runtime) {
-        return new PluginModuleLoader(objectMapper, runtime);
+    public PluginSystemAssembler pluginSystemAssembler(DynamicTaskManager taskManager,
+                                                       JsonCodec jsonCodec,
+                                                       ObjectMapper objectMapper,
+                                                       ObjectProvider<Cache> cache,
+                                                       ObjectProvider<Http> http,
+                                                       ObjectProvider<PermissionService> permission,
+                                                       com.yuier.yuni.plugin.runtime.PluginScopeStore scopeStore) {
+        return new PluginSystemAssembler(
+                taskManager, jsonCodec, objectMapper,
+                cache.getIfAvailable(),
+                http.getIfAvailable(),
+                permission.getIfAvailable(),
+                scopeStore,
+                pluginDirectory);
     }
 
     /**
@@ -180,7 +144,9 @@ public class PluginSystemConfig {
         return new DefaultPermissionService(
                 permissionStore,
                 botConfig.getIfAvailable(),
-                botProvider.getIfAvailable());
+                // bot 在 refresh 期尚不存在（要到启动编排的 startBot 才注册），
+                // 因此传供应函数而不是实例——否则它会永久为 null，群角色映射失效
+                () -> botProvider.getIfAvailable());
     }
 
     /**
@@ -200,36 +166,13 @@ public class PluginSystemConfig {
         return new com.yuier.yuni.plugin.runtime.service.MybatisPluginScopeStore(abilityService);
     }
 
-    /**
-     * 插件系统启动器——在 Spring 容器就绪后加载插件目录下的全部模块。
+    /*
+     * 这里原本还有一个 @Lazy 的 pluginBootstrap Bean。
      *
-     * <p>用 {@link Lazy} 标注是为了确保它<b>不</b>在 Bean 装配期就被实例化：
-     * 加载插件需要权限服务、缓存等全部就绪。真正的触发点是
-     * {@code SystemInitializeRunner} 调用 {@link PluginBootstrap#initialize()}——
-     * 这样插件加载时机由启动编排显式控制，而不是靠 Bean 初始化顺序的隐式约定。</p>
-     *
-     * @param loader  模块加载器
-     * @param runtime 插件运行时
-     * @return 启动器
+     * 去掉它的原因：手动组装（PluginSystemAssembler）已经把「何时创建启动器」
+     * 变成 SystemInitializeRunner 里的一行代码，不再需要靠 @Lazy 代理去拖延
+     * 单例的实例化——那正是「与容器 eager 模型对抗」的来源。
      */
-    @Bean
-    @Lazy
-    @ConditionalOnMissingBean
-    public PluginBootstrap pluginBootstrap(PluginModuleLoader loader,
-                                          PluginRuntime runtime,
-                                          com.yuier.yuni.plugin.runtime.PluginScopeStore scopeStore) {
-        /*
-         * 顺手把加载器与作用域存储绑到运行时上。
-         *
-         * 热重载需要「重新读 jar」，而读 jar 的逻辑在 PluginModuleLoader 里；
-         * 作用域配置需要在插件加载后从数据库恢复。两者都晚于 PluginRuntime 的
-         * 构造时机，因此用后置绑定而不是在 pluginRuntime(...) 里加参数——
-         * 那会让运行时 Bean 与它们形成循环依赖。
-         */
-        runtime.bindModuleLoader(loader);
-        runtime.bindScopeStore(scopeStore);
-        return new PluginBootstrap(loader, runtime, pluginDirectory);
-    }
 
     /**
      * 插件系统启动器——负责扫描并加载插件目录。

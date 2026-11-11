@@ -14,6 +14,7 @@ import com.yuier.yuni.webapi.dto.group.GroupMessagesResp;
 import com.yuier.yuni.webapi.dto.group.GroupPluginStatusItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -31,16 +32,27 @@ public class GroupService {
 
     private final ReceiveMessageService receiveMessageService;
     /**
-     * 插件运行时。
+     * 插件运行时的查找句柄。
      *
-     * <p>取代旧的 {@code PluginContainer} + {@code PluginEnableProcessor} 两个依赖。
-     * 管理服务经 {@code runtime.getAdmin()} 取——那是<b>无状态的轻量适配器</b>，
-     * 按需新建即可，因此这里不必把 {@code PluginAdmin} 声明成注入依赖
-     * （它本身也不是 Spring Bean：它由运行时提供，与插件系统同一生命周期）。</p>
+     * <p>运行时由启动编排在 bot 就绪后手动组装并注册，本 Bean 装配时还不存在，
+     * 因此用 provider 在使用时解析。</p>
      */
-    private final PluginRuntime pluginRuntime;
+    private final ObjectProvider<PluginRuntime> pluginRuntimeProvider;
     private final ObjectMapper objectMapper;
     private final ImageRkeyService imageRkeyService;
+
+    /**
+     * 取插件运行时；若启动流程尚未完成装配则抛出明确错误。
+     *
+     * @return 插件运行时
+     */
+    private PluginRuntime requireRuntime() {
+        PluginRuntime runtime = pluginRuntimeProvider.getIfAvailable();
+        if (runtime == null) {
+            throw new IllegalStateException("插件系统尚未完成初始化，请等待启动流程结束");
+        }
+        return runtime;
+    }
 
     /**
      * 获取群组列表。
@@ -116,7 +128,7 @@ public class GroupService {
          *    字段名保持 type 不变以免破坏前端契约。
          */
         List<GroupPluginStatusItem> result = new ArrayList<>();
-        var admin = pluginRuntime.getAdmin();
+        var admin = requireRuntime().getAdmin();
         for (PluginView plugin : admin.getPlugins()) {
             result.add(new GroupPluginStatusItem(
                     plugin.getId(),
