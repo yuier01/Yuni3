@@ -40,9 +40,21 @@ import java.util.concurrent.atomic.AtomicReference;
  * 启停 B 插件』耦合写法」的基础设施。</p>
  *
  * <h2>线程安全</h2>
- * <p>状态用 {@link AtomicReference} 保证状态迁移的原子性；子 Fiber 列表用
- * {@link CopyOnWriteArrayList}（读多写少）。Effect 的线程安全由
- * {@link EffectRegistry} 负责。</p>
+ * <p>状态迁移全部走 {@link AtomicReference} 的 <b>CAS</b>，因此「迁移」这件事
+ * 本身是原子的，而不只是「单次读写」原子：</p>
+ * <ul>
+ *   <li>{@link #tryBeginLoading()} 用 {@code PENDING → LOADING} 抢占，
+ *       保证同一个 Fiber <b>只会被 apply 一次</b>；</li>
+ *   <li>{@link #tryMarkActive()} 要求当前仍是 {@code LOADING}，
+ *       因此 apply 期间被卸载的 Fiber 不会被回写成 ACTIVE（防僵尸）。</li>
+ * </ul>
+ * <p>子 Fiber 列表用 {@link CopyOnWriteArrayList}（读多写少）。
+ * Effect 的线程安全由 {@link EffectRegistry} 负责。</p>
+ *
+ * <p>{@link #disposed} 是独立的 volatile 标志，先于状态迁移置位，
+ * 供幂等判定与插件侧 {@code ctx.disposed()} 使用。并发调用
+ * {@link #dispose()} 时，重复的清理由 {@link EffectRegistry#disposeAll()}
+ * 自身的封存 CAS 兜住。</p>
  *
  * @see FiberState
  * @see EffectRegistry
@@ -183,31 +195,54 @@ public final class PluginFiber {
     }
 
     /**
-     * 状态迁移到 {@link FiberState#LOADING}。
+     * 原子地把状态从 {@link FiberState#PENDING} 抢占为 {@link FiberState#LOADING}。
      *
-     * <p>由 {@code PluginRuntime} 在调用 {@code apply} 之前调用。</p>
+     * <p>这是「同一个 Fiber 只允许被 apply 一次」的<b>唯一</b>保证。调用方必须
+     * 抢占成功后才能执行插件代码——否则两个线程可能同时读到 PENDING，
+     * 于是同一个插件被 apply 两次：监听器、定时任务、数据库连接全部重复注册，
+     * 而这些问题在运行期极难归因。</p>
+     *
+     * <p>用 CAS 而不是「先读状态再 set」：后者是 check-then-act，
+     * 检查与动作之间留有窗口，正是要消除的东西。</p>
+     *
+     * @return 抢占成功返回 {@code true}；已被其他线程接管、或已离开 PENDING 时返回 {@code false}
      */
-    void markLoading() {
-        state.set(FiberState.LOADING);
+    boolean tryBeginLoading() {
+        return state.compareAndSet(FiberState.PENDING, FiberState.LOADING);
     }
 
     /**
-     * 状态迁移到 {@link FiberState#ACTIVE}。
+     * 原子地把状态从 {@link FiberState#LOADING} 迁移到 {@link FiberState#ACTIVE}。
      *
-     * <p>由 {@code PluginRuntime} 在 {@code apply} 正常返回后调用。</p>
+     * <p>要求「当前仍是 LOADING」而不是无条件 set，是为了堵住
+     * 「apply 执行期间插件被卸载」这个窗口：此时 {@link #dispose()} 已把状态
+     * 推到 {@code UNLOADING}/{@code DISPOSED}，若这里直接覆盖，
+     * 就会得到一个「状态是运行中、却已被移除出索引」的僵尸 Fiber。</p>
+     *
+     * @return 迁移成功返回 {@code true}；Fiber 已被卸载（状态不再是 LOADING）时返回 {@code false}，
+     *         调用方必须回滚已建立的 Effect 并按失败处理
      */
-    void markActive() {
-        state.set(FiberState.ACTIVE);
+    boolean tryMarkActive() {
+        return state.compareAndSet(FiberState.LOADING, FiberState.ACTIVE);
     }
 
     /**
-     * 状态迁移到 {@link FiberState#FAILED} 并记录原因。
+     * 原子地把状态从 {@link FiberState#LOADING} 迁移到 {@link FiberState#FAILED}，
+     * 并记录失败原因。
+     *
+     * <p>顺序是「先迁移状态、再写原因」：这样 {@link #failureCause()} 的契约
+     * （非 FAILED 时为空）始终成立。代价是两步之间若被读到，会看到
+     * FAILED 但原因为空——那只影响诊断文案显示「(未记录)」，不影响状态正确性。</p>
      *
      * @param cause 失败原因
+     * @return 迁移成功返回 {@code true}；Fiber 已被卸载（状态不再是 LOADING）时返回 {@code false}
      */
-    void markFailed(Throwable cause) {
-        this.failureCause.set(cause);
-        state.set(FiberState.FAILED);
+    boolean tryMarkFailed(Throwable cause) {
+        if (!state.compareAndSet(FiberState.LOADING, FiberState.FAILED)) {
+            return false;
+        }
+        failureCause.set(cause);
+        return true;
     }
 
     /**

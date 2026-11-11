@@ -474,18 +474,43 @@ public final class PluginRuntime {
      * @param dataDir 插件资源目录
      * @param filter  作用域过滤器；当前仅记录，P4 分发时使用
      */
-    private void applyTo(PluginFiber fiber, Path dataDir, ScopeFilter filter) {
+    /**
+     * 执行插件的 {@code apply}，并把 Fiber 推进到 ACTIVE。
+     *
+     * <p>返回 {@code false} 不是异常路径，而是三种正常结果之一：</p>
+     * <ul>
+     *   <li>Fiber 已被其他线程接管（并发 {@link #tryActivate} 只有一个赢家）；</li>
+     *   <li>抢占成功后、apply 之前就被卸载（登记表已封存）；</li>
+     *   <li>apply 正常返回，但期间 Fiber 被卸载，{@code LOADING → ACTIVE} 的 CAS 失败。</li>
+     * </ul>
+     *
+     * @param fiber   目标 Fiber，必须仍处于 PENDING
+     * @param dataDir 插件资源目录；可为 {@code null}
+     * @param filter  基线作用域过滤器；可为 {@code null}
+     * @return 成功转为 ACTIVE 返回 {@code true}
+     */
+    private boolean applyTo(PluginFiber fiber, Path dataDir, ScopeFilter filter) {
         /*
-         * 前置校验：只允许对「尚未 apply 过」的 Fiber 执行。
+         * 用 CAS 抢占 PENDING → LOADING。
          *
-         * 若 Fiber 已被 dispose（或 apply 失败时回滚过），其 EffectRegistry 已封存，
-         * 此时再 apply 会让插件欣然注册一切然后静默丢弃——比直接报错难排查得多。
+         * 这里曾写成「先检查 effects().isSealed()，再 markLoading()」，那是
+         * check-then-act：两个并发 tryActivate 都能通过检查，于是同一个插件被
+         * apply 两次（监听器、定时任务、数据库连接全部重复注册）。
+         * 现在只有一个线程能拿到执行权。
+         */
+        if (!fiber.tryBeginLoading()) {
+            // 已被其他线程接管，或已离开 PENDING。并发 tryActivate 是合法路径，
+            // 因此这里不是错误，静默放弃即可。
+            return false;
+        }
+
+        /*
+         * 抢占成功后仍要复查封存标志：卸载可能恰好发生在「抢占成功」与「开始 apply」
+         * 之间。此时登记表已封存，继续 apply 会让插件注册的一切被就地撤销——
+         * 插件作者看到的是「代码跑了但什么也没生效」，很难排查，因此直接放弃。
          */
         if (fiber.effects().isSealed()) {
-            throw new IllegalStateException(
-                    "插件 " + fiber.id() + " 的 Effect 登记表已封存（当前状态 "
-                            + fiber.state().displayName() + "），不能重复 apply。"
-                            + "请先卸载再用新实例加载。");
+            return false;
         }
 
         PluginContext ctx = PluginContext.forFiber(
@@ -493,16 +518,31 @@ public final class PluginRuntime {
         // 让子插件挂载能回调到运行时
         ctx.bindRuntime(this);
 
-        fiber.markLoading();
         try {
             fiber.plugin().apply(ctx);
-            fiber.markActive();
-            log.info("插件已加载: {} | 贡献能力 {}", fiber.id(), registrations.kindsOf(fiber));
+            if (fiber.tryMarkActive()) {
+                log.info("插件已加载: {} | 贡献能力 {}", fiber.id(), registrations.kindsOf(fiber));
+                return true;
+            }
+
+            /*
+             * apply 期间 Fiber 被卸载：状态已不在 LOADING，CAS 拒绝把它回写成 ACTIVE。
+             * 必须回滚已建立的 Effect，否则会留下「插件已卸载但监听器还在」的悬挂引用。
+             * dispose() 可能已经撤过一遍，rollbackEffects 是幂等的（封存 CAS 兜底）。
+             */
+            List<String> rollbackFailures = fiber.rollbackEffects();
+            log.warn("插件 {} 在 apply 期间被卸载，已放弃激活{}", fiber.id(),
+                    rollbackFailures.isEmpty() ? "" : "（回滚失败: " + rollbackFailures + "）");
+            return false;
         } catch (Throwable t) {
             // 必须捕获 Throwable：类加载失败抛的是 Error，
             // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
-            fiber.markFailed(t);
-            log.error("插件 {} 加载失败，已回滚其 Effect", fiber.id(), t);
+            boolean marked = fiber.tryMarkFailed(t);
+            if (marked) {
+                log.error("插件 {} 加载失败，已回滚其 Effect", fiber.id(), t);
+            } else {
+                log.warn("插件 {} 加载失败，但期间已被卸载，状态不再改为 FAILED", fiber.id(), t);
+            }
 
             // 回滚：撤销已建立的 Effect，避免「标记为失败但监听器仍在工作」。
             // 用 rollbackEffects 而非 dispose——后者会把状态改成 DISPOSED，
@@ -512,6 +552,7 @@ public final class PluginRuntime {
                 log.error("插件 {} 回滚期间有清理失败: {}", fiber.id(), failures);
             }
             // 索引保留（状态为 FAILED），以便管理端展示失败插件；调用方可选择移除
+            return false;
         }
     }
 
@@ -541,8 +582,12 @@ public final class PluginRuntime {
             return false;
         }
         fiber.clearPendingDependencies();
-        applyTo(fiber, dataDir, ScopeFilter.ALL);
-        return fiber.state() == FiberState.ACTIVE;
+        /*
+         * 不在这里判状态——applyTo 内部用 PENDING → LOADING 的 CAS 抢占，
+         * 并发调用时只有一个线程能真正执行 apply。上面的 state() 检查只是
+         * 快速跳过已确定不在 PENDING 的 Fiber，不承担正确性。
+         */
+        return applyTo(fiber, dataDir, ScopeFilter.ALL);
     }
 
     /**
