@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.data;
 
 import com.yuier.yuni.plugin.data.schema.ColumnDef;
 import com.yuier.yuni.plugin.data.schema.TableSchema;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.statement.Query;
@@ -13,15 +14,12 @@ import java.util.List;
  * 通过 JDBI Handle 执行动态生成的 SQL，使用 bindBean / mapToBean 与实体交互。
  */
 @Slf4j
+@RequiredArgsConstructor
 public class CrudRepositoryImpl<T> implements CrudRepository<T> {
 
     private final TableSchema schema;
     private final Class<T> entityClass;
 
-    public CrudRepositoryImpl(TableSchema schema, Class<T> entityClass) {
-        this.schema = schema;
-        this.entityClass = entityClass;
-    }
 
     // ---- CRUD ----
 

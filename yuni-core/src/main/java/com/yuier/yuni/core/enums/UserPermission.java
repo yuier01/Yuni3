@@ -1,6 +1,7 @@
 package com.yuier.yuni.core.enums;
 
 import lombok.Data;
+import lombok.Getter;
 
 /**
  * @Title: UserPermission
@@ -9,6 +10,7 @@ import lombok.Data;
  * @Date 2025/12/23 0:41
  * @description: 用户权限分级
  */
+
 
 public enum UserPermission {
 
@@ -24,13 +26,11 @@ public enum UserPermission {
     // 封禁用户
     BLOCKED(0);
 
+    @Getter
     private int priority;
 
     UserPermission(int priority) {
         this.priority = priority;
     }
 
-    public int getPriority() {
-        return priority;
-    }
 }

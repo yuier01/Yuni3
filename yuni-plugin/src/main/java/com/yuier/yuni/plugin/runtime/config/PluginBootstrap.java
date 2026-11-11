@@ -3,6 +3,7 @@ package com.yuier.yuni.plugin.runtime.config;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -25,6 +26,7 @@ import java.util.List;
  * 晚于容器 refresh。</p>
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class PluginBootstrap {
 
     /** 模块加载器。 */
@@ -36,18 +38,8 @@ public final class PluginBootstrap {
     /** 插件目录。 */
     private final String pluginDirectory;
 
-    /**
-     * 构造启动器。
-     *
-     * @param loader          模块加载器
-     * @param runtime         插件运行时
-     * @param pluginDirectory 插件目录
-     */
-    public PluginBootstrap(PluginModuleLoader loader, PluginRuntime runtime, String pluginDirectory) {
-        this.loader = loader;
-        this.runtime = runtime;
-        this.pluginDirectory = pluginDirectory;
-    }
+    // 构造器由 @RequiredArgsConstructor 生成：
+    // (PluginModuleLoader, PluginRuntime, String pluginDirectory)。
 
     /**
      * 扫描插件目录并加载全部模块。

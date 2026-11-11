@@ -9,6 +9,7 @@ import com.yuier.yuni.plugin.api.CommandHandler;
 import com.yuier.yuni.plugin.api.Commands;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.runtime.RegistrationTable;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -59,6 +60,7 @@ import java.util.concurrent.CompletableFuture;
  * @see CommandDetector
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class CommandDispatcher {
 
     /** 能力注册总表。 */
@@ -125,28 +127,6 @@ public final class CommandDispatcher {
         this(registrations, bot, botApp, permissionResolver, null);
     }
 
-    /**
-     * 构造命令分发器（含作用域解析）。
-     *
-     * @param registrations      能力注册总表
-     * @param bot                机器人实例；可为 {@code null}
-     * @param botApp             机器人业务配置；可为 {@code null}
-     * @param permissionResolver 权限判定函数；可为 {@code null}
-     * @param scopeResolver      作用域解析函数；可为 {@code null}
-     *                           （则只按注册项自带的过滤器判定，用于单测）
-     */
-    public CommandDispatcher(RegistrationTable registrations,
-                             com.yuier.yuni.core.bot.YuniBot bot,
-                             com.yuier.yuni.core.model.bot.BotApp botApp,
-                             PermissionResolver permissionResolver,
-                             java.util.function.Function<String,
-                                     java.util.Optional<com.yuier.yuni.plugin.api.ScopeFilter>> scopeResolver) {
-        this.registrations = registrations;
-        this.bot = bot;
-        this.botApp = botApp;
-        this.permissionResolver = permissionResolver;
-        this.scopeResolver = scopeResolver;
-    }
 
     // ==================== 处理器查询 ====================
 

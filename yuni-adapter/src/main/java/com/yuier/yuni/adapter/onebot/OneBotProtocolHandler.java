@@ -1,4 +1,5 @@
 package com.yuier.yuni.adapter.onebot;
+import lombok.RequiredArgsConstructor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuier.yuni.adapter.onebot.transport.ws.WsRequest;
@@ -20,15 +21,12 @@ import java.util.UUID;
  *               与具体传输方式（HTTP/WS）无关。
  */
 
+@RequiredArgsConstructor
 public class OneBotProtocolHandler {
 
     private final ObjectMapper objectMapper;
     private final JsonCodec jsonCodec;
 
-    public OneBotProtocolHandler(ObjectMapper objectMapper, JsonCodec jsonCodec) {
-        this.objectMapper = objectMapper;
-        this.jsonCodec = jsonCodec;
-    }
 
     // ==================== 事件反序列化 ====================
 

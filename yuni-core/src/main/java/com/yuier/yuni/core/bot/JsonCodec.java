@@ -1,6 +1,8 @@
 package com.yuier.yuni.core.bot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -16,13 +18,12 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class JsonCodec {
 
+    @Getter
     private final ObjectMapper objectMapper;
 
-    public JsonCodec(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     /**
      * 将对象序列化为 JSON 字符串
@@ -65,10 +66,4 @@ public class JsonCodec {
         return objectMapper.convertValue(source, targetClass);
     }
 
-    /**
-     * 获取底层 ObjectMapper（供需要直接使用 ObjectMapper 的场景）
-     */
-    public ObjectMapper getObjectMapper() {
-        return objectMapper;
-    }
 }

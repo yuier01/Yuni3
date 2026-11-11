@@ -1,4 +1,5 @@
 package com.yuier.yuni.event.detector.message.command;
+import lombok.AllArgsConstructor;
 
 import com.yuier.yuni.core.bot.BotMessageInfo;
 import com.yuier.yuni.core.bot.YuniBot;
@@ -15,6 +16,7 @@ import com.yuier.yuni.core.util.SpringContextUtil;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.event.detector.message.MessageDetector;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,8 +37,16 @@ import static com.yuier.yuni.core.constants.YuniMessageType.PRIVATE_MESSAGE;
  * 单元测试必须启动整个容器。新插件系统通过构造器注入这两个依赖，
  * 静态取 Bean 仅作为<b>兼容回退</b>保留（旧插件路径仍在用无参构造）。</p>
  */
+@AllArgsConstructor
 public class CommandDetector implements MessageDetector {
 
+    /**
+     * -- GETTER --
+     *  命令树根节点。
+     *
+     * @return 根节点
+     */
+    @Getter
     private CommandNode rootNode;
 
     /**
@@ -64,27 +74,6 @@ public class CommandDetector implements MessageDetector {
         this.rootNode = rootNode;
     }
 
-    /**
-     * 依赖注入构造器（新插件系统使用）。
-     *
-     * @param rootNode 命令树根节点
-     * @param bot      机器人实例，用于查询被回复人；可为 {@code null}
-     * @param botApp   机器人业务配置，提供命令前缀；可为 {@code null}
-     */
-    public CommandDetector(CommandNode rootNode, YuniBot bot, BotApp botApp) {
-        this.rootNode = rootNode;
-        this.bot = bot;
-        this.botApp = botApp;
-    }
-
-    /**
-     * 命令树根节点。
-     *
-     * @return 根节点
-     */
-    public CommandNode getRootNode() {
-        return rootNode;
-    }
 
     /**
      * 设置命令树根节点。

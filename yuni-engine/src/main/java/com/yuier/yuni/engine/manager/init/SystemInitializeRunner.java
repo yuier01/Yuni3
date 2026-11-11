@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
  *   <li>{@code eventManager.init()}</li>
  *   <li>{@code botManager.startBot()}</li>
  *   <li>{@code yuniContactManager.init()}</li>
- *   <li>{@code pluginSystem.initialize(botManager::getBot)}</li>
+ *   <li>{@code pluginSystem.initialize()}</li>
  * </ul>
  *
  * <h2>为什么插件系统排在最后</h2>
@@ -72,7 +72,7 @@ public class SystemInitializeRunner implements ApplicationRunner {
         log.info("初始化联系人系统...");
         yuniContactManager.init();
         log.info("初始化插件系统...");
-        pluginSystem.initialize(botManager::getBot);
+        pluginSystem.initialize();
 
         log.info("""
                 Yuni 启动完毕 Ciallo～(∠・ω< )⌒★!""");

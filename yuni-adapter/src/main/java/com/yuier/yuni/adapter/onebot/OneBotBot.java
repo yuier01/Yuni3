@@ -1,4 +1,5 @@
 package com.yuier.yuni.adapter.onebot;
+import lombok.Getter;
 
 import com.yuier.yuni.adapter.config.OneBotProperties;
 import com.yuier.yuni.adapter.onebot.model.OneBotEvent;
@@ -39,6 +40,7 @@ public class OneBotBot implements YuniBot {
     private final EventTranslator eventTranslator;
     private BotEventCallback eventCallback;
     private BotStatus status = BotStatus.OFFLINE;
+    @Getter
     private final String botId;
 
     public OneBotBot(OneBotProperties properties,
@@ -61,10 +63,6 @@ public class OneBotBot implements YuniBot {
         return "onebot";
     }
 
-    @Override
-    public String getBotId() {
-        return botId;
-    }
 
     @Override
     public BotStatus getStatus() {

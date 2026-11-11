@@ -25,7 +25,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 
 /**
  * 插件系统——<b>唯一的装配者与持有者</b>。
@@ -71,6 +70,14 @@ public final class PluginSystem {
 
     /** 机器人业务配置（提供命令前缀）。 */
     private final BotApp botApp;
+
+    /**
+     * 机器人实例提供者。
+     *
+     * <p>机器人由 engine 的 {@code BotManager} 在启动编排里动态注册，
+     * 本系统不持有它、也不需要调用方把它传进来——需要时现取。</p>
+     */
+    private final ObjectProvider<YuniBot> botProvider;
 
     /** 插件目录。 */
     private final String pluginDirectory;
@@ -129,6 +136,7 @@ public final class PluginSystem {
         this.taskManager = taskManager;
         this.jsonCodec = jsonCodec;
         this.objectMapper = objectMapper;
+        this.botProvider = botProvider;
         this.botApp = botApp;
         this.pluginDirectory = pluginDirectory;
 
@@ -145,18 +153,21 @@ public final class PluginSystem {
     /**
      * 初始化插件系统：创建核心组件 → 扫描加载插件 → 输出诊断。
      *
-     * <p>必须在 {@code BotManager.startBot()} 之后调用。</p>
+     * <p><b>不需要机器人参数</b>：机器人由 {@code BotManager} 注册进容器，
+     * 本系统在需要时经 {@link ObjectProvider} 现取。调用方只需保证
+     * 「先 {@code startBot()}，再调本方法」——这样插件在 {@code apply}
+     * 里用 {@code ctx.getBot()} 才拿得到实例。</p>
      *
-     * @param botSupplier 机器人实例供应函数
      * @throws IllegalStateException 重复初始化
      */
-    public synchronized void initialize(Supplier<YuniBot> botSupplier) {
+    public synchronized void initialize() {
         if (runtime != null) {
             throw new IllegalStateException("插件系统已初始化，不允许重复调用 initialize");
         }
 
         PluginRuntime newRuntime = new PluginRuntime(taskManager, jsonCodec);
-        newRuntime.bindBot(botSupplier, botApp);
+        // 运行时需要的是「怎么取 bot」而不是 bot 本身：插件处理事件时才解析
+        newRuntime.bindBot(() -> botProvider.getIfAvailable(), botApp);
 
         // 内置服务登记进运行时：插件拿到的都是同一份共享实例
         newRuntime.registerService(Cache.class, cache);

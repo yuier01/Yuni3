@@ -1,4 +1,6 @@
 package com.yuier.yuni.webapi.dto;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 
 import lombok.Data;
 
@@ -10,6 +12,7 @@ import lombok.Data;
  * @description: 统一 API 响应体
  */
 
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Data
 public class Result<T> {
 
@@ -22,11 +25,6 @@ public class Result<T> {
     /** 响应信息 */
     private String message;
 
-    private Result(int code, T data, String message) {
-        this.code = code;
-        this.data = data;
-        this.message = message;
-    }
 
     public static <T> Result<T> ok(T data) {
         return new Result<>(200, data, "ok");

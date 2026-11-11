@@ -8,6 +8,7 @@ import com.yuier.yuni.core.net.ws.yuni.YuniWebSocketManager;
 import com.yuier.yuni.core.net.ws.yuni.YuniBusinessProxyListener;
 import com.yuier.yuni.core.net.ws.yuni.WsRequestModel;
 import com.yuier.yuni.core.bot.JsonCodec;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -38,6 +39,7 @@ import java.util.function.Consumer;
  */
 
 @Slf4j
+@RequiredArgsConstructor
 public class OneBotWsTransport implements OneBotTransport {
 
     public static final String API_SOCKET_ID = "onebot_api";
@@ -61,13 +63,6 @@ public class OneBotWsTransport implements OneBotTransport {
     /** /api 连接的 connector */
     private YuniWebSocketConnector apiConnector;
 
-    public OneBotWsTransport(OneBotProperties properties,
-                             JsonCodec jsonCodec,
-                             YuniWebSocketManager wsManager) {
-        this.properties = properties;
-        this.jsonCodec = jsonCodec;
-        this.wsManager = wsManager;
-    }
 
     // ==================== 生命周期 ====================
 

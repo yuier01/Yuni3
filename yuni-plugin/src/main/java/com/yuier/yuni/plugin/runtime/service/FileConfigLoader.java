@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.runtime.service;
 
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
@@ -47,6 +48,7 @@ import java.nio.file.Path;
 public final class FileConfigLoader implements ConfigLoader {
 
     /** 本插件的资源目录。 */
+    @Getter
     private final Path dataDir;
 
     /** JSON 编解码器。 */
@@ -106,11 +108,6 @@ public final class FileConfigLoader implements ConfigLoader {
                     "资源路径越界，必须位于插件目录内: " + fileName + "（插件目录 " + dataDir + "）");
         }
         return resolved;
-    }
-
-    @Override
-    public Path getDataDir() {
-        return dataDir;
     }
 
     @Override

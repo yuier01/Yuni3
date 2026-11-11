@@ -1,4 +1,5 @@
 package com.yuier.yuni.core.net.ws.yuni;
+import lombok.Getter;
 
 import okhttp3.OkHttpClient;
 import okhttp3.WebSocket;
@@ -20,15 +21,13 @@ import java.util.concurrent.TimeUnit;
 public class YuniWebSocketManager {
 
     /** 共享 OkHttpClient — 30s ping 防止 Docker 网络桥杀空闲连接 */
+    @Getter
     private final OkHttpClient sharedClient = new OkHttpClient().newBuilder()
             .pingInterval(30, TimeUnit.SECONDS)
             .build();
 
     private Map<String, YuniWebSocketConnector> webSocketConnectorMap = new ConcurrentHashMap<>();
 
-    public OkHttpClient getSharedClient() {
-        return sharedClient;
-    }
 
     /**
      * 启动新的连接
