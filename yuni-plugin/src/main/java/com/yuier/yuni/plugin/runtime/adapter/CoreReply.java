@@ -10,6 +10,7 @@ import com.yuier.yuni.core.model.message.segment.ImageSegment;
 import com.yuier.yuni.core.model.message.segment.PokeSegment;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ import java.util.Optional;
  * @see Reply
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class CoreReply implements Reply {
 
     /** 机器人实例，发送的实际执行者。 */
@@ -63,20 +65,9 @@ public final class CoreReply implements Reply {
     /** 待插入链首的引用消息 ID；{@code null} 表示不引用。 */
     private String quoteMessageId;
 
-    /**
-     * 构造回复器。
-     *
-     * @param bot             机器人实例
-     * @param target          发送目标
-     * @param sourceMessageId 触发事件的源消息 ID；无则传 {@code null}
-     * @param jsonCodec       JSON 编解码器，用于链转换
-     */
-    public CoreReply(YuniBot bot, MessageTarget target, Long sourceMessageId, JsonCodec jsonCodec) {
-        this.bot = bot;
-        this.target = target;
-        this.sourceMessageId = sourceMessageId;
-        this.jsonCodec = jsonCodec;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：
+     * (YuniBot, MessageTarget, Long, JsonCodec)。
+     * chain 与 quoteMessageId 不参与——前者有初始值，后者是构建期可变状态。 */
 
     // ==================== 构建 ====================
 

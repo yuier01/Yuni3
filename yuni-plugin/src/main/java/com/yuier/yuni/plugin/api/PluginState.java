@@ -1,5 +1,8 @@
 package com.yuier.yuni.plugin.api;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * 插件对外的运行状态。
  *
@@ -26,6 +29,8 @@ package com.yuier.yuni.plugin.api;
  *
  * @see PluginView#state()
  */
+@Getter
+@Accessors(fluent = true)
 public enum PluginState {
 
     /**
@@ -64,20 +69,11 @@ public enum PluginState {
      */
     DISPOSED("已卸载");
 
-    /** 面向管理端的中文显示名。 */
+    /** 面向管理端的中文显示名；访问器由 @Getter + @Accessors(fluent) 生成。 */
     private final String displayName;
 
     PluginState(String displayName) {
         this.displayName = displayName;
-    }
-
-    /**
-     * 面向管理端的中文显示名。
-     *
-     * @return 显示名
-     */
-    public String displayName() {
-        return displayName;
     }
 
     /**

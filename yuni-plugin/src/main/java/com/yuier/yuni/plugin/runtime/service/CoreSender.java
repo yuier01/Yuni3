@@ -8,6 +8,7 @@ import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.service.Sender;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.CoreReply;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -29,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
  * @see CoreReply
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class CoreSender implements Sender {
 
     /** 机器人实例，发送的实际执行者。 */
@@ -37,16 +39,7 @@ public final class CoreSender implements Sender {
     /** JSON 编解码器，用于把视图转成内部消息段。 */
     private final JsonCodec jsonCodec;
 
-    /**
-     * 构造发送门面。
-     *
-     * @param bot       机器人实例
-     * @param jsonCodec JSON 编解码器
-     */
-    public CoreSender(YuniBot bot, JsonCodec jsonCodec) {
-        this.bot = bot;
-        this.jsonCodec = jsonCodec;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：(YuniBot bot, JsonCodec jsonCodec)。 */
 
     @Override
     public Reply group(long groupId) {

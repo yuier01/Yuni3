@@ -1,5 +1,8 @@
 package com.yuier.yuni.plugin.runtime;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * 插件实例（Fiber）的生命状态。
  *
@@ -30,6 +33,8 @@ package com.yuier.yuni.plugin.runtime;
  *
  * @see PluginFiber
  */
+@Getter
+@Accessors(fluent = true)
 public enum FiberState {
 
     /**
@@ -78,19 +83,11 @@ public enum FiberState {
      */
     DISPOSED("已卸载");
 
+    /** 面向管理端的中文显示名；访问器由 @Getter + @Accessors(fluent) 生成。 */
     private final String displayName;
 
     FiberState(String displayName) {
         this.displayName = displayName;
-    }
-
-    /**
-     * 面向管理端的中文显示名。
-     *
-     * @return 显示名
-     */
-    public String displayName() {
-        return displayName;
     }
 
     /**

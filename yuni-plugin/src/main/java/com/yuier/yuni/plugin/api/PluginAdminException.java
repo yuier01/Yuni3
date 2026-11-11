@@ -1,5 +1,8 @@
 package com.yuier.yuni.plugin.api;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 /**
  * 插件管理操作失败。
  *
@@ -24,11 +27,14 @@ package com.yuier.yuni.plugin.api;
  *
  * @see PluginAdmin
  */
+@Getter
+@Accessors(fluent = true)
 public class PluginAdminException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    /** 出问题的插件标识；与具体插件无关的失败（如参数为空）时为 {@code null}。 */
+    /** 出问题的插件标识；与具体插件无关的失败（如参数为空）时为 {@code null}。
+     *  访问器 {@code pluginId()} 由 @Getter + @Accessors(fluent) 生成。 */
     private final String pluginId;
 
     /**
@@ -52,14 +58,5 @@ public class PluginAdminException extends RuntimeException {
     public PluginAdminException(String pluginId, String message, Throwable cause) {
         super(message, cause);
         this.pluginId = pluginId;
-    }
-
-    /**
-     * 出问题的插件标识。
-     *
-     * @return 插件标识；可能为 {@code null}
-     */
-    public String pluginId() {
-        return pluginId;
     }
 }

@@ -183,6 +183,6 @@ class PluginFiberTest {
 
         assertTrue(fiber.dispose().isEmpty(), "重复卸载应直接返回空列表");
         assertEquals(FiberState.DISPOSED, fiber.state());
-        assertTrue(fiber.isDisposed());
+        assertTrue(fiber.disposed());
     }
 }

@@ -5,6 +5,8 @@ import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.Optional;
 
@@ -30,6 +32,8 @@ import java.util.Optional;
  *
  * @see MessageEvent
  */
+@Getter
+@Accessors(fluent = true)
 public final class CoreMessageEvent extends BaseCoreEvent implements MessageEvent {
 
     /** 消息类型（group / private）。 */
@@ -94,40 +98,10 @@ public final class CoreMessageEvent extends BaseCoreEvent implements MessageEven
         return fields;
     }
 
-    @Override
-    public String messageType() {
-        return messageType;
-    }
-
-    @Override
-    public long messageId() {
-        return messageId;
-    }
-
-    @Override
-    public long userId() {
-        return userId;
-    }
-
-    @Override
-    public MessageChainView chain() {
-        return chain;
-    }
-
-    @Override
-    public String rawMessage() {
-        return rawMessage;
-    }
-
-    @Override
-    public Sender sender() {
-        return sender;
-    }
-
-    @Override
-    public Reply reply() {
-        return reply;
-    }
+    /*
+     * messageType() / messageId() / userId() / chain() / sender() / reply() /
+     * rawMessage() 由类上的 @Getter + @Accessors(fluent) 生成。
+     */
 
     @Override
     public String toLogString() {

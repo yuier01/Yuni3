@@ -8,6 +8,7 @@ import com.yuier.yuni.permission.domain.entity.GroupUserPluginPermissionEntity;
 import com.yuier.yuni.permission.service.GroupUserPluginPermissionService;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.service.PermissionService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
@@ -49,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @see PermissionService
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class DefaultPermissionService implements PermissionService {
 
     /** 权限例外数据访问。 */
@@ -68,20 +70,9 @@ public final class DefaultPermissionService implements PermissionService {
      */
     private final Map<String, UserPermission> exceptionCache = new ConcurrentHashMap<>();
 
-    /**
-     * 构造权限服务。
-     *
-     * @param permissionStore 权限例外数据访问
-     * @param botConfig       机器人配置（提供 masterId）
-     * @param bot             机器人实例（查询群成员角色）；可为 {@code null}
-     */
-    public DefaultPermissionService(GroupUserPluginPermissionService permissionStore,
-                                    Bot botConfig,
-                                    YuniBot bot) {
-        this.permissionStore = permissionStore;
-        this.botConfig = botConfig;
-        this.bot = bot;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：
+     * (GroupUserPluginPermissionService, Bot, YuniBot)。
+     * exceptionCache 有初始值，不参与生成。 */
 
     @Override
     public UserPermission resolve(long userId, Long groupId, String pluginId) {

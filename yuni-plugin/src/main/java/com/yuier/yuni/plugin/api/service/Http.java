@@ -1,5 +1,8 @@
 package com.yuier.yuni.plugin.api.service;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 import java.time.Duration;
 import java.util.Map;
 
@@ -150,14 +153,18 @@ public interface Http {
      * 并把 URL 与状态码放进消息，替代现行实现里含糊的
      * {@code RuntimeException}。</p>
      */
+    @Getter
+    @Accessors(fluent = true)
     class HttpException extends RuntimeException {
 
         private static final long serialVersionUID = 1L;
 
-        /** 出错的请求 URL；非网络阶段失败时可能为 {@code null}。 */
+        /** 出错的请求 URL；非网络阶段失败时可能为 {@code null}。
+         *  访问器 {@code url()} 由 @Getter + @Accessors(fluent) 生成。 */
         private final String url;
 
-        /** HTTP 状态码；未收到响应时为 {@code -1}。 */
+        /** HTTP 状态码；未收到响应时为 {@code -1}。
+         *  访问器 {@code statusCode()} 由 @Getter + @Accessors(fluent) 生成。 */
         private final int statusCode;
 
         /**
@@ -172,24 +179,6 @@ public interface Http {
             super("HTTP " + (statusCode > 0 ? statusCode + " " : "") + "[" + url + "] " + message, cause);
             this.url = url;
             this.statusCode = statusCode;
-        }
-
-        /**
-         * 请求 URL。
-         *
-         * @return URL；可能为 {@code null}
-         */
-        public String url() {
-            return url;
-        }
-
-        /**
-         * HTTP 状态码。
-         *
-         * @return 状态码；无响应时为 {@code -1}
-         */
-        public int statusCode() {
-            return statusCode;
         }
     }
 }

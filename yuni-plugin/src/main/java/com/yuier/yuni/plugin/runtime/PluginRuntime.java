@@ -922,7 +922,7 @@ public final class PluginRuntime {
                         // 随时可变，因此必须在分发时查而不是注册时定
                         this::scopeFilterOf);
                 this.pipeline = new com.yuier.yuni.plugin.runtime.dispatch.EventPipeline(
-                        this, eventAdapter, registrations, commandDispatcher);
+                        registrations, this, eventAdapter, commandDispatcher);
             }
             return this.pipeline;
         }

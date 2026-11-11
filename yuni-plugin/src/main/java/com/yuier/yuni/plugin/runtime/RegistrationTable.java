@@ -1,6 +1,8 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -75,6 +77,8 @@ public final class RegistrationTable {
      * <p>与现行 {@code YuniPluginType} 的本质区别：枚举值描述的是
      * <b>注册动作</b>而非插件本身，因此不存在「一个插件只能属于一个类型」的限制。</p>
      */
+    @Getter
+    @Accessors(fluent = true)
     public enum Kind {
         /** 命令树。 */
         COMMAND("命令"),
@@ -93,19 +97,11 @@ public final class RegistrationTable {
         /** 对外提供的服务。 */
         SERVICE("服务");
 
+        /** 面向管理端的中文显示名；访问器由 @Getter + @Accessors(fluent) 生成。 */
         private final String displayName;
 
         Kind(String displayName) {
             this.displayName = displayName;
-        }
-
-        /**
-         * 面向管理端的中文显示名。
-         *
-         * @return 显示名
-         */
-        public String displayName() {
-            return displayName;
         }
     }
 

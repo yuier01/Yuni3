@@ -3,6 +3,8 @@ package com.yuier.yuni.plugin.runtime.admin;
 import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.List;
 
@@ -21,6 +23,8 @@ import java.util.List;
  *
  * @see PluginModuleView
  */
+@Getter
+@Accessors(fluent = true)
 public final class FiberModuleView implements PluginModuleView {
 
     /** 模块 ID。 */
@@ -52,25 +56,11 @@ public final class FiberModuleView implements PluginModuleView {
                 .toList();
     }
 
-    @Override
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public String name() {
-        return name;
-    }
-
-    @Override
-    public String jarFileName() {
-        return jarFileName;
-    }
-
-    @Override
-    public List<PluginView> plugins() {
-        return plugins;
-    }
+    /*
+     * id() / name() / jarFileName() / plugins() 由类上的
+     * @Getter + @Accessors(fluent) 生成——契约方法名是 record 风格（无 get 前缀），
+     * fluent 正好与之一致，因此无需手写这四个转发方法。
+     */
 
     @Override
     public String toString() {

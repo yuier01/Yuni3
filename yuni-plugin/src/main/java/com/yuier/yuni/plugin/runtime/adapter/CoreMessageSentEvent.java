@@ -4,6 +4,8 @@ import com.yuier.yuni.core.event.YuniMessageSentEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 /**
  * {@link MessageSentEvent} 的适配实现——机器人自身已发出消息的视图。
@@ -18,6 +20,8 @@ import com.yuier.yuni.plugin.api.event.MessageSentEvent;
  *
  * @see MessageSentEvent
  */
+@Getter
+@Accessors(fluent = true)
 public final class CoreMessageSentEvent extends BaseCoreEvent implements MessageSentEvent {
 
     /** 消息类型（group / private）。 */
@@ -83,35 +87,10 @@ public final class CoreMessageSentEvent extends BaseCoreEvent implements Message
         return fields;
     }
 
-    @Override
-    public String messageType() {
-        return messageType;
-    }
-
-    @Override
-    public long messageId() {
-        return messageId;
-    }
-
-    @Override
-    public long userId() {
-        return userId;
-    }
-
-    @Override
-    public MessageChainView chain() {
-        return chain;
-    }
-
-    @Override
-    public String rawMessage() {
-        return rawMessage;
-    }
-
-    @Override
-    public Reply reply() {
-        return reply;
-    }
+    /*
+     * messageType() / messageId() / userId() / chain() / rawMessage() / reply()
+     * 由类上的 @Getter + @Accessors(fluent) 生成。
+     */
 
     @Override
     public String toLogString() {

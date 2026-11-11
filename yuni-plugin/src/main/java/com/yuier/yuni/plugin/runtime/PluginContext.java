@@ -803,7 +803,7 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public boolean disposed() {
-        return fiber != null && fiber.isDisposed();
+        return fiber != null && fiber.disposed();
     }
 
     // ==================== 内部 ====================

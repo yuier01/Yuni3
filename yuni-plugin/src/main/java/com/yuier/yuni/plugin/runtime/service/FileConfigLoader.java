@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.runtime.service;
 
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
+import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,6 +43,7 @@ import java.nio.file.Path;
  *
  * @see ConfigLoader
  */
+@RequiredArgsConstructor
 public final class FileConfigLoader implements ConfigLoader {
 
     /** 本插件的资源目录。 */
@@ -50,16 +52,7 @@ public final class FileConfigLoader implements ConfigLoader {
     /** JSON 编解码器。 */
     private final JsonCodec jsonCodec;
 
-    /**
-     * 构造加载器。
-     *
-     * @param dataDir   插件资源目录；不可为 {@code null}
-     * @param jsonCodec JSON 编解码器；不可为 {@code null}
-     */
-    public FileConfigLoader(Path dataDir, JsonCodec jsonCodec) {
-        this.dataDir = dataDir;
-        this.jsonCodec = jsonCodec;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：(Path dataDir, JsonCodec jsonCodec)。 */
 
     @Override
     public <T> T load(String fileName, Class<T> type) {

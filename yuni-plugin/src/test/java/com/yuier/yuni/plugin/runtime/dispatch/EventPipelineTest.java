@@ -80,7 +80,7 @@ class EventPipelineTest {
         commandDispatcher = new CommandDispatcher(
                 runtime.registrations(), bot, botApp, CommandDispatcher.permissiveResolver());
         pipeline = new EventPipeline(
-                runtime, adapter, runtime.registrations(), commandDispatcher);
+                runtime.registrations(), runtime, adapter, commandDispatcher);
     }
 
     /**
@@ -559,7 +559,7 @@ class EventPipelineTest {
                 (event, reply) -> runs.incrementAndGet());
 
         EventPipeline adminPipeline = new EventPipeline(
-                runtime, adapter, runtime.registrations(), adminDispatcher);
+                runtime.registrations(), runtime, adapter, adminDispatcher);
 
         adminPipeline.onMessage(groupMessage("/测试 管理"));
 

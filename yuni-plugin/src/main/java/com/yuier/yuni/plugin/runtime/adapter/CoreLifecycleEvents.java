@@ -18,6 +18,8 @@ import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MetaEvent;
 import com.yuier.yuni.plugin.api.event.NoticeEvent;
 import com.yuier.yuni.plugin.api.event.RequestEvent;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.Map;
 import java.util.Optional;
@@ -156,6 +158,8 @@ public final class CoreLifecycleEvents {
      * {@code subType()} 暴露为子类型，把 {@code notice_type} 保留在
      * {@link NoticeEvent#noticeType()} 与字段表里。</p>
      */
+    @Getter
+    @Accessors(fluent = true)
     public static final class CoreNoticeEvent extends BaseCoreEvent implements NoticeEvent {
 
         /** 通知类型（notice_type）。 */
@@ -250,16 +254,6 @@ public final class CoreLifecycleEvents {
         }
 
         @Override
-        public String noticeType() {
-            return noticeType;
-        }
-
-        @Override
-        public long userId() {
-            return userId;
-        }
-
-        @Override
         public Optional<Long> operatorId() {
             return Optional.ofNullable(operatorId);
         }
@@ -273,6 +267,8 @@ public final class CoreLifecycleEvents {
     /**
      * {@link RequestEvent} 的适配实现。
      */
+    @Getter
+    @Accessors(fluent = true)
     public static final class CoreRequestEvent extends BaseCoreEvent implements RequestEvent {
 
         /** 请求类型（friend / group）。 */
@@ -327,23 +323,8 @@ public final class CoreLifecycleEvents {
         }
 
         @Override
-        public String requestType() {
-            return requestType;
-        }
-
-        @Override
-        public long userId() {
-            return userId;
-        }
-
-        @Override
         public Optional<String> comment() {
             return Optional.ofNullable(comment);
-        }
-
-        @Override
-        public String flag() {
-            return flag;
         }
 
         @Override
@@ -362,6 +343,8 @@ public final class CoreLifecycleEvents {
      * 默认方法直接读取（{@link com.yuier.yuni.plugin.api.event.Event#booleanValueOr}
      * 支持含点号的键名，因为字段表就是普通 Map）。</p>
      */
+    @Getter
+    @Accessors(fluent = true)
     public static final class CoreMetaEvent extends BaseCoreEvent implements MetaEvent {
 
         /** 元事件类型（heartbeat / lifecycle）。 */
@@ -413,11 +396,6 @@ public final class CoreLifecycleEvents {
                 }
             }
             return fields;
-        }
-
-        @Override
-        public String metaEventType() {
-            return metaEventType;
         }
 
         @Override

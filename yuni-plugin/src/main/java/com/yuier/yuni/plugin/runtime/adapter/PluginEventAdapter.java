@@ -9,6 +9,7 @@ import com.yuier.yuni.core.event.meta.YuniMetaEvent;
 import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.Reply;
+import lombok.RequiredArgsConstructor;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -37,6 +38,7 @@ import java.util.function.Supplier;
  * <p>过渡期内旧插件系统仍会消费同一批 core 事件。本工厂<b>只读取</b>事件对象，
  * 不修改它，因此新旧两条路径可以并存消费同一事件而互不干扰。</p>
  */
+@RequiredArgsConstructor
 public final class PluginEventAdapter {
 
     /**
@@ -52,16 +54,8 @@ public final class PluginEventAdapter {
     /** JSON 编解码器，用于消息段序列化与 Reply 的段构造。 */
     private final JsonCodec jsonCodec;
 
-    /**
-     * 构造适配工厂。
-     *
-     * @param botSupplier 机器人实例供应函数；可为 {@code null}（则 Reply 不可用，仅能翻译事件）
-     * @param jsonCodec   JSON 编解码器；可为 {@code null}
-     */
-    public PluginEventAdapter(Supplier<YuniBot> botSupplier, JsonCodec jsonCodec) {
-        this.botSupplier = botSupplier;
-        this.jsonCodec = jsonCodec;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：
+     * (Supplier<YuniBot> botSupplier, JsonCodec jsonCodec)。 */
 
     /**
      * 以固定机器人实例构造适配工厂（测试与静态场景）。

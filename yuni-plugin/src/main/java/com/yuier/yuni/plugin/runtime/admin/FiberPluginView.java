@@ -4,6 +4,8 @@ import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.FiberState;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +37,8 @@ import java.util.Optional;
  *
  * @see PluginView
  */
+@Getter
+@Accessors(fluent = true)
 public final class FiberPluginView implements PluginView {
 
     /** 插件标识。 */
@@ -111,66 +115,15 @@ public final class FiberPluginView implements PluginView {
         };
     }
 
-    // ==================== 身份 ====================
-
-    @Override
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public String moduleId() {
-        return moduleId;
-    }
-
-    // ==================== 元数据 ====================
-
-    @Override
-    public String name() {
-        return name;
-    }
-
-    @Override
-    public String version() {
-        return version;
-    }
-
-    @Override
-    public String description() {
-        return description;
-    }
-
-    @Override
-    public List<String> tips() {
-        return tips;
-    }
-
-    @Override
-    public String author() {
-        return author;
-    }
-
-    @Override
-    public boolean buildIn() {
-        return buildIn;
-    }
-
-    @Override
-    public boolean defaultEnable() {
-        return defaultEnable;
-    }
-
-    // ==================== 运行状态 ====================
-
-    @Override
-    public PluginState state() {
-        return state;
-    }
-
-    @Override
-    public List<String> missingServices() {
-        return missingServices;
-    }
+    /*
+     * 契约里的 id() / moduleId() / name() / version() / description() / tips() /
+     * author() / buildIn() / defaultEnable() / state() / missingServices() 全部由
+     * 类上的 @Getter + @Accessors(fluent) 生成：契约方法名是 record 风格，
+     * 与 fluent getter 的命名完全一致。
+     *
+     * failureSummary() 不能生成——字段是 String，契约要求 Optional，
+     * 需要保留下面这个手工方法做包装。
+     */
 
     @Override
     public Optional<String> failureSummary() {

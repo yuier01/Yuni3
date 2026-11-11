@@ -3,6 +3,7 @@ package com.yuier.yuni.plugin.runtime.service;
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.util.RedisUtil;
 import com.yuier.yuni.plugin.api.service.Cache;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -49,19 +50,13 @@ import java.util.concurrent.TimeUnit;
  * @see Cache
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class RedisCache implements Cache {
 
     /** JSON 编解码器，用于类型不符时的二次转换。 */
     private final JsonCodec jsonCodec;
 
-    /**
-     * 构造缓存门面。
-     *
-     * @param jsonCodec JSON 编解码器
-     */
-    public RedisCache(JsonCodec jsonCodec) {
-        this.jsonCodec = jsonCodec;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：(JsonCodec jsonCodec)。 */
 
     // ==================== 字符串 / 对象 ====================
 

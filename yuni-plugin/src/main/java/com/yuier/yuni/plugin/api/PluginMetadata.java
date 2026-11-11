@@ -1,7 +1,9 @@
 package com.yuier.yuni.plugin.api;
 
+import lombok.Getter;
+import lombok.experimental.Accessors;
+
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -22,15 +24,53 @@ import java.util.Objects;
  *
  * @see YuniPlugin#metadata()
  */
+@Getter
+@Accessors(fluent = true)
 public final class PluginMetadata {
 
+    /** 插件显示名，用于日志与管理端展示；不应为空。 */
     private final String name;
+
+    /** 插件版本；未设置时为 {@code "0.0.1"}。 */
     private final String version;
+
+    /** 插件描述，会展示给用户；未设置时为空串。 */
     private final String description;
+
+    /**
+     * 使用提示，每项一条。
+     *
+     * <p>此处保存的是调用方给出的原始列表；对外读取请用 {@link #tips()}，
+     * 它在列表为空时会回退为「只含描述的单元素列表」。</p>
+     */
     private final List<String> tips;
+
+    /** 作者信息；未设置时为空串。 */
     private final String author;
+
+    /**
+     * 依赖的其他插件名。
+     *
+     * <p><b>注意</b>：现行系统的该字段是纯声明，从未被检查
+     * （{@code PluginMetadata} 的注释自承「实际上目前并没有实现依赖检查」）。
+     * 新系统中插件间依赖由 {@code inject()} 表达服务依赖，本字段仅作展示用途。</p>
+     */
     private final List<String> dependencies;
+
+    /**
+     * 默认是否启用。
+     *
+     * <p>决定插件首次加载时 {@code ScopeFilter} 的初始值。
+     * 对应现行 {@code metadata.json} 的 {@code default_enable}。</p>
+     */
     private final boolean defaultEnable;
+
+    /**
+     * 是否为系统内置插件。
+     *
+     * <p>内置插件在管理端与命令界面中受保护：只有 bot 拥有者可以启停，
+     * 对应现行 {@code PluginEnable} 里的 {@code isBuiltIn()} 判定。</p>
+     */
     private final boolean buildIn;
 
     private PluginMetadata(Builder b) {
@@ -54,32 +94,11 @@ public final class PluginMetadata {
         return new Builder(name);
     }
 
-    /**
-     * 插件显示名。
-     *
-     * @return 显示名
+    /*
+     * name() / version() / description() / author() / dependencies() /
+     * defaultEnable() / buildIn() 由类上的 @Getter + @Accessors(fluent) 生成
+     * ——对外契约是 record 风格的方法名，fluent getter 正好与之匹配。
      */
-    public String name() {
-        return name;
-    }
-
-    /**
-     * 插件版本。
-     *
-     * @return 版本字符串；未设置时为 {@code "0.0.1"}
-     */
-    public String version() {
-        return version;
-    }
-
-    /**
-     * 插件描述，会展示给用户。
-     *
-     * @return 描述；未设置时为空串
-     */
-    public String description() {
-        return description;
-    }
 
     /**
      * 使用提示，每项一条。
@@ -93,52 +112,6 @@ public final class PluginMetadata {
         return tips.isEmpty() && !description.isEmpty()
                 ? List.of(description)
                 : tips;
-    }
-
-    /**
-     * 作者信息。
-     *
-     * @return 作者；未设置时为空串
-     */
-    public String author() {
-        return author;
-    }
-
-    /**
-     * 依赖的其他插件名。
-     *
-     * <p><b>注意</b>：现行系统的该字段是纯声明，从未被检查
-     * （{@code PluginMetadata} 的注释自承「实际上目前并没有实现依赖检查」）。
-     * 新系统中插件间依赖由 {@code inject()} 表达服务依赖，本字段仅作展示用途。</p>
-     *
-     * @return 不可变的依赖名列表
-     */
-    public List<String> dependencies() {
-        return dependencies;
-    }
-
-    /**
-     * 默认是否启用。
-     *
-     * <p>决定插件首次加载时 {@code ScopeFilter} 的初始值。
-     * 对应现行 {@code metadata.json} 的 {@code default_enable}。</p>
-     *
-     * @return 默认启用返回 {@code true}
-     */
-    public boolean defaultEnable() {
-        return defaultEnable;
-    }
-
-    /**
-     * 是否为系统内置插件。
-     *
-     * <p>内置插件在管理端与命令界面中受保护：只有 bot 拥有者可以启停，
-     * 对应现行 {@code PluginEnable} 里的 {@code isBuiltIn()} 判定。</p>
-     *
-     * @return 内置返回 {@code true}
-     */
-    public boolean buildIn() {
-        return buildIn;
     }
 
     @Override

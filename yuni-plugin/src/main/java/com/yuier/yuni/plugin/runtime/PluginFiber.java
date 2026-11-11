@@ -3,6 +3,7 @@ package com.yuier.yuni.plugin.runtime;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,6 +60,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * @see FiberState
  * @see EffectRegistry
  */
+@Getter
+@Accessors(fluent = true)
 public final class PluginFiber {
 
     /** 插件的稳定标识（模块名 + 插件名），用于日志与管理端展示。 */
@@ -113,8 +116,8 @@ public final class PluginFiber {
      * 所以本标志回答的是「是否已<b>开始</b>卸载」；
      * 「是否已卸载<b>完毕</b>」要问 {@code state() == DISPOSED}。</p>
      *
-     * <p>访问器 {@code isDisposed()} 由 Lombok {@link Getter} 生成
-     * （布尔字段自动使用 {@code is} 前缀），与原手写方法签名完全等价。</p>
+     * <p>访问器 {@code disposed()} 由 Lombok {@link Getter} 生成
+     * （类上使用 {@code @Accessors(fluent = true)}，与其余访问器命名一致）。</p>
      */
     @Getter
     private volatile boolean disposed;
@@ -136,41 +139,10 @@ public final class PluginFiber {
 
     // ==================== 身份 ====================
 
-    /**
-     * 插件标识。
-     *
-     * @return 标识字符串
+    /*
+     * id() / plugin() / metadata() / classLoader() 由类上的
+     * @Getter + @Accessors(fluent) 生成（字段注释已说明各自语义）。
      */
-    public String id() {
-        return id;
-    }
-
-    /**
-     * 插件实现实例。
-     *
-     * @return 插件实例
-     */
-    public YuniPlugin plugin() {
-        return plugin;
-    }
-
-    /**
-     * 插件元数据。
-     *
-     * @return 元数据
-     */
-    public PluginMetadata metadata() {
-        return metadata;
-    }
-
-    /**
-     * 加载本插件的类加载器。
-     *
-     * @return 类加载器；可能为 {@code null}
-     */
-    public ClassLoader classLoader() {
-        return classLoader;
-    }
 
     // ==================== 状态 ====================
 
@@ -285,14 +257,7 @@ public final class PluginFiber {
 
     // ==================== Effect ====================
 
-    /**
-     * Effect 登记表。
-     *
-     * @return 登记表
-     */
-    public EffectRegistry effects() {
-        return effects;
-    }
+    /* effects() 由 @Getter 生成；下面是带计算的效应数量。 */
 
     /**
      * 当前登记的 Effect 数量。
@@ -307,14 +272,7 @@ public final class PluginFiber {
 
     // ==================== 树结构 ====================
 
-    /**
-     * 父 Fiber。
-     *
-     * @return 父 Fiber；根插件为 {@code null}
-     */
-    public PluginFiber parent() {
-        return parent;
-    }
+    /* parent() 由 @Getter 生成。 */
 
     /**
      * 登记一个子 Fiber。

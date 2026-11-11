@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.yuier.yuni.plugin.domain.entity.GroupPluginAbilityEntity;
 import com.yuier.yuni.plugin.runtime.PluginScopeStore;
 import com.yuier.yuni.plugin.service.GroupPluginAbilityService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,19 +45,13 @@ import java.util.Set;
  * @see PluginScopeStore
  */
 @Slf4j
+@RequiredArgsConstructor
 public class MybatisPluginScopeStore implements PluginScopeStore {
 
     /** 群插件启停表的数据访问。 */
     private final GroupPluginAbilityService abilityService;
 
-    /**
-     * 构造存储适配器。
-     *
-     * @param abilityService 群插件启停表的数据访问
-     */
-    public MybatisPluginScopeStore(GroupPluginAbilityService abilityService) {
-        this.abilityService = abilityService;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：(GroupPluginAbilityService abilityService)。 */
 
     @Override
     public Map<String, PluginScopeRecord> loadAll() {

@@ -5,6 +5,8 @@ import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
@@ -56,6 +58,7 @@ import java.util.stream.Stream;
  * @see PluginClassLoader
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class PluginModuleLoader {
 
     /** JSON 映射器，用于解析模块元数据。 */
@@ -64,22 +67,15 @@ public final class PluginModuleLoader {
     /** 插件运行时。 */
     private final PluginRuntime runtime;
 
-    /**
-     * 构造加载器。
-     *
-     * @param objectMapper JSON 映射器
-     * @param runtime      插件运行时
-     */
-    public PluginModuleLoader(ObjectMapper objectMapper, PluginRuntime runtime) {
-        this.objectMapper = objectMapper;
-        this.runtime = runtime;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：
+     * (ObjectMapper objectMapper, PluginRuntime runtime)。 */
 
     /**
      * 模块元数据模型。
      *
      * <p>只含模块级信息；插件级元数据由插件代码提供。</p>
      */
+    @Data
     public static class ModuleMetadata {
 
         /** 模块 ID。 */
@@ -92,45 +88,17 @@ public final class PluginModuleLoader {
          * 可选的插件类全限定名清单。
          *
          * <p>不填则扫描 jar 内全部实现 {@link YuniPlugin} 的类。显式填写的收益是
-         * 加载更快（跳过无用类的类加载），代价是新增插件时要同步维护。</p>
+         * 加载更快（跳过无用类的加载），代价是新增插件时要同步维护。</p>
          */
         private List<String> pluginClasses;
 
-        /**
-         * 取模块 ID。
+        /*
+         * getModuleId / setModuleId / getModuleName / setModuleName /
+         * setPluginClasses 由 @Data 生成。
          *
-         * @return 模块 ID
+         * getPluginClasses 不能生成——它带 null 兜底（未配置时返回空列表，
+         * 避免调用方到处判空），因此保留下面这个手工方法，Lombok 会跳过同名生成。
          */
-        public String getModuleId() {
-            return moduleId;
-        }
-
-        /**
-         * 设置模块 ID。
-         *
-         * @param moduleId 模块 ID
-         */
-        public void setModuleId(String moduleId) {
-            this.moduleId = moduleId;
-        }
-
-        /**
-         * 取模块显示名。
-         *
-         * @return 模块显示名
-         */
-        public String getModuleName() {
-            return moduleName;
-        }
-
-        /**
-         * 设置模块显示名。
-         *
-         * @param moduleName 模块显示名
-         */
-        public void setModuleName(String moduleName) {
-            this.moduleName = moduleName;
-        }
 
         /**
          * 取插件类清单。
@@ -141,16 +109,7 @@ public final class PluginModuleLoader {
             return pluginClasses == null ? List.of() : pluginClasses;
         }
 
-        /**
-         * 设置插件类清单。
-         *
-         * @param pluginClasses 插件类全限定名列表
-         */
-        public void setPluginClasses(List<String> pluginClasses) {
-            this.pluginClasses = pluginClasses;
-        }
-
-        /** Jackson 反序列化需要无参构造；这里显式声明以消歧。 */
+        /** Jackson 反序列化需要无参构造；显式声明以消歧。 */
         public ModuleMetadata() {
             // 由 Jackson 填充字段
         }

@@ -9,6 +9,7 @@ import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.Optional;
  * @see FiberPluginView
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class PluginAdminRuntime implements PluginAdmin {
 
     /** 运行时。 */
@@ -48,16 +50,8 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @SuppressWarnings("unused")
     private final PluginModuleLoader moduleLoader;
 
-    /**
-     * 构造适配器。
-     *
-     * @param runtime      插件运行时
-     * @param moduleLoader 模块加载器；可为 {@code null}
-     */
-    public PluginAdminRuntime(PluginRuntime runtime, PluginModuleLoader moduleLoader) {
-        this.runtime = runtime;
-        this.moduleLoader = moduleLoader;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成：
+     * (PluginRuntime runtime, PluginModuleLoader moduleLoader)。 */
 
     // ==================== 查询 ====================
 

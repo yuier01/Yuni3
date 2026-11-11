@@ -3,6 +3,8 @@ package com.yuier.yuni.plugin.runtime.adapter;
 import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.event.Event;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,6 +35,8 @@ import java.util.Optional;
  *
  * @see Event
  */
+@Getter
+@Accessors(fluent = true)
 public abstract class BaseCoreEvent implements Event {
 
     /** 事件时间戳（秒）。 */
@@ -83,24 +87,20 @@ public abstract class BaseCoreEvent implements Event {
     }
 
     @Override
-    public long time() {
-        return time;
-    }
-
-    @Override
-    public long selfId() {
-        return selfId;
-    }
-
-    @Override
     public Optional<Long> groupId() {
         return Optional.ofNullable(groupId);
     }
 
-    @Override
-    public String subType() {
-        return subType;
-    }
+    /*
+     * time() / selfId() / subType() / rawJson() 由类上的
+     * @Getter + @Accessors(fluent) 生成。
+     *
+     * 其余成员保持手写，因为它们并非简单转发：
+     * - groupId() 包装成 Optional；
+     * - rawFields() 与 value() 读取字段表；
+     * - matched() / setMatched() 是可变匹配令牌；
+     * - fields() 供子类访问（Lombok 发现同名方法会跳过生成）。
+     */
 
     @Override
     public Optional<Object> value(String key) {
@@ -110,11 +110,6 @@ public abstract class BaseCoreEvent implements Event {
     @Override
     public Map<String, Object> rawFields() {
         return fields;
-    }
-
-    @Override
-    public String rawJson() {
-        return rawJson;
     }
 
     @Override

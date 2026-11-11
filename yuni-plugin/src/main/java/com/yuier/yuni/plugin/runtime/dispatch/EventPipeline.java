@@ -19,12 +19,11 @@ import com.yuier.yuni.plugin.runtime.adapter.CoreLifecycleEvents;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageSentEvent;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 
 /**
  * 事件分发流水线——取代现行系统的 {@code PassivePluginMatcher}。
@@ -72,6 +71,7 @@ import java.util.function.Function;
  * @see RegistrationTable
  */
 @Slf4j
+@RequiredArgsConstructor
 public final class EventPipeline {
 
     /** 能力注册总表。 */
@@ -86,23 +86,8 @@ public final class EventPipeline {
     /** 命令匹配器（复用现有引擎，见设计文档 §6）。 */
     private final CommandDispatcher commandDispatcher;
 
-    /**
-     * 构造流水线。
-     *
-     * @param runtime   插件运行时
-     * @param adapter   事件适配工厂
-     * @param registrations 能力注册总表
-     * @param commandDispatcher 命令分发器；可为 {@code null}（则命令阶段跳过）
-     */
-    public EventPipeline(PluginRuntime runtime,
-                         PluginEventAdapter adapter,
-                         RegistrationTable registrations,
-                         CommandDispatcher commandDispatcher) {
-        this.runtime = runtime;
-        this.adapter = adapter;
-        this.registrations = registrations;
-        this.commandDispatcher = commandDispatcher;
-    }
+    /* 构造器由 @RequiredArgsConstructor 生成，参数按字段声明顺序：
+     * (RegistrationTable, PluginRuntime, PluginEventAdapter, CommandDispatcher)。 */
 
     // ==================== 公开入口（与 core 事件类型一一对应）====================
 
