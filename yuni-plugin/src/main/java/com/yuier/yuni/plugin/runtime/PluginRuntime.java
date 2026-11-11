@@ -220,7 +220,7 @@ public final class PluginRuntime {
      * @return {@code this}，便于链式注册
      */
     public <T> PluginRuntime registerService(Class<T> type, T impl) {
-        Optional<Object> previous = services.register(type, impl, null);
+        Optional<Object> previous = services.register(type, impl);
         if (previous.isPresent()) {
             log.warn("内置服务 {} 被重复注册，旧实现将失效", type.getName());
         }
@@ -248,7 +248,7 @@ public final class PluginRuntime {
         }
         for (Class<?> type : interfaces) {
             if (type.getPackageName().startsWith("com.yuier.yuni.plugin.api")) {
-                services.register(type, impl, null);
+                services.register(type, impl);
             }
         }
         return this;

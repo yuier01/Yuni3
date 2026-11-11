@@ -1,10 +1,12 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,7 +49,7 @@ public final class ServiceRegistry {
     private static final PluginFiber BUILTIN = new PluginFiber(
             "<builtin>",
             ctx -> { },
-            com.yuier.yuni.plugin.api.PluginMetadata.of("<builtin>").build(),
+            PluginMetadata.of("<builtin>").build(),
             null);
 
     /** 服务类型 → 实例。 */
@@ -57,39 +59,81 @@ public final class ServiceRegistry {
     private final Map<Class<?>, PluginFiber> providers = new ConcurrentHashMap<>();
 
     /**
-     * 注册一个服务。
+     * 注册一个<b>框架内置</b>服务。
+     *
+     * <p>内置服务没有提供者 Fiber，不会被任何插件的卸载流程连带注销。
+     * 该方法与三参版本分开，是为了让「内置」这个语义由<b>调用的方法</b>
+     * 表达，而不是靠传 {@code null} 这种约定。</p>
+     *
+     * @param type 服务类型（通常是接口）
+     * @param impl 实现实例
+     * @return 被覆盖的旧实例；无冲突时为空
+     */
+    public Optional<Object> register(Class<?> type, Object impl) {
+        return register(type, impl, BUILTIN);
+    }
+
+    /**
+     * 注册一个<b>插件提供</b>的服务。
      *
      * @param type     服务类型（通常是接口）
      * @param impl     实现实例
-     * @param provider 提供者 Fiber；框架内置服务传 {@code null}
+     * @param provider 提供者 Fiber，不能为 {@code null}
+     *                 （内置服务请用 {@link #register(Class, Object)}）
      * @return 被覆盖的旧实例；无冲突时为空
      */
     public Optional<Object> register(Class<?> type, Object impl, PluginFiber provider) {
         if (type == null || impl == null) {
             return Optional.empty();
         }
+        Objects.requireNonNull(provider,
+                "provider 不能为 null；框架内置服务请用 register(type, impl)");
         Object previous = services.put(type, impl);
-        providers.put(type, provider == null ? BUILTIN : provider);
+        providers.put(type, provider);
         return Optional.ofNullable(previous);
     }
 
     /**
-     * 注销一个服务。
+     * 注销一个服务（不校验提供者）。
+     *
+     * @param type 服务类型
+     * @return 实际移除了服务时返回 {@code true}
+     */
+    public boolean unregister(Class<?> type) {
+        return remove(type, null);
+    }
+
+    /**
+     * 注销一个由指定 Fiber 提供的服务。
      *
      * <p>只有当前提供者与传入的 Fiber 一致时才移除——避免「A 插件卸载时
      * 误删了 B 插件后来覆盖注册的同类型服务」。内置服务不会被任何插件的
-     * 卸载流程注销（传入的 provider 永远不等于 {@link #BUILTIN}）。</p>
+     * 卸载流程注销（它们的提供者是 {@link #BUILTIN}）。</p>
      *
      * @param type     服务类型
-     * @param provider 期望的提供者；{@code null} 表示不校验提供者
+     * @param provider 期望的提供者，不能为 {@code null}
+     *                 （不校验提供者请用 {@link #unregister(Class)}）
      * @return 实际移除了服务时返回 {@code true}
      */
     public boolean unregister(Class<?> type, PluginFiber provider) {
+        Objects.requireNonNull(provider,
+                "provider 不能为 null；不校验提供者请用 unregister(type)");
+        return remove(type, provider);
+    }
+
+    /**
+     * 移除服务。
+     *
+     * @param type             服务类型
+     * @param expectedProvider 期望的提供者；{@code null} 表示不校验
+     * @return 实际移除了服务时返回 {@code true}
+     */
+    private boolean remove(Class<?> type, PluginFiber expectedProvider) {
         if (type == null) {
             return false;
         }
         PluginFiber current = providers.get(type);
-        if (provider != null && current != null && current != provider) {
+        if (expectedProvider != null && current != null && current != expectedProvider) {
             // 已被其他插件覆盖注册，本插件的卸载不应影响它
             return false;
         }
@@ -187,7 +231,7 @@ public final class ServiceRegistry {
      */
     public static ServiceRegistry withPermission(PermissionService permissionService) {
         ServiceRegistry registry = new ServiceRegistry();
-        registry.register(PermissionService.class, permissionService, null);
+        registry.register(PermissionService.class, permissionService);
         return registry;
     }
 }
