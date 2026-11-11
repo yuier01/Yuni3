@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  *
  * <h2>为什么不用 {@code @Bean} 让容器创建它们</h2>
  * <p>{@link PluginRuntime}、{@link PluginModuleLoader}、
- * {@link PluginSystemConfig.PluginBootstrap} 的<b>创建时机是有意义的</b>：
+ * {@link PluginBootstrap} 的<b>创建时机是有意义的</b>：
  * 它们必须等 {@code BotManager.startBot()} 建好机器人之后才能组装。
  * 交给容器的 eager 单例模型，就只能靠 {@code @Lazy} 代理与
  * {@code ObjectProvider} 去对抗初始化顺序——那正是
@@ -95,8 +95,8 @@ public final class PluginSystemAssembler {
         runtime.bindModuleLoader(loader);
         runtime.bindScopeStore(scopeStore);
 
-        PluginSystemConfig.PluginBootstrap bootstrap =
-                new PluginSystemConfig.PluginBootstrap(loader, runtime, pluginDirectory);
+        PluginBootstrap bootstrap =
+                new PluginBootstrap(loader, runtime, pluginDirectory);
         return new AssembledPluginSystem(runtime, loader, bootstrap);
     }
 
@@ -114,6 +114,6 @@ public final class PluginSystemAssembler {
         private final PluginModuleLoader loader;
 
         /** 启动器（负责扫描并加载插件目录）。 */
-        private final PluginSystemConfig.PluginBootstrap bootstrap;
+        private final PluginBootstrap bootstrap;
     }
 }
