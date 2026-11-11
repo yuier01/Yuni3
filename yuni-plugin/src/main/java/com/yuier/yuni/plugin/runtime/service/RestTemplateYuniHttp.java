@@ -1,7 +1,7 @@
 package com.yuier.yuni.plugin.runtime.service;
 
 import com.yuier.yuni.core.bot.JsonCodec;
-import com.yuier.yuni.plugin.api.service.Http;
+import com.yuier.yuni.plugin.api.service.YuniHttp;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -19,7 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * {@link Http} 的默认实现——基于共享 {@link RestTemplate} 的阻塞式客户端。
+ * {@link YuniHttp} 的默认实现——基于共享 {@link RestTemplate} 的阻塞式客户端。
  *
  * <h2>取代了什么</h2>
  * <p>现行 {@code PluginUtils.simpleGet} / {@code simplePost}：</p>
@@ -40,10 +40,10 @@ import java.util.Map;
  * {@code executeIgnoringResult()} 是唯一的例外，它捕获全部异常并返回布尔值，
  * 供 webhook 这类「发出即可」的场景使用。</p>
  *
- * @see Http
+ * @see YuniHttp
  */
 @Slf4j
-public final class RestTemplateHttp implements Http {
+public final class RestTemplateYuniHttp implements YuniHttp {
 
     /** 默认连接超时。 */
     private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);
@@ -62,7 +62,7 @@ public final class RestTemplateHttp implements Http {
      *
      * @param jsonCodec JSON 编解码器
      */
-    public RestTemplateHttp(JsonCodec jsonCodec) {
+    public RestTemplateYuniHttp(JsonCodec jsonCodec) {
         this(jsonCodec, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
     }
 
@@ -73,7 +73,7 @@ public final class RestTemplateHttp implements Http {
      * @param connectTimeout  连接超时
      * @param readTimeout     读取超时
      */
-    public RestTemplateHttp(JsonCodec jsonCodec, Duration connectTimeout, Duration readTimeout) {
+    public RestTemplateYuniHttp(JsonCodec jsonCodec, Duration connectTimeout, Duration readTimeout) {
         this.jsonCodec = jsonCodec;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) connectTimeout.toMillis());

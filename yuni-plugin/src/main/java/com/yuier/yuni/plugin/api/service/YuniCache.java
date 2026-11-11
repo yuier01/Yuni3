@@ -31,7 +31,7 @@ import java.util.Set;
  *
  * @see <a href="https://redis.io/commands/">Redis 命令参考</a>
  */
-public interface Cache {
+public interface YuniCache {
 
     // ==================== 字符串 / 对象 ====================
 

@@ -2,7 +2,7 @@ package com.yuier.yuni.plugin.runtime.service;
 
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.util.RedisUtil;
-import com.yuier.yuni.plugin.api.service.Cache;
+import com.yuier.yuni.plugin.api.service.YuniCache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * {@link Cache} 的默认实现——包装 {@link RedisUtil}。
+ * {@link YuniCache} 的默认实现——包装 {@link RedisUtil}。
  *
  * <h2>取代了什么</h2>
  * <p>现行插件直接调用静态类 {@code RedisUtil}（其内部是一个 {@code static} 字段
@@ -47,11 +47,11 @@ import java.util.concurrent.TimeUnit;
  *       「键不存在」在业务上通常等价于「不需要刷新」。</li>
  * </ul>
  *
- * @see Cache
+ * @see YuniCache
  */
 @Slf4j
 @RequiredArgsConstructor
-public final class RedisCache implements Cache {
+public final class RedisYuniCache implements YuniCache {
 
     /** JSON 编解码器，用于类型不符时的二次转换。 */
     private final JsonCodec jsonCodec;
@@ -223,7 +223,7 @@ public final class RedisCache implements Cache {
         /*
          * 当前底层 RedisUtil 未暴露 SCAN，因此本方法无法实现为游标迭代。
          * 明确抛出而不是偷偷用 KEYS——KEYS 会阻塞 Redis 服务端，
-         * 而接口文档已承诺使用 SCAN（见 Cache#keys 的说明）。
+         * 而接口文档已承诺使用 SCAN（见 YuniCache#keys 的说明）。
          *
          * 待 RedisUtil 补上 scan 支持后在此接入。插件如需遍历键，
          * 当前应改用「已知键名列表 + get」的方式。

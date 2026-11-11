@@ -12,11 +12,8 @@ import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
-import com.yuier.yuni.plugin.api.service.Cache;
-import com.yuier.yuni.plugin.api.service.ConfigLoader;
-import com.yuier.yuni.plugin.api.service.Http;
-import com.yuier.yuni.plugin.api.service.PermissionService;
-import com.yuier.yuni.plugin.api.service.Sender;
+import com.yuier.yuni.plugin.api.service.*;
+import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.data.PluginDataService;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -515,7 +512,7 @@ public interface YuniContext {
      *
      * @return 缓存门面，永不为 {@code null}
      */
-    Cache getCache();
+    YuniCache getCache();
 
     /**
      * 插件配置加载器。
@@ -535,7 +532,7 @@ public interface YuniContext {
      *
      * @return HTTP 门面，永不为 {@code null}
      */
-    Http getHttp();
+    YuniHttp getHttp();
 
     /**
      * 权限判定服务。

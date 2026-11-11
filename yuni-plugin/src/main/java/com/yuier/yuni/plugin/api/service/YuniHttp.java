@@ -3,7 +3,6 @@ package com.yuier.yuni.plugin.api.service;
 import lombok.Getter;
 
 import java.time.Duration;
-import java.util.Map;
 
 /**
  * HTTP 客户端门面。
@@ -49,7 +48,7 @@ import java.util.Map;
  * <p>与现行实现「失败时抛 {@code RuntimeException} 且信息含糊」不同，
  * 异常里带 URL、状态码与响应片段，便于定位。</p>
  */
-public interface Http {
+public interface YuniHttp {
 
     /**
      * 发起 GET 请求。

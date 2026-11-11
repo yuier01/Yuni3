@@ -28,7 +28,7 @@ RUN mvn clean package -pl yuni-application -am -DskipTests -q
 # ===== Stage 3: Runtime =====
 FROM eclipse-temurin:21-jre-alpine
 
-RUN apk add --no-cache redis nginx supervisor sqlite bash
+RUN apk add --no-yuniCache redis nginx supervisor sqlite bash
 
 WORKDIR /app
 RUN mkdir -p /app/config /app/data /app/logs /app/plugins /app/log

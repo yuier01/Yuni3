@@ -22,16 +22,16 @@ import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
-import com.yuier.yuni.plugin.api.service.Cache;
+import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
-import com.yuier.yuni.plugin.api.service.Http;
+import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.api.service.Sender;
 import com.yuier.yuni.plugin.data.PluginDataService;
 import com.yuier.yuni.plugin.runtime.service.CoreSender;
 import com.yuier.yuni.plugin.runtime.service.FileConfigLoader;
-import com.yuier.yuni.plugin.runtime.service.RedisCache;
-import com.yuier.yuni.plugin.runtime.service.RestTemplateHttp;
+import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
+import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -707,14 +707,14 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public Cache getCache() {
+    public YuniCache getCache() {
         /*
          * 优先取注册表里的实例（启动配置会注入一个共享实例），
          * 未注册时按需构造。共享实例的价值在于连接池与线程池的复用——
          * 若每个插件各持一个 HttpClient，连接池就被割裂了。
          */
-        return services.resolve(Cache.class)
-                .orElseGet(() -> new RedisCache(jsonCodec()));
+        return services.resolve(YuniCache.class)
+                .orElseGet(() -> new RedisYuniCache(jsonCodec()));
     }
 
     @Override
@@ -729,14 +729,14 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public Http getHttp() {
+    public YuniHttp getHttp() {
         /*
          * 同 getCache()：优先复用注册表里的共享实例。
          * 现行 PluginUtils.simpleGet/simplePost 每次调用都 new RestTemplate()，
          * 不复用连接池——这正是本设计要修掉的问题之一。
          */
-        return services.resolve(Http.class)
-                .orElseGet(() -> new RestTemplateHttp(jsonCodec()));
+        return services.resolve(YuniHttp.class)
+                .orElseGet(() -> new RestTemplateYuniHttp(jsonCodec()));
     }
 
     @Override

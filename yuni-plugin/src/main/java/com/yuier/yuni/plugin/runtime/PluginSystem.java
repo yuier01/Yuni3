@@ -8,15 +8,15 @@ import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.permission.service.GroupUserPluginPermissionService;
 import com.yuier.yuni.plugin.api.PluginAdmin;
-import com.yuier.yuni.plugin.api.service.Cache;
-import com.yuier.yuni.plugin.api.service.Http;
+import com.yuier.yuni.plugin.api.service.YuniCache;
+import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.config.PluginBootstrap;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
 import com.yuier.yuni.plugin.runtime.service.DefaultPermissionService;
 import com.yuier.yuni.plugin.runtime.service.MybatisPluginScopeStore;
-import com.yuier.yuni.plugin.runtime.service.RedisCache;
-import com.yuier.yuni.plugin.runtime.service.RestTemplateHttp;
+import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
+import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
 import com.yuier.yuni.plugin.service.GroupPluginAbilityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -85,10 +85,10 @@ public final class PluginSystem {
     // ==================== 框架内置服务（构造时创建并持有） ====================
 
     /** 缓存门面。 */
-    private final Cache cache;
+    private final YuniCache yuniCache;
 
     /** HTTP 门面。 */
-    private final Http http;
+    private final YuniHttp yuniHttp;
 
     /** 权限服务。 */
     private final PermissionService permissionService;
@@ -140,13 +140,13 @@ public final class PluginSystem {
         this.botApp = botApp;
         this.pluginDirectory = pluginDirectory;
 
-        this.cache = new RedisCache(jsonCodec);
-        this.http = new RestTemplateHttp(jsonCodec);
+        this.yuniCache = new RedisYuniCache(jsonCodec);
+        this.yuniHttp = new RestTemplateYuniHttp(jsonCodec);
         // bot 在 refresh 期尚不存在，因此传供应函数而不是实例
         this.permissionService = new DefaultPermissionService(
                 permissionStore,
                 botConfig.getIfAvailable(),
-                () -> botProvider.getIfAvailable());
+                botProvider::getIfAvailable);
         this.scopeStore = new MybatisPluginScopeStore(abilityService);
     }
 
@@ -170,8 +170,8 @@ public final class PluginSystem {
         newRuntime.bindBot(botProvider::getIfAvailable, botApp);
 
         // 内置服务登记进运行时：插件拿到的都是同一份共享实例
-        newRuntime.registerService(Cache.class, cache);
-        newRuntime.registerService(Http.class, http);
+        newRuntime.registerService(YuniCache.class, yuniCache);
+        newRuntime.registerService(YuniHttp.class, yuniHttp);
         newRuntime.registerService(PermissionService.class, permissionService);
         newRuntime.registerService(JsonCodec.class, jsonCodec);
 
