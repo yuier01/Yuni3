@@ -122,7 +122,7 @@ public final class PluginRuntime {
             new PluginScopes();
 
     /**
-     * 插件标识 → 该插件注册时自带的基线作用域配置（可为 {@code null}）。
+     * 插件注册时自带的基线作用域配置——「作者意图」这一层。
      *
      * <p>与 {@link #pluginScopes}（用户配置的群例外）分工明确：</p>
      * <ul>
@@ -131,25 +131,21 @@ public final class PluginRuntime {
      *   <li><b>例外表</b>来自用户的显式操作，优先于基线。</li>
      * </ul>
      * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
+     *
+     * <p>基线连同「它原本是白名单还是黑名单」一起存成 {@link Baseline}：
+     * 两者是同一条信息的两个属性，永远成对写入/删除。之前拆成
+     * {@code Map} + {@code Set} 两张表，属于同一关系的冗余表示。</p>
      */
-    private final Map<String, PersistedScope>
-            baseScopeFilters = new ConcurrentHashMap<>();
+    private final Map<String, Baseline> baselines = new ConcurrentHashMap<>();
 
     /**
-     * 「基线是白名单形态」的插件标识集合。
+     * 一条基线：解析后的作用域 + 它原本的形态。
      *
-     * <p>需要单独记录的原因：{@link com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope}
-     * 只表达「默认值 + 例外群集合」，而
-     * {@code onlyGroups({a,b})}（默认关闭 + 例外为开启）
-     * 与「用户把 a,b 设为开启」在数据上完全一样。</p>
-     *
-     * <p><b>唯一用途</b>是 {@link #describeScope} 的措辞——「仅限群 [a, b]」
-     * 与「排除群 [a, b]」是两种相反的意图，日志里必须说清楚。
-     * 判定逻辑（{@link #isPluginEnabledIn} / {@link #isGloballyEnabled}）
-     * 不依赖它，只看默认值与例外集合本身。</p>
+     * @param scope     「默认值 + 例外群集合」
+     * @param whitelist 原本是否为 {@code onlyGroups(...)}（白名单）形态
      */
-    private final Set<String> whitelistBaselines =
-            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private record Baseline(PersistedScope scope, boolean whitelist) {
+    }
 
     /**
      * 作用域持久化端口。
@@ -323,11 +319,9 @@ public final class PluginRuntime {
             PersistedScope baseline =
                     toBaseline(id, filter, metadata.isDefaultEnable());
             if (baseline != null) {
-                baseScopeFilters.put(id, baseline);
-                if (filter.getExplicitGroupWhitelist().isPresent()) {
-                    // 记下白名单形态：仅用于 describeScope 的措辞
-                    whitelistBaselines.add(id);
-                }
+                // 连同「原本是白名单还是黑名单」一起记，供 describeScope 区措辞
+                boolean whitelist = filter.getExplicitGroupWhitelist().isPresent();
+                baselines.put(id, new Baseline(baseline, whitelist));
             }
         }
         if (parent != null) {
@@ -733,8 +727,7 @@ public final class PluginRuntime {
          * ——重载会先 unload 再 load，清掉就等于重载丢配置。
          * 需要真正清除用户配置时走 resetPluginScope。
          */
-        baseScopeFilters.remove(pluginId);
-        whitelistBaselines.remove(pluginId);
+        baselines.remove(pluginId);
 
         if (failures.isEmpty()) {
             log.info("插件已卸载: {}", pluginId);
@@ -998,11 +991,12 @@ public final class PluginRuntime {
          * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
          * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
          */
-        PersistedScope base = baseScopeOf(pluginId);
-        if (base != null && !base.getExceptionGroups().isEmpty()) {
-            boolean listed = base.getExceptionGroups().contains(groupId);
+        Baseline base = baseScopeOf(pluginId);
+        if (base != null && !base.scope().getExceptionGroups().isEmpty()) {
+            PersistedScope scope = base.scope();
+            boolean listed = scope.getExceptionGroups().contains(groupId);
             // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
-            return base.isEnabledByDefault() ? !listed : listed;
+            return scope.isEnabledByDefault() ? !listed : listed;
         }
         // ③ 没有任何例外信息 → 按有效默认值（用户全局开关 > 基线 > 元数据）
         return effectiveDefaultEnabled(pluginId);
@@ -1031,9 +1025,9 @@ public final class PluginRuntime {
             return userGlobal.get();
         }
         // 其次看插件注册时的基线
-        PersistedScope base = baseScopeOf(pluginId);
+        Baseline base = baseScopeOf(pluginId);
         if (base != null) {
-            return base.isEnabledByDefault();
+            return base.scope().isEnabledByDefault();
         }
         // 最后回落到元数据。插件不存在时保守返回 false：
         // 配置损坏时「不放行」比「误放行」安全
@@ -1048,8 +1042,8 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 基线配置；没有时为 {@code null}
      */
-    private PersistedScope baseScopeOf(String pluginId) {
-        return pluginId == null ? null : baseScopeFilters.get(pluginId);
+    private Baseline baseScopeOf(String pluginId) {
+        return pluginId == null ? null : baselines.get(pluginId);
     }
 
     /**
@@ -1139,13 +1133,14 @@ public final class PluginRuntime {
          * 优先描述基线：插件注册时传的 filter 是更强的意图表达
          * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
          */
-        PersistedScope base = baseScopeOf(pluginId);
+        Baseline base = baseScopeOf(pluginId);
         if (base != null) {
-            if (whitelistBaselines.contains(pluginId)) {
-                return "仅限群 " + base.getExceptionGroups();
+            PersistedScope scope = base.scope();
+            if (base.whitelist()) {
+                return "仅限群 " + scope.getExceptionGroups();
             }
-            if (!base.getExceptionGroups().isEmpty()) {
-                return "排除群 " + base.getExceptionGroups();
+            if (!scope.getExceptionGroups().isEmpty()) {
+                return "排除群 " + scope.getExceptionGroups();
             }
         }
 
