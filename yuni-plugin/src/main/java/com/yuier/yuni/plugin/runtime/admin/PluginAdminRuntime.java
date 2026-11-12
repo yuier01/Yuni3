@@ -5,13 +5,11 @@ import com.yuier.yuni.plugin.api.PluginAdminException;
 import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
-import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -137,11 +135,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
          * 因此这里只返回白名单里的群。这与旧 group_plugin_ability 表
          * 「ability = true 的行」语义一致。
          */
-        LinkedHashSet<Long> enabled = new LinkedHashSet<>();
-        for (ScopeFilter filter : runtime.scopeExceptionsOf(pluginId)) {
-            filter.getExplicitGroupWhitelist().ifPresent(enabled::addAll);
-        }
-        return List.copyOf(enabled);
+        return List.copyOf(runtime.explicitlyEnabledGroups(pluginId));
     }
 
     @Override

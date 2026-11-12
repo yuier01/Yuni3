@@ -1,128 +1,94 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.ScopeFilter;
-import java.util.ArrayList;
-import java.util.HashMap;
+
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * 插件作用域配置表——「每个插件在哪些群被显式开启 / 关闭」。
  *
- * <h2>为什么需要它，而不是一个 {@code Map<pluginId, ScopeFilter>}</h2>
- * <p>P5 阶段 {@code PluginRuntime} 直接持有 {@code Map<String, ScopeFilter>}。
- * 那个表示法有一个致命的表达力缺口：<b>它无法同时表达「全局关闭 + 若干群开启」
- * 与「全局开启 + 若干群关闭」</b>。</p>
- *
- * <ul>
- *   <li>{@code onlyGroups}（白名单）：非列出的群全部关闭；</li>
- *   <li>{@code excludeGroups}（黑名单）：非列出的群全部开启。</li>
- * </ul>
- *
- * <p>真实配置需要的是「一小部分群被显式设置过，其余按默认值」——
- * 也就是每个群一个<b>三态</b>（未设置 / 开启 / 关闭）。旧的
- * {@code group_plugin_ability} 表正是这个三态（{@code ability = true/false}）。</p>
- *
- * <p>若强行把三态压成单个过滤器，就会遇到「全局默认关闭、但 A 群开启、
- * 同时又要保留默认开启的 B 群」这类配置<b>无法表示</b>的问题——而
- * 「默认关闭 + 逐个群开启」恰恰是管理端最常见的用法。</p>
- *
- * <h2>采用的表示法</h2>
- * <p>每个插件持有一个<b>显式例外列表</b> {@code List<ScopeFilter>}，每项都是
- * 可反向解析的具名过滤器（{@code OnlyGroups} / {@code ExcludeGroups}）。
- * 判定单个群时按列表顺序取第一个命中的结果：</p>
+ * <h2>表示法：每个群一个三态</h2>
+ * <p>用户对某个群的操作只有三种结果：未设置、显式开启、显式关闭。因此本表
+ * 直接存「群号 → 显式值」，未出现的群即「未设置」：</p>
  * <pre>
- *   某个例外返回 true  → 该群开启
- *   某个例外返回 false → 该群关闭
- *   没有例外命中       → 按插件元数据的 defaultEnable
+ *   explicitGroups: pluginId → (groupId → true/false)
  * </pre>
+ * <p>需要过滤器时，用「有效默认值 + 与默认值相反的群」合成
+ * {@link ScopeFilter}（{@link #toFilter}）。这样不需要维护白名单 / 黑名单
+ * 两张具名过滤器，也不需要「把新群并入哪一侧」的合并逻辑。</p>
  *
- * <p>写入时按「需要新增的群属于哪一侧」选择把例外追加到白名单还是黑名单：
- * 新增一个<b>开启</b>的群时，若已存在黑名单则追加进黑名单；否则新建白名单。
- * 反之亦然。这样既保持三态语义完整，又能随时导出为
- * {@link ScopeFilter.PersistedScope}（默认值 + 例外群集合）。</p>
+ * <h2>为什么还要单独存「显式全局默认值」</h2>
+ * <p>「用户把全局开关从插件默认值改成相反值」这一操作，在没有群例外时
+ * 无法由群表承载（群表是空的）。因此单独记一个可选布尔：
+ * 用户从未改过时不出现，读取方回落到插件元数据。</p>
  *
- * <h2>为什么不用一把锁保护整张表</h2>
- * <p>外层 {@link ConcurrentHashMap} 提供插件级并发；每个插件的例外列表用
- * {@code synchronized} 在<b>该插件自己的 Monitor</b> 上保护。写入是低频操作
- * （用户敲一条命令），读取远多于写入，因此插件级隔离足够且不会有全局争用。</p>
+ * <h2>绝对值与默认值</h2>
+ * <p>群表里存的是<b>绝对</b>的布尔值（该群到底生效与否），不是「与默认值相反」。
+ * 这样即使插件的 {@code defaultEnable} 在版本升级后改变，用户对某群的显式选择
+ * 也不会被翻转——合成过滤器时才把绝对值和当前默认值比较。</p>
+ *
+ * <h2>线程安全</h2>
+ * <p>外层 {@link ConcurrentHashMap} 提供插件级并发；单个插件的群表用
+ * {@code synchronized} 在<b>该插件自己的 Map 实例</b>上保护。写入是低频操作。</p>
  *
  * @see ScopeFilter
  */
 public final class PluginScopes {
 
-    /** 插件标识 → 该插件的显式例外列表（按加入顺序）。 */
-    private final Map<String, List<ScopeFilter>> exceptions = new ConcurrentHashMap<>();
+    /** 插件标识 → 该插件被显式设置过的群（群号 → 是否生效）。 */
+    private final Map<String, Map<Long, Boolean>> explicitGroups = new ConcurrentHashMap<>();
 
     /**
      * 插件标识 → 用户显式设置的<b>全局默认启用值</b>。
      *
-     * <h2>为什么需要它</h2>
-     * <p>没有这一层时，「全局开关」与「默认值」是同一个东西，于是
-     * 「把插件从默认关闭改为全局开启」这个操作无法表达——它是
-     * {@code PersistedScope} 里的 {@code enabledByDefault} 位，
-     * 而那个位在没有例外群时<b>没有任何载体</b>（例外列表是空的）。</p>
-     *
-     * <p>具体后果：一个 {@code defaultEnable = false} 的插件，用户想全局开启，
-     * 若只存例外列表则必须写成「白名单 = 全部群」，而群是无限集、无法枚举。</p>
-     *
-     * <h2>优先级</h2>
-     * <p>用户显式全局默认值 &gt; 插件注册时的基线默认值 &gt; 元数据
-     * {@code defaultEnable}。因此本表只存「用户显式设置过」的项，
-     * 未设置时不出现（{@link #explicitGlobalDefault} 返回空）。</p>
+     * <p>只存「用户显式设置过」的项；未设置时不出现
+     * （{@link #explicitGlobalDefault} 返回空）。优先级：
+     * 用户显式值 &gt; 插件基线 &gt; 元数据 {@code defaultEnable}。</p>
      */
     private final Map<String, Boolean> explicitGlobalDefaults = new ConcurrentHashMap<>();
 
     /**
-     * 记录一个插件的完整例外列表（用于启动时从数据库装载）。
-     *
-     * <p>会<b>覆盖</b>已有配置。装载发生在插件加载之前，因此不会有并发问题；
-     * 但仍按插件加锁，以免与运行期的写入交错。</p>
+     * 覆盖一个插件的全部群级配置（用于启动时从数据库装载）。
      *
      * @param pluginId 插件标识
-     * @param filters  例外列表；{@code null} 或空表示清除全部例外
+     * @param values   群号 → 是否生效；{@code null} 或空表示清除全部
      */
-    public void putAll(String pluginId, List<ScopeFilter> filters) {
+    public void putAll(String pluginId, Map<Long, Boolean> values) {
         if (pluginId == null) {
             return;
         }
-        if (filters == null || filters.isEmpty()) {
-            exceptions.remove(pluginId);
+        if (values == null || values.isEmpty()) {
+            explicitGroups.remove(pluginId);
             return;
         }
-        List<ScopeFilter> copy = new ArrayList<>(filters);
-        exceptions.put(pluginId, copy);
+        explicitGroups.put(pluginId, Map.copyOf(values));
     }
 
     /**
-     * 取一个插件的例外列表快照。
+     * 取一个插件的群级配置快照。
      *
      * @param pluginId 插件标识
-     * @return 不可变副本；无例外时为空列表
+     * @return 群号 → 是否生效；无配置时为空 Map
      */
-    public List<ScopeFilter> all(String pluginId) {
-        List<ScopeFilter> filters = exceptions.get(pluginId);
-        if (filters == null) {
-            return List.of();
-        }
-        synchronized (filters) {
-            return List.copyOf(filters);
-        }
+    public Map<Long, Boolean> all(String pluginId) {
+        Map<Long, Boolean> values = explicitGroups.get(pluginId);
+        return values == null ? Map.of() : Map.copyOf(values);
     }
 
     /**
-     * 清除一个插件的全部例外。
+     * 清除一个插件的全部群级配置。
      *
      * @param pluginId 插件标识
-     * @return 被清除的例外列表；本来就没有时为空
+     * @return 被清除的配置；本来就没有时为空
      */
-    public Optional<List<ScopeFilter>> clear(String pluginId) {
-        List<ScopeFilter> removed = exceptions.remove(pluginId);
-        return removed == null ? Optional.empty() : Optional.of(List.copyOf(removed));
+    public Optional<Map<Long, Boolean>> clear(String pluginId) {
+        Map<Long, Boolean> removed = explicitGroups.remove(pluginId);
+        return removed == null ? Optional.empty() : Optional.of(Map.copyOf(removed));
     }
 
     // ==================== 全局默认值 ====================
@@ -160,299 +126,161 @@ public final class PluginScopes {
         return pluginId != null && explicitGlobalDefaults.remove(pluginId) != null;
     }
 
-    /**
-     * 从表中移除一个插件（卸载时调用）。
-     *
-     * @param pluginId 插件标识
-     */
-    public void remove(String pluginId) {
-        exceptions.remove(pluginId);
-        // 全局默认值不在这里清除：卸载可能是重载的第一步，
-        // 而重载必须保留用户的配置。需要清除时走 clearAll。
-    }
-
-    /**
-     * 彻底清除一个插件的全部配置（例外 + 全局默认值）。
-     *
-     * <p>仅用于「重置为插件默认」这类显式操作。</p>
-     *
-     * @param pluginId 插件标识
-     */
-    public void clearAll(String pluginId) {
-        exceptions.remove(pluginId);
-        explicitGlobalDefaults.remove(pluginId);
-    }
+    // ==================== 判定与写入 ====================
 
     /**
      * 判定某个群是否被显式设置过，以及设置成什么。
      *
      * @param pluginId 插件标识
      * @param groupId  群号
-     * @return 显式设置的值；未被任何例外命中时为空
+     * @return 显式设置的值；未设置时为空
      */
     public Optional<Boolean> explicitValue(String pluginId, long groupId) {
-        for (ScopeFilter filter : all(pluginId)) {
-            // 例外列表里的每一项都只针对「自己关心的那群」。
-            // 用 matches(groupId) 判定即可：白名单对不在其中的群返回 false，
-            // 因此必须用一个只问「这个群在不在我的集合里」的方式区分。
-            Boolean hit = hitOf(filter, groupId);
-            if (hit != null) {
-                return Optional.of(hit);
-            }
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * 判定一个过滤器是否「命中」某个群，命中时给出它的结论。
-     *
-     * <p>关键区别：{@code matches} 回答的是「这个群是否生效」，
-     * 而这里要回答的是「这个过滤器<b>是否关心</b>这个群」。
-     * 白名单 {@code onlyGroups({A})} 对 B 群返回 {@code false}，
-     * 但它并不关心 B——B 应当继续问下一个例外或回落到默认值。</p>
-     *
-     * @param filter  过滤器
-     * @param groupId 群号
-     * @return 命中且结论为开启返回 {@code true}；命中且结论为关闭返回 {@code false}；
-     *         未命中返回 {@code null}
-     */
-    private static Boolean hitOf(ScopeFilter filter, long groupId) {
-        Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
-        if (whitelist.isPresent()) {
-            return whitelist.get().contains(groupId) ? Boolean.TRUE : null;
-        }
-        Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
-        if (blacklist.isPresent()) {
-            return blacklist.get().contains(groupId) ? Boolean.FALSE : null;
-        }
-        // 无法反向解析的过滤器（lambda 组合）：只能问它是否生效，
-        // 并把它当作「关心所有群」。这种过滤器不会由本类产生，
-        // 但插件可以通过 ctx.plugin(child, filter) 传入
-        return filter.matches(groupId);
+        Map<Long, Boolean> values = explicitGroups.get(pluginId);
+        return values == null ? Optional.empty() : Optional.ofNullable(values.get(groupId));
     }
 
     /**
      * 设置某个群的显式开关。
      *
+     * <p>与插件默认值一致的写入会被<b>删除</b>，使操作可逆——「关闭再开启」
+     * 会回到「未设置」，而不是留下一条与默认值相同的无意义记录。</p>
+     *
      * @param pluginId             插件标识
      * @param groupId              群号
      * @param enabled              该群是否生效
-     * @param pluginDefaultEnabled 该插件的默认启用值（用于决定合并到哪一侧）
+     * @param pluginDefaultEnabled 该插件的默认启用值
      */
     public void set(String pluginId, long groupId, boolean enabled, boolean pluginDefaultEnabled) {
-        List<ScopeFilter> filters = exceptions.computeIfAbsent(pluginId, k -> new ArrayList<>());
-        synchronized (filters) {
-            // 先移除该群在别处的旧设置，避免同一群出现两条互相矛盾的例外
-            removeGroupLocked(filters, groupId);
-
+        if (pluginId == null) {
+            return;
+        }
+        Map<Long, Boolean> values = explicitGroups.computeIfAbsent(
+                pluginId, k -> new ConcurrentHashMap<>());
+        synchronized (values) {
             if (enabled == pluginDefaultEnabled) {
-                /*
-                 * 目标值与默认值一致 → 该群不需要例外。
-                 * 这是「用户把开关拨回默认」的情形，必须真的删掉记录，
-                 * 否则配置会随时间无限增长且无法回到「无例外」状态。
-                 */
-                if (filters.isEmpty()) {
-                    exceptions.remove(pluginId);
-                }
-                return;
-            }
-
-            // 需要一个与默认值相反的例外：优先并入已存在的同类过滤器
-            if (enabled) {
-                // 该群要开启，而默认是关闭 → 并入白名单（或新建）
-                if (!mergeInto(filters, groupId, true)) {
-                    filters.add(ScopeFilter.onlyGroups(Set.of(groupId)));
+                values.remove(groupId);
+                if (values.isEmpty()) {
+                    explicitGroups.remove(pluginId, values);
                 }
             } else {
-                // 该群要关闭，而默认是开启 → 并入黑名单（或新建）
-                if (!mergeInto(filters, groupId, false)) {
-                    filters.add(ScopeFilter.excludeGroups(Set.of(groupId)));
-                }
+                values.put(groupId, enabled);
             }
         }
     }
 
-    /**
-     * 尝试把一个群并入已有的同类过滤器。
-     *
-     * <p>由于 {@link ScopeFilter} 的具名实现是不可变的 record，合并意味着
-     * 「用新集合替换列表中的那一项」。</p>
-     *
-     * @param filters  例外列表（调用方已加锁）
-     * @param groupId  群号
-     * @param whitelist {@code true} 并入白名单，{@code false} 并入黑名单
-     * @return 成功并入返回 {@code true}；没有同类过滤器可并入时返回 {@code false}
-     */
-    private static boolean mergeInto(List<ScopeFilter> filters, long groupId, boolean whitelist) {
-        for (int i = 0; i < filters.size(); i++) {
-            ScopeFilter filter = filters.get(i);
-            Optional<Set<Long>> existing = whitelist
-                    ? filter.getExplicitGroupWhitelist()
-                    : filter.getExplicitGroupBlacklist();
-            if (existing.isEmpty()) {
-                continue;
-            }
-            Set<Long> merged = new LinkedHashSet<>(existing.get());
-            merged.add(groupId);
-            filters.set(i, whitelist
-                    ? ScopeFilter.onlyGroups(merged)
-                    : ScopeFilter.excludeGroups(merged));
-            return true;
-        }
-        return false;
-    }
+    // ==================== 合成与导出 ====================
 
     /**
-     * 从例外列表中移除某个群的全部设置。
-     *
-     * @param filters 例外列表（调用方已加锁）
-     * @param groupId 群号
-     */
-    private static void removeGroupLocked(List<ScopeFilter> filters, long groupId) {
-        for (int i = filters.size() - 1; i >= 0; i--) {
-            ScopeFilter filter = filters.get(i);
-            Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
-            Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
-            Set<Long> groups = whitelist.orElseGet(() -> blacklist.orElse(null));
-            if (groups == null || !groups.contains(groupId)) {
-                continue;
-            }
-            Set<Long> remaining = new LinkedHashSet<>(groups);
-            remaining.remove(groupId);
-            if (remaining.isEmpty()) {
-                filters.remove(i);
-            } else {
-                filters.set(i, whitelist.isPresent()
-                        ? ScopeFilter.onlyGroups(remaining)
-                        : ScopeFilter.excludeGroups(remaining));
-            }
-        }
-    }
-
-    /**
-     * 把例外列表合成为一个过滤器，供事件分发使用。
-     *
-     * <p>分发路径只需要回答「这个群是否生效」，因此把多个例外折叠成一个
-     * 谓词即可。{@code defaultEnabled} 作为未命中任何例外时的返回值。</p>
+     * 合成过滤器：有效默认值 + 与它相反的例外群。
      *
      * @param pluginId       插件标识
-     * @param defaultEnabled 插件元数据的默认启用值
-     * @return 合成过滤器；无例外时返回表示「按默认值」的常量过滤器
+     * @param defaultEnabled 有效默认启用值
+     * @return 过滤器；无例外时返回 {@link ScopeFilter#ALL} 或 {@link ScopeFilter#NONE}
      */
-    public ScopeFilter composite(String pluginId, boolean defaultEnabled) {
-        List<ScopeFilter> filters = all(pluginId);
-        if (filters.isEmpty()) {
+    public ScopeFilter toFilter(String pluginId, boolean defaultEnabled) {
+        Set<Long> opposite = oppositeGroups(pluginId, defaultEnabled);
+        if (opposite.isEmpty()) {
             return defaultEnabled ? ScopeFilter.ALL : ScopeFilter.NONE;
         }
-        /*
-         * 逐项判定，取第一个「命中」的结论。
-         *
-         * 这里不能用 filter.matches 的「或」组合：白名单对不在其中的群返回
-         * false，若直接 or 起来，会把「未命中」误当成「显式关闭」。
-         * 因此必须用 hitOf 区分「命中且关闭」与「未命中」。
-         */
-        return groupId -> {
-            if (groupId == null) {
-                /*
-                 * 非群事件（私聊、元事件）：三态模型里没有它的位置。
-                 * 沿用旧系统的行为——全局默认开启则生效，否则不生效。
-                 * （旧 PluginEnableProcessor 对私聊也走 defaultEnable 兜底。）
-                 */
-                return defaultEnabled;
-            }
-            for (ScopeFilter filter : filters) {
-                Boolean hit = hitOf(filter, groupId);
-                if (hit != null) {
-                    return hit;
-                }
-            }
-            return defaultEnabled;
-        };
+        return new ScopeFilter(defaultEnabled, opposite);
     }
 
     /**
-     * 导出为可持久化的形态。
-     *
-     * <p>只导出「默认值 + 与默认值相反的例外群集合」。注意这<b>会丢失</b>
-     * 「与默认值相同的显式设置」——但那种设置本来就不携带信息
-     * （{@link #set} 已经把与默认值一致的项删掉了），因此无损。</p>
+     * 取「与默认值相反」的例外群集合——持久化与管理端展示的形态。
      *
      * @param pluginId       插件标识
-     * @param defaultEnabled 插件元数据的默认启用值
-     * @return 持久化描述
+     * @param defaultEnabled 有效默认启用值
+     * @return 例外群集合；无例外时为空集
      */
-    public ScopeFilter.PersistedScope toPersisted(String pluginId, boolean defaultEnabled) {
+    public Set<Long> oppositeGroups(String pluginId, boolean defaultEnabled) {
+        Map<Long, Boolean> values = explicitGroups.get(pluginId);
+        if (values == null || values.isEmpty()) {
+            return Set.of();
+        }
         Set<Long> opposite = new LinkedHashSet<>();
-        for (ScopeFilter filter : all(pluginId)) {
-            filter.getExplicitGroupWhitelist().ifPresent(opposite::addAll);
-            filter.getExplicitGroupBlacklist().ifPresent(opposite::addAll);
-        }
-        return new ScopeFilter.PersistedScope(defaultEnabled, opposite);
-    }
-
-    /**
-     * 从持久化记录构造例外列表。
-     *
-     * <p>用于启动时把数据库里的三态还原成运行时表示。
-     * 每一项 {@code (pluginId, groupId, ability)} 都转成一个单群例外。</p>
-     *
-     * @param records 记录列表：群号 → 该群是否生效
-     * @param defaultEnabled 该插件的默认启用值（与默认一致的项会被忽略）
-     * @return 例外列表
-     */
-    public static List<ScopeFilter> fromRecords(Map<Long, Boolean> records, boolean defaultEnabled) {
-        if (records == null || records.isEmpty()) {
-            return List.of();
-        }
-        Set<Long> enabled = new LinkedHashSet<>();
-        Set<Long> disabled = new LinkedHashSet<>();
-        records.forEach((groupId, value) -> {
-            if (groupId == null || value == null || value == defaultEnabled) {
-                // 与默认值一致的记录不产生例外
-                return;
-            }
-            if (value) {
-                enabled.add(groupId);
-            } else {
-                disabled.add(groupId);
+        values.forEach((groupId, enabled) -> {
+            if (groupId != null && enabled != null && enabled != defaultEnabled) {
+                opposite.add(groupId);
             }
         });
-        List<ScopeFilter> filters = new ArrayList<>(2);
-        if (!enabled.isEmpty()) {
-            filters.add(ScopeFilter.onlyGroups(enabled));
-        }
-        if (!disabled.isEmpty()) {
-            filters.add(ScopeFilter.excludeGroups(disabled));
-        }
-        return filters;
+        return opposite;
     }
 
     /**
-     * 表中记录的插件数量（诊断用）。
+     * 显式开启的群（管理端展示用）。
      *
-     * @return 有显式例外的插件数
+     * <p>注意语义：只有「默认关闭、被用户单独打开」的群才会出现在这里；
+     * 默认开启时不存在需要枚举的「显式开启群」（其余群是无限集）。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 显式开启的群号；无则为空集
+     */
+    public Set<Long> explicitlyEnabledGroups(String pluginId) {
+        Map<Long, Boolean> values = explicitGroups.get(pluginId);
+        if (values == null || values.isEmpty()) {
+            return Set.of();
+        }
+        return values.entrySet().stream()
+                .filter(entry -> Boolean.TRUE.equals(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    // ==================== 生命周期 ====================
+
+    /**
+     * 从表中移除一个插件的群级配置（卸载时调用）。
+     *
+     * <p>全局默认值不在这里清除：卸载可能是重载的第一步，而重载必须保留
+     * 用户的配置。需要清除时走 {@link #clearAll}。</p>
+     *
+     * @param pluginId 插件标识
+     */
+    public void remove(String pluginId) {
+        explicitGroups.remove(pluginId);
+    }
+
+    /**
+     * 彻底清除一个插件的全部配置（群级 + 全局默认值）。
+     *
+     * <p>仅用于「重置为插件默认」这类显式操作。</p>
+     *
+     * @param pluginId 插件标识
+     */
+    public void clearAll(String pluginId) {
+        explicitGroups.remove(pluginId);
+        explicitGlobalDefaults.remove(pluginId);
+    }
+
+    /**
+     * 有群级配置的插件数量（诊断用）。
+     *
+     * @return 插件数
      */
     public int size() {
-        return exceptions.size();
+        return explicitGroups.size();
     }
 
     /**
-     * 全部有显式例外的插件标识（诊断用）。
+     * 全部有群级配置的插件标识（诊断用）。
      *
      * @return 插件标识集合
      */
     public Set<String> getPluginIds() {
-        return Set.copyOf(exceptions.keySet());
+        return Set.copyOf(explicitGroups.keySet());
     }
 
     /**
      * 单行诊断描述。
      *
-     * @return 形如 {@code "scopes=3"} 的描述
+     * @return 形如 {@code "scopes={plugin=3}"} 的描述
      */
     public String describe() {
-        Map<String, Integer> counts = new HashMap<>();
-        exceptions.forEach((id, filters) -> counts.put(id, all(id).size()));
-        return "scopes=" + exceptions.size() + counts;
+        Map<String, Integer> counts = explicitGroups.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().size()));
+        return "scopes=" + counts;
     }
 }

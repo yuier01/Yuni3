@@ -118,15 +118,18 @@ public interface PluginScopeStore {
     void save(String pluginId, PluginScopeRecord record);
 
     /**
-     * 便于实现的便捷方法：由 {@link ScopeFilter.PersistedScope} 构造记录。
+     * 便于实现的便捷方法：由 {@link ScopeFilter} 构造记录。
      *
-     * @param persisted 持久化形态
+     * <p>{@code ScopeFilter} 本身就是「默认值 + 例外群」的持久化形态，
+     * 因此这里只是字段搬运。</p>
+     *
+     * @param filter 作用域过滤器；{@code null} 表示未设置
      * @return 对应的记录
      */
-    static PluginScopeRecord of(ScopeFilter.PersistedScope persisted) {
-        if (persisted == null) {
+    static PluginScopeRecord of(ScopeFilter filter) {
+        if (filter == null) {
             return new PluginScopeRecord(null, Set.of());
         }
-        return new PluginScopeRecord(persisted.isEnabledByDefault(), persisted.getExceptionGroups());
+        return new PluginScopeRecord(filter.isEnabledByDefault(), filter.getExceptionGroups());
     }
 }

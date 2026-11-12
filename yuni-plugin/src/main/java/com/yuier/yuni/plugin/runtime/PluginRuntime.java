@@ -8,7 +8,6 @@ import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
-import com.yuier.yuni.plugin.api.ScopeFilter.PersistedScope;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle;
@@ -124,28 +123,18 @@ public final class PluginRuntime {
     /**
      * 插件注册时自带的基线作用域配置——「作者意图」这一层。
      *
-     * <p>与 {@link #pluginScopes}（用户配置的群例外）分工明确：</p>
+     * <p>与 {@link #pluginScopes}（用户配置）分工明确：</p>
      * <ul>
-     *   <li><b>基线</b>来自插件作者的代码（{@code ctx.plugin(child, filter)}），
-     *       提供「默认值 + 例外集合」；</li>
-     *   <li><b>例外表</b>来自用户的显式操作，优先于基线。</li>
+     *   <li><b>基线</b>来自插件作者的代码（{@code ctx.plugin(child, filter)}）；</li>
+     *   <li><b>用户配置</b>来自管理端的显式操作，优先于基线。</li>
      * </ul>
      * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
      *
-     * <p>基线连同「它原本是白名单还是黑名单」一起存成 {@link Baseline}：
-     * 两者是同一条信息的两个属性，永远成对写入/删除。之前拆成
-     * {@code Map} + {@code Set} 两张表，属于同一关系的冗余表示。</p>
+     * <p>基线就是 {@link ScopeFilter} 本身——它已经是「默认值 + 例外群」的
+     * 值对象，不再需要另一种表示，也不需要记「原本是白名单还是黑名单」：
+     * 默认值本身就把两种意图区分开了。</p>
      */
-    private final Map<String, Baseline> baselines = new ConcurrentHashMap<>();
-
-    /**
-     * 一条基线：解析后的作用域 + 它原本的形态。
-     *
-     * @param scope     「默认值 + 例外群集合」
-     * @param whitelist 原本是否为 {@code onlyGroups(...)}（白名单）形态
-     */
-    private record Baseline(PersistedScope scope, boolean whitelist) {
-    }
+    private final Map<String, ScopeFilter> baselines = new ConcurrentHashMap<>();
 
     /**
      * 作用域持久化端口。
@@ -306,23 +295,15 @@ public final class PluginRuntime {
             // 需要用同一个目录重建上下文
             pluginDataDirs.put(id, dataDir);
         }
-        if (filter != null) {
+        if (filter != null && !isNoConstraint(filter)) {
             /*
              * 记录「插件注册时自带的基线过滤器」。
              *
              * 它表达的是插件作者写下的建议（例如 ctx.plugin(child, onlyGroups(a,b))），
-             * 语义上等价于一个默认值 + 例外集合。因此这里把它解析成
-             * PersistedScope 作为该插件的基线，而不是成员判断表——
-             * 两者看起来相近，但后者会把「未列出的群」当成显式关闭，
-             * 从而干扰 PluginAdmin.setEnabled 的默认值推导。
+             * 本身就是「默认值 + 例外群」——与用户配置同一模型，因此直接存，
+             * 不需要再做一次形态转换。
              */
-            PersistedScope baseline =
-                    toBaseline(id, filter, metadata.isDefaultEnable());
-            if (baseline != null) {
-                // 连同「原本是白名单还是黑名单」一起记，供 describeScope 区措辞
-                boolean whitelist = filter.getExplicitGroupWhitelist().isPresent();
-                baselines.put(id, new Baseline(baseline, whitelist));
-            }
+            baselines.put(id, filter);
         }
         if (parent != null) {
             parent.addChild(fiber);
@@ -439,44 +420,16 @@ public final class PluginRuntime {
     private final Object moduleHandles = new Object();
 
     /**
-     * 把一个注册时传入的 {@link com.yuier.yuni.plugin.api.ScopeFilter} 解析为基线配置。
+     * 过滤器是否「不施加任何约束」——即默认开启且没有例外群。
      *
-     * <p>语义映射：</p>
-     * <ul>
-     *   <li>白名单 {@code onlyGroups(S)}：<b>默认关闭</b> + 例外群 S。这是白名单的
-     *       本义——「只有列出的群生效」；</li>
-     *   <li>黑名单 {@code excludeGroups(S)}：默认开启 + 例外群 S；</li>
-     *   <li>{@code ALL} / {@code NONE} / 无法反向解析的 lambda：不产生基线，
-     *       完全按 {@code defaultEnable} 处理。</li>
-     * </ul>
+     * <p>这种过滤器不需要记为基线：它等价于「没有作者意图」，后续判定
+     * 应直接回落到元数据 {@code defaultEnable}。</p>
      *
-     * <p>为什么白名单要映射成「默认关闭」而不是「默认开启 + 这些群显式开启」：
-     * 后者在语义上与前者不同——它会让<b>未列出的群</b>落回 {@code defaultEnable}，
-     * 而白名单的含义恰恰是「未列出的群一律不生效」，与默认值无关。</p>
-     *
-     * @param pluginId       插件标识（仅用于日志）
-     * @param filter         注册时传入的过滤器
-     * @param defaultEnabled 插件元数据的默认启用值
-     * @return 基线配置；过滤器不携带基线信息时返回 {@code null}
+     * @param filter 过滤器
+     * @return 不施加约束返回 {@code true}
      */
-    private static PersistedScope toBaseline(
-            String pluginId,
-            ScopeFilter filter,
-            boolean defaultEnabled) {
-        Optional<Set<Long>> whitelist = filter.getExplicitGroupWhitelist();
-        if (whitelist.isPresent()) {
-            return new PersistedScope(false, whitelist.get());
-        }
-        Optional<Set<Long>> blacklist = filter.getExplicitGroupBlacklist();
-        if (blacklist.isPresent()) {
-            return new PersistedScope(true, blacklist.get());
-        }
-        if (filter == com.yuier.yuni.plugin.api.ScopeFilter.NONE) {
-            // 显式「全部不生效」：默认关闭且无例外
-            return new PersistedScope(false, java.util.Set.of());
-        }
-        // ALL 或 lambda 组合：不携带可持久化信息
-        return null;
+    private static boolean isNoConstraint(ScopeFilter filter) {
+        return filter.isEnabledByDefault() && filter.getExceptionGroups().isEmpty();
     }
 
     /**
@@ -816,12 +769,11 @@ public final class PluginRuntime {
 
         // 第 2 步：快照作用域例外。重启加载时新实例的 defaultEnable 可能与旧实例
         // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
-        Map<String, List<ScopeFilter>> scopeSnapshot =
-                new LinkedHashMap<>();
+        Map<String, Map<Long, Boolean>> scopeSnapshot = new LinkedHashMap<>();
         for (String pluginId : handle.getPluginIds()) {
-            List<ScopeFilter> filters = pluginScopes.all(pluginId);
-            if (!filters.isEmpty()) {
-                scopeSnapshot.put(pluginId, filters);
+            Map<Long, Boolean> values = pluginScopes.all(pluginId);
+            if (!values.isEmpty()) {
+                scopeSnapshot.put(pluginId, values);
             }
         }
 
@@ -847,9 +799,9 @@ public final class PluginRuntime {
         // 只要模块没有增删插件，标识就保持一致。
         int restored = 0;
         for (PluginFiber fiber : loaded) {
-            List<ScopeFilter> filters = scopeSnapshot.get(fiber.getId());
-            if (filters != null) {
-                pluginScopes.putAll(fiber.getId(), filters);
+            Map<Long, Boolean> values = scopeSnapshot.get(fiber.getId());
+            if (values != null) {
+                pluginScopes.putAll(fiber.getId(), values);
                 restored++;
             }
         }
@@ -952,17 +904,17 @@ public final class PluginRuntime {
      */
     public Optional<ScopeFilter> scopeFilterOf(String pluginId) {
         return fibers.byId(pluginId).map(fiber ->
-                pluginScopes.composite(pluginId, effectiveDefaultEnabled(pluginId)));
+                pluginScopes.toFilter(pluginId, effectiveDefaultEnabled(pluginId)));
     }
 
     /**
-     * 取插件的显式作用域例外列表。
+     * 取插件被显式开启的群（管理端展示用）。
      *
      * @param pluginId 插件标识
-     * @return 例外列表；无例外时为空列表
+     * @return 显式开启的群号；无则为空集
      */
-    public List<ScopeFilter> scopeExceptionsOf(String pluginId) {
-        return pluginScopes.all(pluginId);
+    public Set<Long> explicitlyEnabledGroups(String pluginId) {
+        return pluginScopes.explicitlyEnabledGroups(pluginId);
     }
 
     /**
@@ -991,12 +943,11 @@ public final class PluginRuntime {
          * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
          * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
          */
-        Baseline base = baseScopeOf(pluginId);
-        if (base != null && !base.scope().getExceptionGroups().isEmpty()) {
-            PersistedScope scope = base.scope();
-            boolean listed = scope.getExceptionGroups().contains(groupId);
+        ScopeFilter base = baseScopeOf(pluginId);
+        if (base != null && !base.getExceptionGroups().isEmpty()) {
+            boolean listed = base.getExceptionGroups().contains(groupId);
             // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
-            return scope.isEnabledByDefault() ? !listed : listed;
+            return base.isEnabledByDefault() ? !listed : listed;
         }
         // ③ 没有任何例外信息 → 按有效默认值（用户全局开关 > 基线 > 元数据）
         return effectiveDefaultEnabled(pluginId);
@@ -1025,9 +976,9 @@ public final class PluginRuntime {
             return userGlobal.get();
         }
         // 其次看插件注册时的基线
-        Baseline base = baseScopeOf(pluginId);
+        ScopeFilter base = baseScopeOf(pluginId);
         if (base != null) {
-            return base.scope().isEnabledByDefault();
+            return base.isEnabledByDefault();
         }
         // 最后回落到元数据。插件不存在时保守返回 false：
         // 配置损坏时「不放行」比「误放行」安全
@@ -1042,7 +993,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 基线配置；没有时为 {@code null}
      */
-    private Baseline baseScopeOf(String pluginId) {
+    private ScopeFilter baseScopeOf(String pluginId) {
         return pluginId == null ? null : baselines.get(pluginId);
     }
 
@@ -1133,20 +1084,17 @@ public final class PluginRuntime {
          * 优先描述基线：插件注册时传的 filter 是更强的意图表达
          * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
          */
-        Baseline base = baseScopeOf(pluginId);
-        if (base != null) {
-            PersistedScope scope = base.scope();
-            if (base.whitelist()) {
-                return "仅限群 " + scope.getExceptionGroups();
-            }
-            if (!scope.getExceptionGroups().isEmpty()) {
-                return "排除群 " + scope.getExceptionGroups();
-            }
+        ScopeFilter base = baseScopeOf(pluginId);
+        if (base != null && !base.getExceptionGroups().isEmpty()) {
+            // 默认开启 → 列出的是被排除的群；默认关闭 → 列出的是被允许的群
+            return base.isEnabledByDefault()
+                    ? "排除群 " + base.getExceptionGroups()
+                    : "仅限群 " + base.getExceptionGroups();
         }
 
         // 再看用户配置的群例外
-        PersistedScope persisted =
-                pluginScopes.toPersisted(pluginId, effectiveDefaultEnabled(pluginId));
+        ScopeFilter persisted =
+                pluginScopes.toFilter(pluginId, effectiveDefaultEnabled(pluginId));
         if (persisted.getExceptionGroups().isEmpty()) {
             return persisted.isEnabledByDefault() ? "全部群" : "未记录";
         }
@@ -1294,8 +1242,7 @@ public final class PluginRuntime {
             boolean global = record.getGlobalEnabled() != null ? record.getGlobalEnabled() : pluginDefault;
             pluginScopes.setGlobalDefault(fiber.getId(), global);
             pluginScopes.putAll(fiber.getId(),
-                    com.yuier.yuni.plugin.runtime.PluginScopes.fromRecords(
-                            toValueMap(record.getExceptionGroups(), global), global));
+                    toValueMap(record.getExceptionGroups(), global));
             restored++;
         }
         log.info("已从存储恢复 {} 个插件的群粒度启停配置", restored);
@@ -1341,11 +1288,8 @@ public final class PluginRuntime {
             Boolean global = pluginScopes.explicitGlobalDefault(pluginId).orElse(null);
             boolean effectiveGlobal = global != null ? global : pluginDefault;
             // 例外群 = 与有效全局值相反的那些群
-            Set<Long> exceptionGroups = new LinkedHashSet<>();
-            pluginScopes.all(pluginId).forEach(filter -> {
-                filter.getExplicitGroupWhitelist().ifPresent(exceptionGroups::addAll);
-                filter.getExplicitGroupBlacklist().ifPresent(exceptionGroups::addAll);
-            });
+            Set<Long> exceptionGroups =
+                    pluginScopes.oppositeGroups(pluginId, effectiveGlobal);
             store.save(pluginId,
                     new PluginScopeRecord(
                             global, exceptionGroups));
