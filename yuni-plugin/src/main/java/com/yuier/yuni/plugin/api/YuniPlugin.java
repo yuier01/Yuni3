@@ -131,7 +131,7 @@ public interface YuniPlugin {
      * <h3>用法</h3>
      * <pre>{@code
      * @Override
-     * public List<Class<?>> inject() {
+     * public List<Class<?>> requiredServices() {
      *     return List.of(MaiMai.Api.class);   // 需要 maimai 插件提供的服务
      * }
      * }</pre>
@@ -142,7 +142,7 @@ public interface YuniPlugin {
      *
      * @return 依赖的服务类型列表；无依赖时返回空列表
      */
-    default List<Class<?>> inject() {
+    default List<Class<?>> requiredServices() {
         return List.of();
     }
 

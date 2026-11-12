@@ -165,7 +165,7 @@ class PluginAdminTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(CharSequence.class);
             }
 

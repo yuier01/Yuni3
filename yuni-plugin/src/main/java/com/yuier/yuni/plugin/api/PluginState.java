@@ -32,7 +32,7 @@ import lombok.Getter;
 public enum PluginState {
 
     /**
-     * 等待依赖——{@code inject()} 声明的服务尚未就绪。
+     * 等待依赖——{@code requiredServices()} 声明的服务尚未就绪。
      *
      * <p>启动结束时仍停在本状态即为异常，框架会在启动日志中列出
      * 「谁因为缺什么而没加载」。这是现行系统完全缺失的可观测性。</p>

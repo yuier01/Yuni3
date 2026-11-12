@@ -191,7 +191,7 @@ class PluginLifecycleIntegrationTest {
             ctx.schedule("*/1 * * * * ?", () -> scheduleHits.incrementAndGet());
 
             // 能力 3：对外提供服务（用工厂形式，使函数式契约无需转型）
-            ctx.provide(Greeter.class, t -> () -> "hello");
+            ctx.registerService(Greeter.class, t -> () -> "hello");
 
             // 能力 4：自定义资源
             ctx.effect(() -> () -> { });
@@ -291,7 +291,7 @@ class PluginLifecycleIntegrationTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return java.util.List.of(Comparable.class);
             }
 

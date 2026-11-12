@@ -51,7 +51,7 @@ public final class PluginMetadata {
      *
      * <p><b>注意</b>：现行系统的该字段是纯声明，从未被检查
      * （{@code PluginMetadata} 的注释自承「实际上目前并没有实现依赖检查」）。
-     * 新系统中插件间依赖由 {@code inject()} 表达服务依赖，本字段仅作展示用途。</p>
+     * 新系统中插件间依赖由 {@code requiredServices()} 表达服务依赖，本字段仅作展示用途。</p>
      */
     private final List<String> dependencies;
 

@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
  *   <tr><td>{@code getYuniBot()} / {@code getBotId()} / {@code getBotNickName()}</td>
  *       <td>{@code ctx.getBot()}</td></tr>
  *   <tr><td>{@code getBean(Class)} / {@code getBean(String)}</td>
- *       <td>{@code ctx.service(Class)} / {@code ctx.serviceIfPresent(Class)}</td></tr>
+ *       <td>{@code ctx.requireService(Class)} / {@code ctx.findService(Class)}</td></tr>
  *   <tr><td>{@code getBotAppCommandFlag()}</td>
  *       <td>框架侧已处理，插件无需读取命令前缀</td></tr>
  *   <tr><td>{@code loadJsonConfigFromPlugin(f, C, cls)}</td>

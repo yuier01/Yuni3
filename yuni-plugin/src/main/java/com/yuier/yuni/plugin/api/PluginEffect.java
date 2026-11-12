@@ -18,7 +18,7 @@ package com.yuier.yuni.plugin.api;
  * }</pre>
  *
  * <h2>与「框架内置 PluginEffect」的区别</h2>
- * <p>{@code ctx.onMessage(...)}、{@code ctx.schedule(...)}、{@code ctx.provide(...)}
+ * <p>{@code ctx.onMessage(...)}、{@code ctx.schedule(...)}、{@code ctx.registerService(...)}
  * 这类 API 本身已是 PluginEffect——框架知道怎么撤销它们，插件无需写清理代码。
  * 只有框架<b>不认识</b>的资源才需要 {@code ctx.effect(...)}。</p>
  *

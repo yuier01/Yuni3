@@ -164,7 +164,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(CharSequence.class);
             }
 
@@ -200,7 +200,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(CharSequence.class);
             }
 
@@ -236,14 +236,14 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(Runnable.class);
             }
 
             @Override
             public void apply(YuniContext ctx) {
                 // 依赖由 inject 保证就绪
-                assertNotNull(ctx.service(Runnable.class));
+                assertNotNull(ctx.requireService(Runnable.class));
             }
         };
 
@@ -261,7 +261,7 @@ class PluginRuntimeTest {
             public void apply(YuniContext ctx) {
                 // 显式转型：provide 的第二个参数是 Object，
                 // 裸 lambda 在此处无法被编译器推断为 Runnable
-                ctx.provide(Runnable.class, (Runnable) () -> { });
+                ctx.registerService(Runnable.class, (Runnable) () -> { });
             }
         };
         runtime.load(provider, null, null, null);
@@ -282,13 +282,13 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(Comparable.class);
             }
 
             @Override
             public void apply(YuniContext ctx) {
-                ctx.provide(Cloneable.class, new Cloneable() { });
+                ctx.registerService(Cloneable.class, new Cloneable() { });
             }
         };
         YuniPlugin b = new YuniPlugin() {
@@ -298,13 +298,13 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> inject() {
+            public List<Class<?>> requiredServices() {
                 return List.of(Cloneable.class);
             }
 
             @Override
             public void apply(YuniContext ctx) {
-                ctx.provide(Comparable.class, (Comparable<Object>) o -> 0);
+                ctx.registerService(Comparable.class, (Comparable<Object>) o -> 0);
             }
         };
 
@@ -349,7 +349,7 @@ class PluginRuntimeTest {
             @Override
             public void apply(YuniContext ctx) {
                 // 显式转型：provide 的第二个参数是 Object
-                ctx.provide(Runnable.class, (Runnable) () -> { });
+                ctx.registerService(Runnable.class, (Runnable) () -> { });
             }
         };
 

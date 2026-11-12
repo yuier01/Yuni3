@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ol>
  * <p>本表是一个独立、扁平的「类型 → 注册项」表，专供插件系统使用。
  * 框架内置服务（bot / cache / http / …）在启动时预注册；插件通过
- * {@code ctx.provide(...)} 注册自己的服务。</p>
+ * {@code ctx.registerService(...)} 注册自己的服务。</p>
  *
  * <h2>为什么只有一个 Map</h2>
  * <p>「服务实例」与「提供者 Fiber」是同一次注册的两个属性，因此合并为
@@ -46,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>插件加载与卸载可能并发发生，使用 {@link ConcurrentHashMap}；
  * 注册项的替换与移除都以单条 map 操作为准。</p>
  *
- * @see com.yuier.yuni.plugin.api.YuniContext#service(Class)
+ * @see com.yuier.yuni.plugin.api.YuniContext#requireService(Class)
  */
 public final class ServiceRegistry {
 

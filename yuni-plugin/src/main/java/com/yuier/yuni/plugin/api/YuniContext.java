@@ -38,7 +38,7 @@ import org.slf4j.Logger;
  *       里的定时任务）框架不知道归属，卸载时无法自动清理。</li>
  * </ol>
  * <p>本接口取代它，并附带三个性质：<b>可打桩</b>（是接口）、<b>依赖显式</b>
- * （通过 {@link #service(Class)} 与 {@code YuniPlugin.inject()}）、
+ * （通过 {@link #requireService(Class)} 与 {@code YuniPlugin.requiredServices()}）、
  * <b>可撤销</b>（全部注册方法返回 {@link Disposable}）。</p>
  *
  * <h2>核心不变式</h2>
@@ -311,7 +311,7 @@ public interface YuniContext {
     // ==================== 服务 ====================
 
     /**
-     * 解析服务实例。
+     * 解析一个必需的服务实例。
      *
      * <p>取代现行 {@code PluginUtils.getBean(Class)}。与 Spring 的 {@code getBean}
      * 不同，这里解析的是<b>插件系统中注册的服务</b>——框架内置服务与插件提供的
@@ -322,10 +322,10 @@ public interface YuniContext {
      * @return 服务实例
      * @throws IllegalStateException 服务未注册时抛出
      */
-    <T> T service(Class<T> type);
+    <T> T requireService(Class<T> type);
 
     /**
-     * 解析服务实例（不存在时返回空）。
+     * 解析一个可选的服务实例（不存在时返回空）。
      *
      * <p>用于可选依赖：插件在服务缺失时应降级而非崩溃。</p>
      *
@@ -333,23 +333,23 @@ public interface YuniContext {
      * @param <T>  服务类型
      * @return 服务实例；未注册时为空
      */
-    <T> Optional<T> serviceIfPresent(Class<T> type);
+    <T> Optional<T> findService(Class<T> type);
 
     /**
-     * 注册一个服务供其他插件使用。
+     * 注册一个服务实例供其他插件使用。
      *
      * <p>是 PluginEffect——插件卸载时服务自动注销，依赖它的插件会转为
      * {@code PENDING} 或失败（取决于依赖是必需还是可选）。</p>
      *
      * <pre>{@code
-     * ctx.provide(MaiMaiApi.class, new MaiMaiApiImpl(server));
+     * ctx.registerService(MaiMaiApi.class, new MaiMaiApiImpl(server));
      * }</pre>
      *
      * @param type 服务类型（通常是接口）
      * @param impl 实现实例
      * @return 撤销句柄
      */
-    Disposable provide(Class<?> type, Object impl);
+    Disposable registerService(Class<?> type, Object impl);
 
     /**
      * 注册一个服务，实现由工厂函数<b>按服务类型</b>创建。
@@ -359,10 +359,10 @@ public interface YuniContext {
      * 时，想把一个 lambda 直接注册为服务会遇到 Java 类型推断的硬限制：</p>
      *
      * <pre>{@code
-     * ctx.provide(Greeter.class, () -> "hello");          // ✗ 编译失败
+     * ctx.registerService(Greeter.class, () -> "hello");          // ✗ 编译失败
      * }</pre>
      *
-     * <p>{@link #provide(Class, Object)} 的第二参数是 {@code Object}，
+     * <p>{@link #registerService(Class, Object)} 的第二参数是 {@code Object}，
      * 编译器没有任何信息把 lambda 推断成 {@code Greeter}，于是把它当成
      * 「目标类型为 Object 的 lambda」——而 {@code Object} 不是函数式接口，报错。
      * 写法只能是带转型的丑陋形式：{@code (Greeter) () -> "hello"}。</p>
@@ -371,9 +371,9 @@ public interface YuniContext {
      * 正确推断为 {@code Greeter}：</p>
      *
      * <pre>{@code
-     * ctx.provide(Greeter.class, type -> () -> "hello");  // ✓
+     * ctx.registerService(Greeter.class, type -> () -> "hello");  // ✓
      * // 或更简洁：对函数式契约用方法引用
-     * ctx.provide(Greeter.class, type -> this::greet);
+     * ctx.registerService(Greeter.class, type -> this::greet);
      * }</pre>
      *
      * <p>工厂参数 {@code type} 就是传入的服务类型，便于同一实现在多个契约间分派。</p>
@@ -383,7 +383,7 @@ public interface YuniContext {
      * @param <T>     服务类型
      * @return 撤销句柄
      */
-    <T> Disposable provide(Class<T> type, Function<Class<T>, T> factory);
+    <T> Disposable registerService(Class<T> type, Function<Class<T>, T> factory);
 
     /**
      * 作用域查询——「本插件在某个群是否生效」。
@@ -414,7 +414,7 @@ public interface YuniContext {
      * {@code PluginEnableProcessor} / {@code PluginReloadProcessor} 这些框架内部类
      * 的做法。</p>
      *
-     * <p>普通插件<b>不应</b>使用本服务——它与 {@link #service(Class)} 的区别是：
+     * <p>普通插件<b>不应</b>使用本服务——它与 {@link #requireService(Class)} 的区别是：
      * 服务用于「我需要某个能力」，而本方法用于「我要管理别的插件」。
      * 后者是管理端职责，不是插件间协作。</p>
      *
@@ -473,7 +473,7 @@ public interface YuniContext {
     /**
      * 机器人通信服务。
      *
-     * <p>等价 {@code service(YuniBot.class)}，因使用频率极高而提供快捷方法。</p>
+     * <p>等价 {@code requireService(YuniBot.class)}，因使用频率极高而提供快捷方法。</p>
      *
      * @return 机器人实例
      */

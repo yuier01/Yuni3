@@ -63,8 +63,8 @@ import org.slf4j.Logger;
  * <h2>服务解析</h2>
  * <p>本实现持有对 {@link ServiceRegistry} 的引用。所有插件上下文共享同一个
  * 注册表——这是「服务全局可见」的实现方式。
- * 插件提供的服务通过 {@code provide(...)} 注册进同一个表，因此插件之间
- * 可以直接通过 {@code ctx.service(...)} 互相调用，无需静态查 Spring Bean。</p>
+ * 插件提供的服务通过 {@code registerService(...)} 注册进同一个表，因此插件之间
+ * 可以直接通过 {@code ctx.requireService(...)} 互相调用，无需静态查 Spring Bean。</p>
  *
  * <h2>作用域状态</h2>
  * <p>{@link #state(Class)} 是按 {@code (状态类型, scopeId)} 分键的懒创建表。
@@ -492,20 +492,20 @@ public final class PluginContext implements YuniContext {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> T service(Class<T> type) {
+    public <T> T requireService(Class<T> type) {
         return (T) services.resolve(type).orElseThrow(() -> new IllegalStateException(
                 "服务未注册: " + type.getName()
-                        + "。若这是插件提供的服务，请在本插件的 inject() 中声明依赖，"
+                        + "。若这是插件提供的服务，请在本插件的 requiredServices() 中声明依赖，"
                         + "否则插件可能在服务就绪前就开始 apply。"));
     }
 
     @Override
-    public <T> Optional<T> serviceIfPresent(Class<T> type) {
+    public <T> Optional<T> findService(Class<T> type) {
         return services.resolve(type);
     }
 
     @Override
-    public Disposable provide(Class<?> type, Object impl) {
+    public Disposable registerService(Class<?> type, Object impl) {
         if (type == null || impl == null) {
             throw new IllegalArgumentException("服务类型与实现均不能为 null");
         }
@@ -518,7 +518,7 @@ public final class PluginContext implements YuniContext {
         /*
          * 服务注册可能让此前停在 PENDING 的插件变得可加载——它等的就是这个服务。
          * 立即尝试推进，避免「依赖已满足但仍不生效，必须等下次启动」。
-         * 推进失败（仍缺其他依赖）会由后续的 provide 再触发，或由启动收尾报出。
+         * 推进失败（仍缺其他依赖）会由后续的 registerService 再触发，或由启动收尾报出。
          */
         if (runtime != null) {
             runtime.activatePending();
@@ -529,7 +529,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public <T> Disposable provide(Class<T> type, Function<Class<T>, T> factory) {
+    public <T> Disposable registerService(Class<T> type, Function<Class<T>, T> factory) {
         if (type == null || factory == null) {
             throw new IllegalArgumentException("服务类型与工厂均不能为 null");
         }
@@ -537,7 +537,7 @@ public final class PluginContext implements YuniContext {
         if (impl == null) {
             throw new IllegalStateException("服务工厂未返回实现: " + type.getName());
         }
-        return provide(type, (Object) impl);
+        return registerService(type, (Object) impl);
     }
 
     @Override
@@ -684,7 +684,7 @@ public final class PluginContext implements YuniContext {
                 return resolved;
             }
         }
-        return service(YuniBot.class);
+        return requireService(YuniBot.class);
     }
 
     @Override
@@ -699,7 +699,7 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public PluginDataService getDb() {
-        return service(com.yuier.yuni.plugin.data.PluginDataService.class);
+        return requireService(com.yuier.yuni.plugin.data.PluginDataService.class);
     }
 
     @Override
@@ -737,7 +737,7 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public PermissionService getPermission() {
-        return service(PermissionService.class);
+        return requireService(PermissionService.class);
     }
 
     @Override

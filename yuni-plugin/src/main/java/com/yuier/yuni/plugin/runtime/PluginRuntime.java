@@ -47,7 +47,7 @@ import lombok.extern.slf4j.Slf4j;
  * 不再需要维护八条类型列表与修正 index 偏移。</p>
  *
  * <h2>依赖驱动的加载</h2>
- * <p>插件通过 {@link YuniPlugin#inject()} 声明所需服务。加载流程会检查这些服务
+ * <p>插件通过 {@link YuniPlugin#requiredServices()} 声明所需服务。加载流程会检查这些服务
  * 是否已在 {@link ServiceRegistry} 中注册：</p>
  * <ul>
  *   <li>全部就绪 → 调用 {@code apply(ctx)}，转入 {@link FiberState#ACTIVE}；</li>
@@ -256,7 +256,7 @@ public final class PluginRuntime {
             pluginDataDirs.put(id, dataDir);
         }
 
-        // 先登记索引再 apply：这样插件在 apply 期间就能通过 ctx.service 找到自己
+        // 先登记索引再 apply：这样插件在 apply 期间就能通过 ctx.requireService 找到自己
         // 注册的服务，也能被其他插件按 ID 反查。
 
         List<Class<?>> missing = missingDependencies(plugin);
@@ -1366,9 +1366,9 @@ public final class PluginRuntime {
     private List<Class<?>> missingDependencies(YuniPlugin plugin) {
         List<Class<?>> injected;
         try {
-            injected = plugin.inject();
+            injected = plugin.requiredServices();
         } catch (Throwable t) {
-            log.warn("插件 {} 的 inject() 执行失败，按无依赖处理", plugin.getClass().getName(), t);
+            log.warn("插件 {} 的 requiredServices() 执行失败，按无依赖处理", plugin.getClass().getName(), t);
             return List.of();
         }
         if (injected == null || injected.isEmpty()) {

@@ -25,7 +25,7 @@ import com.yuier.yuni.plugin.api.event.NoticeEvent;
  *
  * <h2>权限</h2>
  * <p>框架<b>不</b>自动施加权限检查（现行系统只做了「用户未封禁」检查，且是隐式的）。
- * 需要时用 {@code ctx.service(PermissionService.class)} 显式判断。</p>
+ * 需要时用 {@code ctx.requireService(PermissionService.class)} 显式判断。</p>
  *
  * @see com.yuier.yuni.plugin.api.YuniContext#onNotice
  */
