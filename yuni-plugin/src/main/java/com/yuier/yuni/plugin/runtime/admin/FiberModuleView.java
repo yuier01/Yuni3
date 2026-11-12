@@ -14,12 +14,7 @@ import java.util.List;
  * {@link FiberRegistry.ModuleHandle} 与它的插件 Fiber 翻译成公共契约对象，
  * 之后不再引用运行时内部类型。</p>
  *
- * <h2>为什么只包含顶层插件</h2>
- * <p>本视图过滤掉有父 Fiber 的插件（即 {@code ctx.plugin(child)} 挂载的子插件）。
- * 理由见 {@link PluginModuleView} 的类注释：子插件是父插件的实现细节，
- * 它不能独立启停（随父插件卸载），在管理端单独列出只会造成「我能单独关掉它吗」
- * 的困惑。</p>
- *
+
  * @see PluginModuleView
  */
 @Getter
@@ -34,7 +29,7 @@ public final class FiberModuleView implements PluginModuleView {
     /** jar 文件名。 */
     private final String jarFileName;
 
-    /** 本模块的顶层插件。 */
+    /** 本模块的插件。 */
     private final List<PluginView> plugins;
 
     /**
@@ -48,17 +43,11 @@ public final class FiberModuleView implements PluginModuleView {
         this.name = handle.getModuleName();
         this.jarFileName = handle.getJarFileName();
         this.plugins = fibers.ofModule(handle.getModuleId()).stream()
-                // 只保留顶层插件：子插件随父插件卸载，不是独立的运维对象
-                .filter(fiber -> fiber.getParent() == null)
                 .map(fiber -> (PluginView) new FiberPluginView(fiber, handle.getModuleId()))
                 .toList();
     }
 
-    /*
-     * id() / name() / jarFileName() / plugins() 由类上的
-     * @Getter + @Accessors(fluent) 生成——契约方法名是 record 风格（无 get 前缀），
-     * fluent 正好与之一致，因此无需手写这四个转发方法。
-     */
+
 
     @Override
     public String toString() {

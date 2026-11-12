@@ -11,7 +11,6 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.ScopeQuery;
 import com.yuier.yuni.plugin.api.YuniContext;
-import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
 import com.yuier.yuni.plugin.api.event.MetaEvent;
@@ -62,8 +61,8 @@ import org.slf4j.Logger;
  * 问题的关键。</p>
  *
  * <h2>服务解析</h2>
- * <p>本实现持有对 {@link ServiceRegistry} 的引用。子上下文（{@code ctx.plugin(child)}
- * 产生的）共享同一个注册表——这是「服务沿上下文链可见」的实现方式。
+ * <p>本实现持有对 {@link ServiceRegistry} 的引用。所有插件上下文共享同一个
+ * 注册表——这是「服务全局可见」的实现方式。
  * 插件提供的服务通过 {@code provide(...)} 注册进同一个表，因此插件之间
  * 可以直接通过 {@code ctx.service(...)} 互相调用，无需静态查 Spring Bean。</p>
  *
@@ -86,8 +85,7 @@ import org.slf4j.Logger;
  *   <li>{@link #schedule} / {@link #every} / {@link #runNow} —— 需要
  *       {@code DynamicTaskManager}；</li>
  *   <li>{@link #getHttp()} / {@link #getCache()} / {@link #getConfig()} —— 需要
- *       {@code JsonCodec}（未注册共享实例时按需构造）；</li>
- *   <li>{@link #plugin(YuniPlugin)} —— 需要上下文已绑定运行时。</li>
+ *       {@code JsonCodec}（未注册共享实例时按需构造）。</li>
  * </ul>
  * <p>生产环境下这些依赖由 {@code PluginSystem}（super Bean）在启动时装配。</p>
  *
@@ -118,7 +116,7 @@ public final class PluginContext implements YuniContext {
     /** 归属的 Fiber；异步任务里用它判断插件是否已卸载。 */
     private PluginFiber fiber;
 
-    /** 所属运行时；由 {@code PluginRuntime} 在构造后回填，用于挂载子插件。 */
+    /** 所属运行时；由 {@code PluginRuntime} 在构造后回填，用于作用域查询与管理接口。 */
     private PluginRuntime runtime;
 
     /** 作用域查询的缓存实例（惰性构造）。 */
@@ -584,13 +582,11 @@ public final class PluginContext implements YuniContext {
      * <p>顺序由强到弱：</p>
      * <ol>
      *   <li><b>用户显式群例外</b>——管理端或 {@code /插件 开启} 写下的配置；</li>
-     *   <li><b>插件注册时的基线例外</b>——插件作者写的
-     *       {@code ctx.plugin(child, onlyGroups(a,b))}；</li>
      *   <li><b>有效全局默认值</b>——依次为「用户显式设置的全局开关」→
-     *       「插件基线自带的默认值」→「元数据的 {@code defaultEnable}」。</li>
+     *       「元数据的 {@code defaultEnable}」。</li>
      * </ol>
-     * <p>本方法把①②的合并交给 {@code PluginRuntime.isPluginEnabledIn}，
-     * 它在「没有任何例外信息」时返回 {@code null}；此时才回落到③。</p>
+     * <p>本方法把这两层的合并交给 {@code PluginRuntime.isPluginEnabledIn}，
+     * 它在「没有任何例外信息」时返回 {@code null}；此时才回落到元数据默认值。</p>
      *
      * <p><b>注意</b>：这里回落到的是<b>元数据</b>的 {@code defaultEnable}，
      * 而不是「有效全局默认值」。两者的差别只在
@@ -611,7 +607,7 @@ public final class PluginContext implements YuniContext {
                 // 未绑定运行时（测试场景）：保守地放行，避免插件在测试里静默失效
                 return true;
             }
-            // 运行时统一判定；子插件在运行时内部解析到根祖先（跟随父插件）
+            // 运行时统一判定（用户群例外 + 有效默认值）
             Boolean enabled = runtime.isPluginEnabledIn(fiber.getId(), groupId);
             if (enabled != null) {
                 return enabled;
@@ -769,37 +765,12 @@ public final class PluginContext implements YuniContext {
         return jsonCodec;
     }
 
-    // ==================== 挂载子插件 ====================
-
-    @Override
-    public Disposable plugin(YuniPlugin child) {
-        if (child == null) {
-            throw new IllegalArgumentException("子插件不能为 null");
-        }
-        if (runtime == null) {
-            throw new IllegalStateException(
-                    "上下文未绑定运行时，无法挂载子插件" + MISSING_DEPENDENCY_NOTE
-                            + "。请通过 PluginRuntime.load(...) 创建上下文。");
-        }
-        // 子插件继承本插件的类加载器与资源目录
-        PluginFiber childFiber = runtime.mountChild(child, fiber, dataDir);
-
-        /*
-         * 子插件可能因依赖未满足而停在 PENDING。此时注册一个撤销句柄是不够的——
-         * 还需要在「本插件后续提供了该依赖」时推进它。
-         *
-         * 这里采用的做法是在 provide() 之后统一尝试推进（见 provide 的实现），
-         * 因此挂载动作本身只负责登记与撤销。
-         */
-        return registerDisposable(() -> runtime.unload(childFiber.getId()));
-    }
-
     /**
      * 绑定所属运行时。
      *
      * <p>由 {@link PluginRuntime} 在构造上下文之后立即调用。之所以不放进构造器，
      * 是因为运行时与上下文互相引用：运行时需要上下文来执行 {@code apply}，
-     * 上下文需要运行时来挂载子插件。</p>
+     * 上下文需要运行时来提供作用域查询与管理接口。</p>
      *
      * @param runtime 运行时
      */

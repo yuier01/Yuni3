@@ -67,7 +67,6 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @Override
     public List<PluginView> getPlugins() {
         return runtime.getFibers().getAll().stream()
-                .filter(fiber -> fiber.getParent() == null)
                 .map(this::viewOf)
                 .toList();
     }
@@ -80,7 +79,6 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @Override
     public List<PluginView> pluginsOfModule(String moduleId) {
         return runtime.getFibers().ofModule(moduleId).stream()
-                .filter(fiber -> fiber.getParent() == null)
                 .map(this::viewOf)
                 .toList();
     }

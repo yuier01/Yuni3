@@ -13,16 +13,15 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Fiber 容器——「哪个插件正跑在哪里」的树形索引。
+ * Fiber 容器——「哪个插件正跑在哪里」的索引。
  *
  * <h2>取代了什么</h2>
  * <p>现行 {@code PluginContainer} 维护了 8 条类型 ID 列表 + 3 张 Map，
  * 且每张 Map 都要在热重载时被手工增删（{@code PluginReloadProcessor} 与
  * {@code PluginService} 各实现了一遍同样的维护逻辑，是 bug 高发区）。</p>
  *
- * <p>本容器维护一棵<b>树</b>（父子关系由 {@link PluginFiber#getParent()} 表达）
- * 加上按 ID / 模块 / 类名索引的三张 Map。<b>没有 index 字段，没有类型分桶，
- * 没有偏移修正</b>——热重载时「位置」就是「父 Fiber + 在父 Fiber 下的挂载顺序」。</p>
+ * <p>本容器维护按 ID / 模块 / 类名的三张 Map。<b>没有 index 字段，没有类型分桶，
+ * 没有偏移修正</b>——插件之间是平级关系，模块只用于分组展示与热重载定位。</p>
  *
  * <h2>模块与插件的关系</h2>
  * <p>一个 <b>模块</b>（module）对应一个 jar 包，可包含多个插件；每个插件是一个
@@ -30,8 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link FiberRegistry.ModuleHandle} 中保存，供管理端分组展示与热重载定位 jar 使用。</p>
  *
  * <h2>线程安全</h2>
- * <p>加载 / 卸载 / 查询可能并发。所有索引用 {@link ConcurrentHashMap}；
- * 顶层顺序用同步列表保护（写入是低频操作，读取时做快照）。</p>
+ * <p>加载 / 卸载 / 查询可能并发。所有索引用 {@link ConcurrentHashMap}。</p>
  *
  * @see PluginFiber
  * @see PluginRuntime
@@ -46,9 +44,6 @@ public final class FiberRegistry {
 
     /** 插件实现类 → 插件标识；供「按类反查插件」使用（现行 {@code PluginUtils} 的用法）。 */
     private final Map<Class<?>, String> pluginIdByClass = new ConcurrentHashMap<>();
-
-    /** 顶层 Fiber 的挂载顺序；用于管理端稳定展示与重载时的原位还原。 */
-    private final List<String> rootOrder = Collections.synchronizedList(new ArrayList<>());
 
     /**
      * 模块句柄——一个 jar 包对应的元数据与 ClassLoader。
@@ -120,23 +115,14 @@ public final class FiberRegistry {
     /**
      * 登记一个已加载的插件 Fiber。
      *
-     * @param fiber     Fiber
-     * @param moduleId  所属模块 ID；为 {@code null} 表示不属于任何模块（测试场景）
-     * @param topLevel  是否为顶层插件（{@code false} 表示是某个插件的子插件）
+     * @param fiber Fiber
      */
-    public void add(PluginFiber fiber, String moduleId, boolean topLevel) {
+    public void add(PluginFiber fiber) {
         if (fiber == null) {
             return;
         }
         fibersById.put(fiber.getId(), fiber);
         pluginIdByClass.put(fiber.getPlugin().getClass(), fiber.getId());
-        if (topLevel) {
-            synchronized (rootOrder) {
-                if (!rootOrder.contains(fiber.getId())) {
-                    rootOrder.add(fiber.getId());
-                }
-            }
-        }
     }
 
     /**
@@ -193,26 +179,6 @@ public final class FiberRegistry {
      */
     public List<PluginFiber> getAll() {
         return List.copyOf(fibersById.values());
-    }
-
-    /**
-     * 顶层 Fiber，按挂载顺序。
-     *
-     * <p>用于管理端稳定展示——顺序与加载顺序一致，不随重载抖动。</p>
-     *
-     * @return 不可变快照
-     */
-    public List<PluginFiber> getRoots() {
-        List<PluginFiber> result = new ArrayList<>();
-        synchronized (rootOrder) {
-            for (String id : rootOrder) {
-                PluginFiber fiber = fibersById.get(id);
-                if (fiber != null) {
-                    result.add(fiber);
-                }
-            }
-        }
-        return Collections.unmodifiableList(result);
     }
 
     /**
@@ -316,9 +282,6 @@ public final class FiberRegistry {
         }
         fibersById.remove(fiber.getId());
         pluginIdByClass.remove(fiber.getPlugin().getClass());
-        synchronized (rootOrder) {
-            rootOrder.remove(fiber.getId());
-        }
     }
 
     /**
@@ -345,9 +308,6 @@ public final class FiberRegistry {
         fibersById.clear();
         modulesById.clear();
         pluginIdByClass.clear();
-        synchronized (rootOrder) {
-            rootOrder.clear();
-        }
     }
 
     /**
@@ -360,10 +320,7 @@ public final class FiberRegistry {
     public int getTotalEffectCount() {
         int total = 0;
         for (PluginFiber fiber : fibersById.values()) {
-            // 只统计顶层，避免子树被重复计数
-            if (fiber.getParent() == null) {
-                total += fiber.getTotalEffectCount();
-            }
+            total += fiber.getEffectCount();
         }
         return total;
     }

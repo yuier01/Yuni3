@@ -396,31 +396,6 @@ class PluginRuntimeTest {
     }
 
     @Test
-    @DisplayName("子插件随父插件一同卸载")
-    void childPluginDisposedWithParent() {
-        PluginRuntime runtime = runtime();
-
-        YuniPlugin child = YuniPlugin.of("子插件", ctx -> ctx.onMessage((ev, reply) -> { }));
-        YuniPlugin parent = YuniPlugin.of("父插件", ctx -> {
-            ctx.onMessage((ev, reply) -> { });
-            ctx.plugin(child);
-        });
-
-        PluginFiber parentFiber = runtime.load(parent, null, null, null);
-
-        assertEquals(FiberState.ACTIVE, parentFiber.getState());
-        assertEquals(1, parentFiber.getChildren().size(), "子插件应挂到父 Fiber 下");
-        PluginFiber childFiber = parentFiber.getChildren().get(0);
-        assertEquals(FiberState.ACTIVE, childFiber.getState());
-
-        runtime.unload(parentFiber.getId());
-
-        // 子随父卸载：父插件卸载后，子插件的注册项也必须消失
-        assertEquals(FiberState.DISPOSED, childFiber.getState());
-        assertEquals(0, runtime.getRegistrations().getTotalSize(), "父子注册项都应清空");
-    }
-
-    @Test
     @DisplayName("全量卸载后全局 Effect 归零")
     void unloadAllLeavesNoResidue() {
         PluginRuntime runtime = runtime();

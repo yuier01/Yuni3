@@ -5,7 +5,6 @@ import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.task.DynamicTaskManager;
-import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
@@ -21,7 +20,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -226,6 +224,9 @@ public final class PluginRuntime {
      * <p>流程：解析元数据 → 建 Fiber → 检查依赖 → 调 {@code apply(ctx)} → 登记索引。
      * 依赖未满足时停在 PENDING 并<b>不</b>调用 {@code apply}。</p>
      *
+     * <p>作用域完全由「元数据 {@code defaultEnable} + 用户配置的群例外」决定，
+     * 插件代码不参与——作者不可能预知用户会在哪些群使用。</p>
+     *
      * @param plugin      插件实例
      * @param moduleId    所属模块 ID；{@code null} 表示不属于任何模块
      * @param dataDir     插件资源目录；可为 {@code null}
@@ -233,27 +234,6 @@ public final class PluginRuntime {
      * @return 建好的 Fiber（无论加载成功、失败还是停在 PENDING）
      */
     public PluginFiber load(YuniPlugin plugin, String moduleId, Path dataDir, ClassLoader classLoader) {
-        return load(plugin, moduleId, dataDir, classLoader, null);
-    }
-
-    /**
-     * 加载一个插件（完整签名）。
-     *
-     * <p>作用域完全由「元数据 {@code defaultEnable} + 用户配置的群例外」决定，
-     * 插件代码不参与——作者不可能预知用户会在哪些群使用。</p>
-     *
-     * @param plugin      插件实例
-     * @param moduleId    所属模块 ID；可为 {@code null}
-     * @param dataDir     插件资源目录；可为 {@code null}
-     * @param classLoader 类加载器；可为 {@code null}
-     * @param parent      父 Fiber；挂载子插件时传入，顶层插件传 {@code null}
-     * @return 建好的 Fiber
-     */
-    public PluginFiber load(YuniPlugin plugin,
-                            String moduleId,
-                            Path dataDir,
-                            ClassLoader classLoader,
-                            PluginFiber parent) {
         if (plugin == null) {
             throw new IllegalArgumentException("插件实例不能为 null");
         }
@@ -268,15 +248,12 @@ public final class PluginRuntime {
         }
 
         PluginFiber fiber = new PluginFiber(id, plugin, metadata, classLoader);
-        fibers.add(fiber, moduleId, parent == null);
+        fibers.add(fiber);
         ensureModuleHandle(moduleId, classLoader);
         if (dataDir != null) {
             // 记录资源目录：依赖未满足而停在 PENDING 的插件，后续推进时
             // 需要用同一个目录重建上下文
             pluginDataDirs.put(id, dataDir);
-        }
-        if (parent != null) {
-            parent.addChild(fiber);
         }
 
         // 先登记索引再 apply：这样插件在 apply 期间就能通过 ctx.service 找到自己
@@ -436,7 +413,7 @@ public final class PluginRuntime {
 
         PluginContext ctx = PluginContext.forFiber(
                 fiber, services, registrations, taskManager, dataDir, jsonCodec);
-        // 让子插件挂载能回调到运行时
+        // 让上下文能回调运行时（作用域查询、管理接口）
         ctx.bindRuntime(this);
 
         try {
@@ -642,16 +619,15 @@ public final class PluginRuntime {
     /**
      * 卸载全部插件。
      *
-     * <p>从叶子往根卸载（{@link FiberRegistry#getRoots()} 的逆序），
-     * 保证子插件先于父插件消失。</p>
+     * <p>按加载顺序的逆序卸载，与 Effect 的逆序撤销保持一致。</p>
      *
      * @return 清理失败的描述列表
      */
     public List<String> unloadAll() {
         List<String> failures = new ArrayList<>();
-        List<PluginFiber> roots = fibers.getRoots();
-        for (int i = roots.size() - 1; i >= 0; i--) {
-            failures.addAll(unload(roots.get(i).getId()));
+        List<PluginFiber> all = fibers.getAll();
+        for (int i = all.size() - 1; i >= 0; i--) {
+            failures.addAll(unload(all.get(i).getId()));
         }
         return Collections.unmodifiableList(failures);
     }
@@ -688,8 +664,8 @@ public final class PluginRuntime {
      * <h2>调用时机约束（重要）</h2>
      * <p>本方法是<b>同步</b>的，且会在调用线程上卸载并重新加载目标模块的类。
      * 因此<b>不要从目标模块自己的处理器里调用它</b>——那会在一次命令处理尚未
-     * 返回时就卸载掉正在执行的类。正确做法是由调用方在
-     * {@code ctx.plugin(...)} 之外的独立插件、或由 webapi 的请求线程触发。</p>
+     * 返回时就卸载掉正在执行的类。正确做法是由另一个插件的处理器、
+     * 或由 webapi 的请求线程触发。</p>
      *
      * <p>框架选择「不做延迟调度」而非「静默地异步卸载」，是因为后者会让
      * 「重载成功了吗」变成一个无法回答的问题（调用返回时插件还没装好）。
@@ -726,7 +702,7 @@ public final class PluginRuntime {
             }
         }
 
-        // 第 3 步：逐个卸载。逆序，与加载顺序对称（子插件先于父插件消失）
+        // 第 3 步：逐个卸载。逆序，与 Effect 的逆序撤销保持一致
         List<String> pluginIds = new ArrayList<>(handle.getPluginIds());
         for (int i = pluginIds.size() - 1; i >= 0; i--) {
             unload(pluginIds.get(i));
@@ -852,7 +828,7 @@ public final class PluginRuntime {
      * @return 过滤器；插件不存在或从未注册时为空
      */
     public Optional<ScopeFilter> effectiveScopeOf(String pluginId) {
-        String owner = scopeOwnerOf(pluginId);
+        String owner = pluginId;
         return fibers.byId(owner).map(fiber ->
                 userScopeOverrides.toFilter(owner, effectiveDefaultEnabled(owner)));
     }
@@ -864,7 +840,7 @@ public final class PluginRuntime {
      * @return 显式开启的群号；无则为空集
      */
     public Set<Long> explicitlyEnabledGroups(String pluginId) {
-        return userScopeOverrides.explicitlyEnabledGroups(scopeOwnerOf(pluginId));
+        return userScopeOverrides.explicitlyEnabledGroups(pluginId);
     }
 
     /**
@@ -878,8 +854,8 @@ public final class PluginRuntime {
      * @return 生效返回 {@code true}；<b>插件不存在时返回 {@code null}</b>
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
-        // 子插件没有独立作用域：解析到根祖先，与父插件共用同一份用户配置
-        String owner = scopeOwnerOf(pluginId);
+        // 用户显式配置的群例外优先级最高
+        String owner = pluginId;
         // 用户显式配置的群例外优先级最高
         Optional<Boolean> explicit = userScopeOverrides.explicitValue(owner, groupId);
         if (explicit.isPresent()) {
@@ -902,40 +878,15 @@ public final class PluginRuntime {
     }
 
     /**
-     * 解析插件的作用域归属者——沿父子链上溯到根祖先。
-     *
-     * <p>子插件在语义上是父插件的一部分（生命周期已经绑定：父卸载则子卸载），
-     * 因此作用域也跟随根祖先。这条规则同时解决了「管理端看不到子插件、
-     * 用户无法单独配置它」的问题——子插件不再需要自己的群级配置。</p>
-     *
-     * @param pluginId 插件标识
-     * @return 根祖先的标识；插件未加载时原样返回
-     */
-    private String scopeOwnerOf(String pluginId) {
-        if (pluginId == null) {
-            return null;
-        }
-        PluginFiber fiber = fibers.byId(pluginId).orElse(null);
-        if (fiber == null) {
-            return pluginId;
-        }
-        PluginFiber owner = fiber;
-        while (owner.getParent() != null && owner.getParent() != owner) {
-            owner = owner.getParent();
-        }
-        return owner.getId();
-    }
-
-    /**
      * 取插件的有效默认启用值——用户显式全局开关优先，否则看元数据。
      *
-     * <p>子插件解析到根祖先，因此这里取的是父插件的默认值。</p>
+    
      *
      * @param pluginId 插件标识
      * @return 默认启用返回 {@code true}
      */
     private boolean effectiveDefaultEnabled(String pluginId) {
-        String owner = scopeOwnerOf(pluginId);
+        String owner = pluginId;
         // 用户显式设置过全局开关 → 以它为准
         Optional<Boolean> userGlobal = userScopeOverrides.explicitGlobalDefault(owner);
         if (userGlobal.isPresent()) {
@@ -1031,8 +982,8 @@ public final class PluginRuntime {
      * @return 过滤器描述；未记录时返回 {@code "(未记录)"}
      */
     public String describeScope(String pluginId) {
-        // 子插件解析到根祖先；描述的就是它实际生效的那份配置
-        String owner = scopeOwnerOf(pluginId);
+        // 用户配置的群例外 + 有效默认值
+        String owner = pluginId;
         ScopeFilter persisted =
                 userScopeOverrides.toFilter(owner, effectiveDefaultEnabled(owner));
         if (persisted.getExceptionGroups().isEmpty()) {
@@ -1072,8 +1023,8 @@ public final class PluginRuntime {
      * @throws IllegalArgumentException 插件不存在
      */
     public void setPluginEnabledIn(String pluginId, long groupId, boolean enabled) {
-        // 子插件的配置写到根祖先：它没有独立作用域
-        String owner = scopeOwnerOf(pluginId);
+        // 存在性校验
+        String owner = pluginId;
         // 存在性校验；后续比较用「有效默认值」而不是元数据默认值——
         // 否则「全局关 + 单独开启某群」在 metadata.defaultEnable = true 时
         // 会被误判为「与默认值一致」而丢掉该群的显式值。
@@ -1102,7 +1053,7 @@ public final class PluginRuntime {
      * @throws IllegalArgumentException 插件不存在
      */
     public void setPluginGlobalEnabled(String pluginId, boolean enabled) {
-        String owner = scopeOwnerOf(pluginId);
+        String owner = pluginId;
         if (!fiberExists(owner)) {
             throw new IllegalArgumentException("插件不存在: " + pluginId);
         }
@@ -1118,7 +1069,7 @@ public final class PluginRuntime {
      * @return 本来是否有配置可清
      */
     public boolean resetPluginScope(String pluginId) {
-        String owner = scopeOwnerOf(pluginId);
+        String owner = pluginId;
         boolean hadExceptions = userScopeOverrides.clear(owner).isPresent();
         boolean hadGlobal = userScopeOverrides.clearGlobalDefault(owner);
         if (hadExceptions || hadGlobal) {
@@ -1226,8 +1177,8 @@ public final class PluginRuntime {
         if (store == null) {
             return;
         }
-        // 子插件不落自己的记录：它共用根祖先的配置
-        String owner = scopeOwnerOf(pluginId);
+        
+        String owner = pluginId;
         try {
             boolean pluginDefault = fibers.byId(owner)
                     .map(fiber -> fiber.getMetadata().isDefaultEnable())
@@ -1430,28 +1381,5 @@ public final class PluginRuntime {
             }
         }
         return missing;
-    }
-
-    /**
-     * 供 {@link PluginContext} 委托子插件挂载。
-     *
-     * @param child   子插件
-     * @param parent  父 Fiber
-     * @param dataDir 子插件资源目录
-     * @param filter  作用域过滤器
-     * @return 子插件 Fiber
-     */
-    PluginFiber mountChild(YuniPlugin child, PluginFiber parent, Path dataDir) {
-        return load(child, null, dataDir, parent == null ? null : parent.getClassLoader(), parent);
-    }
-
-    /**
-     * 供 {@link PluginContext} 构造撤销句柄：卸载一个子插件。
-     *
-     * @param pluginId 子插件标识
-     * @return 撤销句柄
-     */
-    Disposable unloadHandle(String pluginId) {
-        return () -> unload(pluginId);
     }
 }

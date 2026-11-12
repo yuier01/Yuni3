@@ -34,11 +34,6 @@ import lombok.Getter;
  * 该 Fiber 的 Effect 已归零，只有确认无残留后才允许调用方关闭 ClassLoader
  * （见 {@code PluginRuntime#reloadModule}）。</p>
  *
- * <h2>树形结构</h2>
- * <p>{@link #getChildren()} 是父 Fiber 挂载的子 Fiber。子 Fiber 随父 Fiber 一同
- * dispose。这是「一个复杂插件拆成多个模块」与「替代现行『A 插件的 enable 回调里
- * 启停 B 插件』耦合写法」的基础设施。</p>
- *
  * <h2>线程安全</h2>
  * <p>状态迁移全部走 {@link AtomicReference} 的 <b>CAS</b>，因此「迁移」这件事
  * 本身是原子的，而不只是「单次读写」原子：</p>
@@ -84,9 +79,6 @@ public final class PluginFiber {
      */
     private final ClassLoader classLoader;
 
-    /** 子 Fiber；随本 Fiber 一同卸载。 */
-    private final List<PluginFiber> children = new CopyOnWriteArrayList<>();
-
     /** Effect 登记表。 */
     private final EffectRegistry effects = new EffectRegistry();
 
@@ -98,9 +90,6 @@ public final class PluginFiber {
 
     /** FAILED 状态的失败原因；其他状态为 {@code null}。 */
     private final AtomicReference<Throwable> failureCause = new AtomicReference<>();
-
-    /** 父 Fiber；根插件为 {@code null}。 */
-    private volatile PluginFiber parent;
 
     /**
      * 是否已调用过 {@link #dispose()}。
@@ -268,60 +257,16 @@ public final class PluginFiber {
         return effects.size();
     }
 
-    // ==================== 树结构 ====================
-
-    /* getParent() 由 @Getter 生成。 */
-
-    /**
-     * 登记一个子 Fiber。
-     *
-     * <p>由 {@code PluginRuntime} 在挂载子插件时调用。</p>
-     *
-     * @param child 子 Fiber
-     */
-    void addChild(PluginFiber child) {
-        if (child == null || child == this) {
-            return;
-        }
-        child.parent = this;
-        children.add(child);
-    }
-
-    /**
-     * 子 Fiber 列表。
-     *
-     * @return 不可变视图
-     */
-    public List<PluginFiber> getChildren() {
-        return Collections.unmodifiableList(children);
-    }
-
-    /**
-     * 本 Fiber 及其全部后代的 Effect 总数。
-     *
-     * <p>用于子树级泄漏检测。</p>
-     *
-     * @return 总数
-     */
-    public int getTotalEffectCount() {
-        int total = getEffectCount();
-        for (PluginFiber child : children) {
-            total += child.getTotalEffectCount();
-        }
-        return total;
-    }
-
     // ==================== 卸载 ====================
 
     /**
-     * 卸载本 Fiber 及其全部子树。
+     * 卸载本 Fiber。
      *
      * <p>执行顺序：</p>
      * <ol>
      *   <li>状态置为 {@link FiberState#UNLOADING}；</li>
-     *   <li><b>先</b>递归卸载子 Fiber（子先于父，与 Effect 逆序同理）；</li>
      *   <li>封存并撤销本 Fiber 的全部 Effect（逆序）；</li>
-     *   <li>状态置为 {@link FiberState#DISPOSED}，清空子列表。</li>
+     *   <li>状态置为 {@link FiberState#DISPOSED}。</li>
      * </ol>
      *
      * <p>本方法幂等。返回的失败列表用于让调用方记录日志——
@@ -338,13 +283,7 @@ public final class PluginFiber {
 
         List<String> failures = new ArrayList<>();
 
-        // 先卸子：子插件可能引用了父插件提供的服务，必须先行释放
-        for (PluginFiber child : children) {
-            failures.addAll(child.dispose());
-        }
-        children.clear();
-
-        // 再撤本 Fiber 的 Effect（逆序），并带上插件名便于定位
+        // 撤销本 Fiber 的 Effect（逆序），并带上插件名便于定位
         for (String failure : effects.disposeAll()) {
             failures.add("[" + id + "] " + failure);
         }
@@ -362,7 +301,7 @@ public final class PluginFiber {
      * 就再也看不到这次失败了。本方法保留 {@link FiberState#FAILED} 状态，
      * 使失败可观测。</p>
      *
-     * <p>注意本方法<b>不</b>递归处理子 Fiber：{@code apply} 失败时，子插件可能
+     * <p>注意本方法只处理本 Fiber 的 Effect：
      * 尚未挂载，也可能已挂载了一部分。已挂载的子 Fiber 随本 Fiber 一起被
      * {@link #dispose()} 处理（调用方在合适时机执行）。</p>
      *
@@ -385,8 +324,7 @@ public final class PluginFiber {
      */
     public String describe() {
         return id + "[" + state.get().getDisplayName()
-                + ", effects=" + getEffectCount()
-                + (children.isEmpty() ? "" : ", children=" + children.size()) + "]";
+                + ", effects=" + getEffectCount() + "]";
     }
 
     @Override

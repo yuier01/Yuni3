@@ -151,7 +151,7 @@ public interface YuniPlugin {
     /**
      * 用 lambda 构造一个无元数据的简单插件。
      *
-     * <p>用于框架内部的胶水逻辑、以及把一个 {@code apply} 函数直接挂载为子插件。
+     * <p>用于框架内部的胶水逻辑、以及把一段 {@code apply} 逻辑直接包装成插件。
      * 对外发布的插件应实现本接口并覆写 {@link #getMetadata()}，以便管理端正确展示。</p>
      *
      * @param metadata 元数据

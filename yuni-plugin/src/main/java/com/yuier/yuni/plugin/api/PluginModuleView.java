@@ -14,11 +14,7 @@ import java.util.List;
  * 的 {@code PluginListModule} 语义一致，只是数据来源从
  * {@code PluginContainer} 换成了本接口。</p>
  *
- * <h2>为什么模块视图里的插件是平铺列表而不是树</h2>
- * <p>新系统支持 {@code ctx.plugin(child)} 挂载子插件，形成父子关系。但现行系统的
- * 管理端<b>没有</b>树的展示需求，而子插件在管理端单独列出来会造成困惑
- * （用户会以为它能独立启停，实际上它随父插件卸载）。因此本视图只包含
- * <b>顶层插件</b>——子插件是父插件的实现细节，不是运维对象。</p>
+
  *
  * @see PluginAdmin#getModules()
  */

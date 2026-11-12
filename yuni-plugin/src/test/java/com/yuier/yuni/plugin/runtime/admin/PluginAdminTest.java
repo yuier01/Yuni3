@@ -402,29 +402,6 @@ class PluginAdminTest {
     }
 
     @Test
-    @DisplayName("子插件不出现在管理视图中——它随父插件卸载，不是独立的运维对象")
-    void childPluginsAreHidden() {
-        YuniPlugin parent = new YuniPlugin() {
-            @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("Parent").build();
-            }
-
-            @Override
-            public void apply(YuniContext ctx) {
-                ctx.plugin(YuniPlugin.of("子插件", c -> { }));
-            }
-        };
-        runtime.load(parent, "m", null, null);
-
-        List<PluginView> views = admin.getPlugins();
-        assertEquals(1, views.size(), "只应看到父插件: " + views);
-        assertEquals("Parent", views.get(0).getName());
-        // 但 Fiber 总数包含子插件
-        assertEquals(2, runtime.getFibers().getPluginCount());
-    }
-
-    @Test
     @DisplayName("插件可按模块分组取出")
     void pluginsOfModule() {
         load("m1", "A", false, true);
