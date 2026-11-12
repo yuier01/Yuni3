@@ -5,23 +5,22 @@ import lombok.Getter;
 import lombok.ToString;
 
 import java.nio.file.Path;
+import java.util.Objects;
 
 /**
- * 插件加载单元——一个 jar（或测试中的等价物）的文件与类加载信息。
+ * 插件加载单元——一个 jar 的文件与类加载信息。
  *
- * <h2>它不是什么</h2>
- * <p>Artifact <b>不表达插件分组</b>。插件之间是平级关系；管理端看到的也是
- * 平铺列表。Artifact 只回答两个问题：这些类从哪个文件来、重载时该换哪个
- * ClassLoader。</p>
+ * <h2>三种形态</h2>
+ * <ul>
+ *   <li>{@link #jar(String, String, String, String, ClassLoader)}：真实 jar，
+ *       所有字段非空；</li>
+ *   <li>{@link #namespace(String)}：只有命名空间、没有 jar，用于测试与代码内
+ *       直接加载插件；</li>
+ *   <li>{@link #none()}：连命名空间都没有，插件标识退化为插件 ID。</li>
+ * </ul>
  *
- * <h2>为什么需要它</h2>
- * <p>Java 的类加载器以 jar 为单位，无法只重载 jar 中的一个类。因此热重载
- * 的最小单位天然是「一个 jar」，而不是「一个插件」。Artifact 就是这个边界的
- * 显式表达——它取代了旧系统中的 module 概念，但不再承担分组展示职责。</p>
- *
- * <h2>测试场景</h2>
- * <p>单元测试通常直接 {@code new} 插件实例，没有 jar。此时使用
- * {@link #none()}：{@code id} 为 {@code null}，插件标识退化为插件名。</p>
+ * <p>Artifact 不表达插件分组——插件之间平级。它只回答两个问题：这些类从哪来、
+ * 重载时换哪个 ClassLoader。</p>
  *
  * @see PluginRuntime#reload(String)
  * @see PluginArtifactLoader
@@ -31,35 +30,30 @@ import java.nio.file.Path;
 @EqualsAndHashCode
 public final class PluginArtifact {
 
-    /** 加载单元标识；来自 metadata.json 的 {@code id}，缺省时为 jar 文件名。 */
+    /** 无 jar、无命名空间的占位实例。 */
+    private static final PluginArtifact NONE =
+            new PluginArtifact(null, null, null, null, null);
+
+    /** 加载单元标识；无命名空间时为 {@code null}。 */
     private final String id;
 
-    /** 展示名；来自 metadata.json 的 {@code name}。 */
+    /** 展示名；无命名空间时为 {@code null}。 */
     private final String name;
 
-    /** jar 文件名；测试场景为 {@code null}。 */
+    /** jar 文件名；无 jar 时为 {@code null}。 */
     private final String jarFileName;
 
-    /** jar 所在目录，同时是插件资源目录；测试场景为 {@code null}。 */
+    /** jar 所在目录，同时是插件资源目录；无 jar 时为 {@code null}。 */
     private final String jarParentPath;
 
-    /** 加载本单元插件类的 ClassLoader；测试场景可为 {@code null}。 */
+    /** 加载本单元插件类的 ClassLoader；无 jar 时为 {@code null}。 */
     private final ClassLoader classLoader;
 
-    /**
-     * 构造加载单元。
-     *
-     * @param id           标识
-     * @param name         展示名
-     * @param jarFileName  jar 文件名
-     * @param jarParentPath jar 所在目录
-     * @param classLoader  类加载器
-     */
-    public PluginArtifact(String id,
-                          String name,
-                          String jarFileName,
-                          String jarParentPath,
-                          ClassLoader classLoader) {
+    private PluginArtifact(String id,
+                           String name,
+                           String jarFileName,
+                           String jarParentPath,
+                           ClassLoader classLoader) {
         this.id = id;
         this.name = name;
         this.jarFileName = jarFileName;
@@ -68,12 +62,63 @@ public final class PluginArtifact {
     }
 
     /**
-     * 无文件系统的加载单元，供测试使用。
+     * 无 jar、无命名空间的占位。
      *
-     * @return 一个 {@code id} 为 {@code null} 的 Artifact
+     * @return 占位实例
      */
     public static PluginArtifact none() {
-        return new PluginArtifact(null, null, null, null, null);
+        return NONE;
+    }
+
+    /**
+     * 只有命名空间、没有 jar 的加载单元，供测试与代码内直接加载使用。
+     *
+     * @param id 命名空间标识；不能为空
+     * @return 加载单元
+     */
+    public static PluginArtifact namespace(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("加载单元标识不能为空");
+        }
+        return new PluginArtifact(id, id, null, null, null);
+    }
+
+    /**
+     * 真实 jar 对应的加载单元。
+     *
+     * @param id            标识
+     * @param name          展示名；为空时回落到 {@code id}
+     * @param jarFileName   jar 文件名
+     * @param jarParentPath jar 所在目录
+     * @param classLoader   类加载器
+     * @return 加载单元
+     */
+    public static PluginArtifact jar(String id,
+                                     String name,
+                                     String jarFileName,
+                                     String jarParentPath,
+                                     ClassLoader classLoader) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("加载单元标识不能为空");
+        }
+        Objects.requireNonNull(jarFileName, "jarFileName");
+        Objects.requireNonNull(jarParentPath, "jarParentPath");
+        Objects.requireNonNull(classLoader, "classLoader");
+        return new PluginArtifact(
+                id,
+                name == null || name.isBlank() ? id : name,
+                jarFileName,
+                jarParentPath,
+                classLoader);
+    }
+
+    /**
+     * 是否来自真实 jar。
+     *
+     * @return 有 jar 文件返回 {@code true}
+     */
+    public boolean isJarBacked() {
+        return jarFileName != null;
     }
 
     /**

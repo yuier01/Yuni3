@@ -21,6 +21,7 @@ import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
@@ -175,6 +176,8 @@ public final class PluginArtifactLoader {
      * @return 本次成功建成的 Fiber 列表
      */
     public List<PluginFiber> loadArtifact(File jarFile, Path artifactDir) {
+        Objects.requireNonNull(jarFile, "jarFile");
+        Objects.requireNonNull(artifactDir, "artifactDir");
         List<PluginFiber> loaded = new ArrayList<>();
         // 从 metadata.json 中解析元数据
         ArtifactMetadata metadata = readArtifactMetadata(artifactDir, jarFile.getName());
@@ -183,11 +186,11 @@ public final class PluginArtifactLoader {
         // 为每个插件 jar 包创建类加载器，其父加载器为 PluginClassLoaderFactory 自身的父加载器
         // 确保能看见框架类，这样在重载插件的场景下，可以确保解析框架类，成功重载
         try (PluginClassLoader classLoader = PluginClassLoaderFactory.create(jarFile)) {
-            PluginArtifact artifact = new PluginArtifact(
+            PluginArtifact artifact = PluginArtifact.jar(
                     artifactId,
                     metadata.getName(),
                     jarFile.getName(),
-                    artifactDir == null ? null : artifactDir.toString(),
+                    artifactDir.toString(),
                     classLoader);
             // 先登记：即使 jar 里没有插件，管理端与重载流程也能看到这个加载单元
             runtime.registerArtifact(artifact);
@@ -316,9 +319,6 @@ public final class PluginArtifactLoader {
         fallback.setId(stripExtension(jarFileName));
         fallback.setName(stripExtension(jarFileName));
 
-        if (artifactDir == null) {
-            return fallback;
-        }
         Path metadataFile = artifactDir.resolve("metadata.json");
         if (!Files.isRegularFile(metadataFile)) {
             log.warn("jar 目录缺少 metadata.json，使用 jar 文件名作为标识: {}", artifactDir);

@@ -1,10 +1,15 @@
 package com.yuier.yuni.plugin.runtime.load;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -55,6 +60,18 @@ class PluginArtifactLoaderTest {
         assertEquals("https://example.com", descriptor.getHomepage());
         assertEquals("https://github.com/example/steam", descriptor.getRepository());
         assertEquals("https://example.com/icon.png", descriptor.getIcon());
+    }
+
+    @Test
+    @DisplayName("加载入口拒绝 null 文件或目录")
+    void loadArtifactRejectsNullArguments() {
+        PluginArtifactLoader loader =
+                new PluginArtifactLoader(MAPPER, new PluginRuntime(null, null));
+
+        assertThrows(NullPointerException.class,
+                () -> loader.loadArtifact(null, Path.of(".")));
+        assertThrows(NullPointerException.class,
+                () -> loader.loadArtifact(new File("x.jar"), null));
     }
 
     @Test

@@ -237,16 +237,17 @@ public final class PluginRuntime {
      * @return 建好的 Fiber
      */
     public PluginFiber load(YuniPlugin plugin, String artifactId) {
-        return load(plugin,
-                new PluginArtifact(artifactId, artifactId, null, null, null),
-                PluginDescriptor.empty());
+        PluginArtifact artifact = artifactId == null || artifactId.isBlank()
+                ? PluginArtifact.none()
+                : PluginArtifact.namespace(artifactId);
+        return load(plugin, artifact, PluginDescriptor.empty());
     }
 
     /**
      * 加载一个插件（无展示信息）。
      *
      * @param plugin   插件实例
-     * @param artifact 所属加载单元；可为 {@code null}
+     * @param artifact 所属加载单元；不能为 {@code null}
      * @return 建好的 Fiber
      */
     public PluginFiber load(YuniPlugin plugin, PluginArtifact artifact) {
@@ -260,20 +261,20 @@ public final class PluginRuntime {
      * → 登记索引。依赖未满足时停在 PENDING 并<b>不</b>调用 {@code apply}。</p>
      *
      * @param plugin     插件实例
-     * @param artifact   所属加载单元；可为 {@code null}（测试场景）
-     * @param descriptor 配置侧展示信息；可为 {@code null}
+     * @param artifact   所属加载单元；不能为 {@code null}
+     * @param descriptor 配置侧展示信息；不能为 {@code null}
      * @return 建好的 Fiber（无论加载成功、失败还是停在 PENDING）
      */
     public PluginFiber load(YuniPlugin plugin,
                             PluginArtifact artifact,
                             PluginDescriptor descriptor) {
-        if (plugin == null) {
-            throw new IllegalArgumentException("插件实例不能为 null");
-        }
+        Objects.requireNonNull(plugin, "plugin");
+        Objects.requireNonNull(artifact, "artifact");
+        Objects.requireNonNull(descriptor, "descriptor");
         PluginDeclaration declaration = safeDeclaration(plugin);
         List<Class<?>> requiredServices = safeRequiredServices(plugin);
         PluginMetadata metadata = new PluginMetadata(declaration, descriptor, requiredServices);
-        String artifactId = artifact == null ? null : artifact.getId();
+        String artifactId = artifact.getId();
         String id = buildPluginId(artifactId, declaration);
 
         if (fibers.byId(id).isPresent()) {
@@ -282,10 +283,10 @@ public final class PluginRuntime {
         }
 
         registerArtifact(artifact);
-        ClassLoader classLoader = artifact == null ? null : artifact.getClassLoader();
+        ClassLoader classLoader = artifact.getClassLoader();
         PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
         fibers.add(fiber);
-        Path dataDir = artifact == null ? null : artifact.getDataDir();
+        Path dataDir = artifact.getDataDir();
         if (dataDir != null) {
             pluginDataDirs.put(id, dataDir);
         }
@@ -309,12 +310,11 @@ public final class PluginRuntime {
      * <p>加载器在实例化插件之前调用，保证「jar 里一个插件都没有」时
      * Artifact 仍然可被管理端与重载流程看到。</p>
      *
-     * @param artifact 加载单元；{@code null} 时忽略
+     * @param artifact 加载单元；不能为 {@code null}
      */
     public void registerArtifact(PluginArtifact artifact) {
-        if (artifact != null) {
-            fibers.addArtifact(artifact);
-        }
+        Objects.requireNonNull(artifact, "artifact");
+        fibers.addArtifact(artifact);
     }
     /**
      * 执行 {@code apply(ctx)} 并处理成功 / 失败。

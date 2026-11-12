@@ -122,7 +122,7 @@ class PluginAdminTest {
         }, artifact(artifactId), PluginDescriptor.empty());
     }
     private static PluginArtifact artifact(String id) {
-        return new PluginArtifact(id, id, null, null, null);
+        return PluginArtifact.namespace(id);
     }
 
     // ==================== 查询 ====================

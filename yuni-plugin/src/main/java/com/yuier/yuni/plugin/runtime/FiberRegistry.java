@@ -61,7 +61,8 @@ public final class FiberRegistry {
      * @param artifact 加载单元
      */
     public void addArtifact(PluginArtifact artifact) {
-        if (artifact != null && artifact.getId() != null) {
+        java.util.Objects.requireNonNull(artifact, "artifact");
+        if (artifact.getId() != null) {
             artifactsById.put(artifact.getId(), artifact);
         }
     }
