@@ -3,6 +3,7 @@ package com.yuier.yuni.plugin.api;
 import lombok.Getter;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 插件元数据——加载时组装完成的扁平视图。
@@ -78,7 +79,7 @@ public final class PluginMetadata {
                            boolean buildIn,
                            List<Class<?>> requiredServices) {
         this.id = id;
-        this.artifactId = artifactId;
+        this.artifactId = Objects.requireNonNull(artifactId, "artifactId");
         this.name = name == null || name.isBlank() ? localIdOf(id) : name;
         this.version = nullToEmpty(version);
         this.description = nullToEmpty(description);
@@ -105,11 +106,10 @@ public final class PluginMetadata {
                                     PluginDeclaration declaration,
                                     PluginDescriptor descriptor,
                                     List<Class<?>> requiredServices) {
+        Objects.requireNonNull(artifactId, "artifactId");
         PluginDescriptor config = descriptor == null ? PluginDescriptor.empty() : descriptor;
         String pluginId = declaration.getId();
-        String id = (artifactId == null || artifactId.isBlank())
-                ? pluginId
-                : artifactId + "/" + pluginId;
+        String id = artifactId.isBlank() ? pluginId : artifactId + "/" + pluginId;
         return new PluginMetadata(
                 id,
                 artifactId,
@@ -137,7 +137,7 @@ public final class PluginMetadata {
     public static PluginMetadata of(String pluginId) {
         return new PluginMetadata(
                 pluginId,
-                null,
+                "",
                 pluginId,
                 null,
                 null,

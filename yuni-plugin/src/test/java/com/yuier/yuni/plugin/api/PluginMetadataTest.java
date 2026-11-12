@@ -20,7 +20,7 @@ class PluginMetadataTest {
     @DisplayName("配置缺失时名称回落到插件 ID，其余字段为空")
     void emptyDescriptorFallsBackToId() {
         PluginMetadata metadata = PluginMetadata.of(
-                null, PluginDeclaration.of("steam").build(), PluginDescriptor.empty(), List.of());
+                "", PluginDeclaration.of("steam").build(), PluginDescriptor.empty(), List.of());
 
         assertEquals("steam", metadata.getId());
         assertEquals("steam", metadata.getName());
@@ -39,7 +39,7 @@ class PluginMetadataTest {
                 .description("一句描述")
                 .build();
         PluginMetadata metadata = PluginMetadata.of(
-                null, PluginDeclaration.of("x").build(), descriptor, List.of());
+                "", PluginDeclaration.of("x").build(), descriptor, List.of());
 
         assertEquals(List.of("一句描述"), metadata.getTips());
     }
@@ -58,7 +58,7 @@ class PluginMetadataTest {
                 .icon("icon")
                 .build();
         PluginMetadata metadata = PluginMetadata.of(
-                null, PluginDeclaration.of("x").build(), descriptor, List.of());
+                "", PluginDeclaration.of("x").build(), descriptor, List.of());
 
         assertEquals("x", metadata.getId());
         assertEquals("显示名", metadata.getName());

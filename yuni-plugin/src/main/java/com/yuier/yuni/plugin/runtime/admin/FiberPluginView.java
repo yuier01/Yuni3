@@ -74,7 +74,7 @@ public final class FiberPluginView implements PluginView {
      */
     public FiberPluginView(PluginFiber fiber) {
         this.id = fiber.getId();
-        this.artifactId = fiber.getArtifactId() == null ? "" : fiber.getArtifactId();
+        this.artifactId = fiber.getArtifactId();
 
         var metadata = fiber.getMetadata();
         this.name = metadata.getName();

@@ -57,7 +57,6 @@ import lombok.Getter;
 @Getter
 public final class PluginFiber {
 
-
     /** 插件实现实例。热重载后由新 Fiber 持有新实例，旧 Fiber 保留旧实例引用直至回收。 */
     private final YuniPlugin plugin;
 
@@ -136,7 +135,7 @@ public final class PluginFiber {
     /**
      * 所属加载单元标识。
      *
-     * @return 加载单元标识；测试元数据可能为 {@code null}
+     * @return 加载单元标识；无加载单元时为空串
      */
     public String getArtifactId() {
         return metadata.getArtifactId();

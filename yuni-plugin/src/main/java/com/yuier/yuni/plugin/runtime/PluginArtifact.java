@@ -46,7 +46,7 @@ public final class PluginArtifact {
                    String jarFileName,
                    String jarParentPath,
                    ClassLoader classLoader) {
-        this.id = id;
+        this.id = Objects.requireNonNull(id, "id");
         this.name = name;
         this.jarFileName = Objects.requireNonNull(jarFileName, "jarFileName");
         this.jarParentPath = Objects.requireNonNull(jarParentPath, "jarParentPath");

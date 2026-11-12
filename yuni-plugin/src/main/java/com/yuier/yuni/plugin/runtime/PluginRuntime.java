@@ -585,7 +585,7 @@ public final class PluginRuntime {
         PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
                 new IllegalStateException("插件不存在: " + pluginId));
         String artifactId = fiber.getArtifactId();
-        if (artifactId == null) {
+        if (artifactId.isBlank()) {
             throw new IllegalStateException("插件不属于任何加载单元: " + pluginId);
         }
         PluginArtifact artifact = fibers.artifact(artifactId).orElseThrow(() ->
@@ -1110,7 +1110,7 @@ public final class PluginRuntime {
     public Optional<String> artifactIdOf(String pluginId) {
         return fibers.byId(pluginId)
                 .map(PluginFiber::getArtifactId)
-                .filter(java.util.Objects::nonNull);
+                .filter(id -> !id.isBlank());
     }
 
     /**
