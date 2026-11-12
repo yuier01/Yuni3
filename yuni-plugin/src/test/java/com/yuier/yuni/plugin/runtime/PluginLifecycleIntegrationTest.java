@@ -24,6 +24,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static com.yuier.yuni.plugin.runtime.TestPlugins.load;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -199,7 +201,7 @@ class PluginLifecycleIntegrationTest {
     @DisplayName("端到端：加载 → 多能力生效 → 卸载 → 全部清理归零")
     void fullLifecycleCleansEverything() {
         MultiAbilityPlugin plugin = new MultiAbilityPlugin();
-        PluginFiber fiber = runtime.load(plugin, "test-artifact");
+        PluginFiber fiber = load(runtime, plugin, "test-artifact");
 
         // 加载成功，贡献了 4 类能力
         assertEquals(FiberState.ACTIVE, fiber.getState());
@@ -237,7 +239,7 @@ class PluginLifecycleIntegrationTest {
     @Test
     @DisplayName("能力推导：能查出插件贡献了哪些能力（取代「插件类型」标签）")
     void abilitiesAreDerivableFromRegistrations() {
-        PluginFiber fiber = runtime.load(new MultiAbilityPlugin());
+        PluginFiber fiber = load(runtime, new MultiAbilityPlugin());
 
         Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
 
@@ -249,17 +251,17 @@ class PluginLifecycleIntegrationTest {
     @Test
     @DisplayName("重复加载同一插件被拒绝，卸载后可重新加载")
     void reloadAfterUnloadIsAllowed() {
-        PluginFiber first = runtime.load(new MultiAbilityPlugin(), "m");
+        PluginFiber first = load(runtime, new MultiAbilityPlugin(), "m");
         assertTrue(runtime.getFibers().byId(first.getId()).isPresent());
 
         // 加载前未卸载 → 拒绝
         org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                () -> runtime.load(new MultiAbilityPlugin(), "m"));
+                () -> load(runtime, new MultiAbilityPlugin(), "m"));
 
         runtime.unload(first.getId());
 
         // 卸载后可以重新加载（热重载的基础）
-        PluginFiber second = runtime.load(new MultiAbilityPlugin(), "m");
+        PluginFiber second = load(runtime, new MultiAbilityPlugin(), "m");
         assertEquals(FiberState.ACTIVE, second.getState());
         assertEquals(1, runtime.getFibers().getPluginCount());
     }
@@ -268,7 +270,7 @@ class PluginLifecycleIntegrationTest {
     @DisplayName("运行时可报告不健康插件")
     void runtimeReportsUnhealthyPlugins() {
         // 一个必失败的插件
-        runtime.load(new YuniPlugin() {
+        load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("必失败插件").build();
@@ -281,7 +283,7 @@ class PluginLifecycleIntegrationTest {
         });
 
         // 一个缺依赖的插件
-        runtime.load(new YuniPlugin() {
+        load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("缺依赖插件").build();

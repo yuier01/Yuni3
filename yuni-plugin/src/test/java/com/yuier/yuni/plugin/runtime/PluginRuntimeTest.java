@@ -8,6 +8,8 @@ import com.yuier.yuni.plugin.api.YuniPlugin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.yuier.yuni.plugin.runtime.TestPlugins.load;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,7 +68,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(plugin, "test-artifact");
+        PluginFiber fiber = load(runtime, plugin, "test-artifact");
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
         // 两个事件注册 + 一个自定义 PluginEffect
@@ -87,7 +89,7 @@ class PluginRuntimeTest {
             ctx.effect(() -> () -> { });
         });
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
         assertEquals(3, fiber.getEffectCount());
         assertTrue(runtime.getRegistrations().getTotalSize() > 0);
 
@@ -122,7 +124,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
 
         assertEquals(FiberState.FAILED, fiber.getState());
         assertTrue(fiber.getFailureCause().isPresent());
@@ -144,7 +146,7 @@ class PluginRuntimeTest {
             throw new NoClassDefFoundError("simulated missing framework class");
         });
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
 
         // 只 catch Exception 会让这里静默通过并把注册残留下来
         assertEquals(FiberState.FAILED, fiber.getState());
@@ -175,7 +177,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
 
         assertEquals(FiberState.PENDING, fiber.getState());
         assertEquals(0, applyCount.get(), "依赖未满足时不能执行 apply");
@@ -211,7 +213,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
         assertEquals(FiberState.PENDING, fiber.getState());
 
         // 注入依赖
@@ -248,7 +250,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber consumerFiber = runtime.load(consumer);
+        PluginFiber consumerFiber = load(runtime, consumer);
         assertEquals(FiberState.PENDING, consumerFiber.getState());
 
         // 提供者插件在 apply 中注册服务——消费者应被自动推进，无需手动调用 activatePending
@@ -265,7 +267,7 @@ class PluginRuntimeTest {
                 ctx.registerService(Runnable.class, (Runnable) () -> { });
             }
         };
-        runtime.load(provider);
+        load(runtime, provider);
         assertEquals(FiberState.ACTIVE, consumerFiber.getState(),
                 "provide 之后应自动推进等待者，否则必须等下次启动才生效");
     }
@@ -309,8 +311,8 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiberA = runtime.load(a);
-        PluginFiber fiberB = runtime.load(b);
+        PluginFiber fiberA = load(runtime, a);
+        PluginFiber fiberB = load(runtime, b);
 
         // A 等 Comparable（由 B 提供），B 等 Cloneable（由 A 提供）：谁都无法先 apply
         assertEquals(FiberState.PENDING, fiberA.getState());
@@ -329,10 +331,10 @@ class PluginRuntimeTest {
         PluginRuntime runtime = runtime();
 
         YuniPlugin plugin = YuniPlugin.of("重复插件", ctx -> { });
-        runtime.load(plugin, "m");
+        load(runtime, plugin, "m");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> runtime.load(YuniPlugin.of("重复插件", ctx -> { }), "m"));
+                () -> load(runtime, YuniPlugin.of("重复插件", ctx -> { }), "m"));
         assertTrue(ex.getMessage().contains("已加载"), ex.getMessage());
     }
 
@@ -354,7 +356,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(provider);
+        PluginFiber fiber = load(runtime, provider);
         assertTrue(runtime.getServices().contains(Runnable.class));
 
         runtime.unload(fiber.getId());
@@ -373,7 +375,7 @@ class PluginRuntimeTest {
             captured.add(ctx.state(StateHolder.class));
         });
 
-        runtime.load(plugin);
+        load(runtime, plugin);
 
         assertEquals(2, captured.size());
         assertSame(captured.get(0), captured.get(1), "同一类型应返回同一实例");
@@ -387,7 +389,7 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = YuniPlugin.of("状态类型不合法", ctx -> ctx.state(NoDefaultCtor.class));
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
 
         // 插件应进入 FAILED，且失败原因里说明是构造器问题
         assertEquals(FiberState.FAILED, fiber.getState());
@@ -403,7 +405,7 @@ class PluginRuntimeTest {
 
         for (int i = 0; i < 5; i++) {
             final int n = i;
-            runtime.load(YuniPlugin.of("插件" + n, ctx -> {
+            load(runtime, YuniPlugin.of("插件" + n, ctx -> {
                 ctx.onMessage((ev, reply) -> { });
                 ctx.onNotice("poke", (ev, reply) -> { });
                 ctx.effect(() -> () -> { });
@@ -440,7 +442,7 @@ class PluginRuntimeTest {
             }
         };
 
-        PluginFiber fiber = runtime.load(plugin);
+        PluginFiber fiber = load(runtime, plugin);
         assertEquals(1, runtime.getRegistrations().getTotalSize());
 
         runtime.unload(fiber.getId());

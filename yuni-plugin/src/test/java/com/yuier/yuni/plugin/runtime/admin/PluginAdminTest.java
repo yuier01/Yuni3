@@ -10,11 +10,15 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.PluginArtifact;
+import com.yuier.yuni.plugin.runtime.TestArtifacts;
+import com.yuier.yuni.plugin.runtime.TestPlugins;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import static com.yuier.yuni.plugin.runtime.TestPlugins.load;
 
 import java.util.List;
 import java.util.Optional;
@@ -97,7 +101,7 @@ class PluginAdminTest {
                 // 无能力：本测试只关心管理视图
             }
         };
-        return runtime.load(plugin, artifact(artifactId), descriptor);
+        return TestPlugins.load(runtime, plugin, TestArtifacts.namespace(artifactId), descriptor);
     }
 
     /**
@@ -109,7 +113,7 @@ class PluginAdminTest {
      */
     private void loadFailing(String artifactId, String pluginName, String message) {
         PluginDeclaration declaration = PluginDeclaration.of(pluginName).build();
-        runtime.load(new YuniPlugin() {
+        TestPlugins.load(runtime, new YuniPlugin() {
             @Override
             public PluginDeclaration getDeclaration() {
                 return declaration;
@@ -119,12 +123,8 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new IllegalStateException(message);
             }
-        }, artifact(artifactId), PluginDescriptor.empty());
+        }, TestArtifacts.namespace(artifactId), PluginDescriptor.empty());
     }
-    private static PluginArtifact artifact(String id) {
-        return PluginArtifact.namespace(id);
-    }
-
     // ==================== 查询 ====================
 
     @Test
@@ -163,7 +163,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("声明了未满足的依赖时视图给出 PENDING 与缺失服务名")
     void pendingPluginReportsMissingService() {
-        runtime.load(new YuniPlugin() {
+        TestPlugins.load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("Needs").build();
@@ -178,7 +178,7 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new AssertionError("依赖未满足时不应调用 apply");
             }
-        }, artifact("pending"), PluginDescriptor.empty());
+        }, TestArtifacts.namespace("pending"), PluginDescriptor.empty());
 
         PluginView view = admin.plugin("pending/Needs").orElseThrow();
         assertEquals(PluginState.PENDING, view.getState());

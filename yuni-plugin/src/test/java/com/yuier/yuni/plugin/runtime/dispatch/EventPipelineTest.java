@@ -37,6 +37,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.yuier.yuni.plugin.runtime.TestPlugins.load;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -149,7 +151,7 @@ class EventPipelineTest {
     void messageHandlerWithCondition() {
         AtomicInteger hits = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("模式插件", ctx ->
+        load(runtime, YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("你好"),
                         (ev, reply) -> hits.incrementAndGet())));
 
@@ -170,7 +172,7 @@ class EventPipelineTest {
         AtomicInteger pokes = new AtomicInteger();
         AtomicInteger others = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("通知插件", ctx -> {
+        load(runtime, YuniPlugin.of("通知插件", ctx -> {
             ctx.onNotice("poke", (ev, reply) -> pokes.incrementAndGet());
             // 无子类型过滤：用恒真条件表达「所有通知都要」
             ctx.onNotice((ev) -> true, (ev, reply) -> others.incrementAndGet());
@@ -210,9 +212,9 @@ class EventPipelineTest {
         // 而本用例要验证的是 EventPipeline 对注册项上过滤器的处理，
         // 因此需要绕过合成、直接给一个确定形态的过滤器。
         // 管理端的写入路径由 PluginAdminTest 覆盖。
-        PluginFiber inScope = runtime.load(
+        PluginFiber inScope = load(runtime, 
                 YuniPlugin.of("限定群插件", ctx -> { }));
-        PluginFiber outOfScope = runtime.load(
+        PluginFiber outOfScope = load(runtime, 
                 YuniPlugin.of("排除群插件", ctx -> { }));
 
         runtime.getRegistrations().add(new RegistrationTable.Entry(
@@ -266,7 +268,7 @@ class EventPipelineTest {
         AtomicInteger hits = new AtomicInteger();
 
         // 插件通过正常的 ctx API 注册处理器——不手工构造注册项
-        PluginFiber fiber = runtime.load(new YuniPlugin() {
+        PluginFiber fiber = load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("可启停插件").build();
@@ -315,7 +317,7 @@ class EventPipelineTest {
     void adminGlobalDisableTakesEffectOnDispatch() {
         AtomicInteger hits = new AtomicInteger();
 
-        PluginFiber fiber = runtime.load(new YuniPlugin() {
+        PluginFiber fiber = load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("全局可关插件").build();
@@ -359,7 +361,7 @@ class EventPipelineTest {
     void failedPluginReceivesNoEvents() {
         AtomicInteger hits = new AtomicInteger();
 
-        PluginFiber fiber = runtime.load(new YuniPlugin() {
+        PluginFiber fiber = load(runtime, new YuniPlugin() {
             @Override
  public PluginDeclaration getDeclaration() {
                 return PluginDeclaration.of("失败插件").build();
@@ -384,7 +386,7 @@ class EventPipelineTest {
     @Test
     @DisplayName("处理器抛 Error 被兜住，且向用户回报失败提示")
     void handlerThrowableIsCaughtAndReported() {
-        runtime.load(YuniPlugin.of("抛异常的插件", ctx ->
+        load(runtime, YuniPlugin.of("抛异常的插件", ctx ->
                 ctx.onMessage((ev, reply) -> {
                     throw new NoClassDefFoundError("simulated");
                 })));
@@ -403,7 +405,7 @@ class EventPipelineTest {
     void predicateThrowableIsTreatedAsNoMatch() {
         AtomicInteger secondCalled = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("坏条件插件", ctx -> {
+        load(runtime, YuniPlugin.of("坏条件插件", ctx -> {
             ctx.onMessage(ev -> {
                 throw new IllegalStateException("条件写坏了");
             }, (ev, reply) -> {
@@ -427,7 +429,7 @@ class EventPipelineTest {
      * @param tree 命令树
      */
     private void registerCommandTree(CommandNode tree) {
-        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
+        load(runtime, YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
     }
 
     /**
@@ -467,7 +469,7 @@ class EventPipelineTest {
         AtomicInteger commandRuns = new AtomicInteger();
 
         // 模式插件：匹配任意含「测试」的消息
-        runtime.load(YuniPlugin.of("模式插件", ctx ->
+        load(runtime, YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())));
 
@@ -489,7 +491,7 @@ class EventPipelineTest {
     void patternRunsWhenCommandNotMatched() {
         AtomicInteger patternRuns = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("模式插件", ctx ->
+        load(runtime, YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())));
 
@@ -579,7 +581,7 @@ class EventPipelineTest {
     void commandTreeWithoutHandlerIsHelpOnly() {
         AtomicInteger patternRuns = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("模式插件", ctx ->
+        load(runtime, YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
                         (ev, reply) -> patternRuns.incrementAndGet())));
 
@@ -621,7 +623,7 @@ class EventPipelineTest {
     void messageSentRespectsScopeFilter() {
         AtomicInteger hits = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("转发插件", ctx ->
+        load(runtime, YuniPlugin.of("转发插件", ctx ->
                 ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())));
 
         YuniMessageSentEvent sent =
@@ -646,7 +648,7 @@ class EventPipelineTest {
     void messageSentPrivateFilteredByCondition() {
         AtomicInteger hits = new AtomicInteger();
 
-        runtime.load(YuniPlugin.of("转发插件", ctx ->
+        load(runtime, YuniPlugin.of("转发插件", ctx ->
                 ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())));
 
         YuniMessageSentEvent sent =
@@ -673,7 +675,7 @@ class EventPipelineTest {
     void unloadedPluginReceivesNoEvents() {
         AtomicInteger hits = new AtomicInteger();
 
-        PluginFiber fiber = runtime.load(YuniPlugin.of("临时插件", ctx ->
+        PluginFiber fiber = load(runtime, YuniPlugin.of("临时插件", ctx ->
                 ctx.onMessage((ev, reply) -> hits.incrementAndGet())));
 
         runtime.unload(fiber.getId());
@@ -694,7 +696,7 @@ class EventPipelineTest {
                 runtime.getRegistrations(), bot, null, CommandDispatcher.permissiveResolver());
 
         CommandNode tree = CommandNode.builder("测试").build();
-        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
+        load(runtime, YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
         com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
 
         // 直接调用 detector 验证错误语义——CommandDispatcher 会把异常吞成日志，

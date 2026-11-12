@@ -120,7 +120,7 @@ public final class PluginFiber {
      * @param metadata    元数据
      * @param classLoader 加载该插件的类加载器；可为 {@code null}（测试场景）
      */
-    public PluginFiber(String id,
+    PluginFiber(String id,
                        String artifactId,
                        YuniPlugin plugin,
                        PluginMetadata metadata,

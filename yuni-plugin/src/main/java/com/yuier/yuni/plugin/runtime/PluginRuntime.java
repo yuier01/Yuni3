@@ -220,41 +220,6 @@ public final class PluginRuntime {
     // ==================== 加载 ====================
 
     /**
-     * 加载一个插件（无文件系统位置，供测试与代码内直接安装）。
-     *
-     * @param plugin 插件实例
-     * @return 建好的 Fiber
-     */
-    public PluginFiber load(YuniPlugin plugin) {
-        return load(plugin, PluginArtifact.none(), PluginDescriptor.empty());
-    }
-
-    /**
-     * 在指定加载单元命名空间下加载插件（无 jar 文件，供测试使用）。
-     *
-     * @param plugin     插件实例
-     * @param artifactId 加载单元标识；{@code null} 时退化为插件 ID
-     * @return 建好的 Fiber
-     */
-    public PluginFiber load(YuniPlugin plugin, String artifactId) {
-        PluginArtifact artifact = artifactId == null || artifactId.isBlank()
-                ? PluginArtifact.none()
-                : PluginArtifact.namespace(artifactId);
-        return load(plugin, artifact, PluginDescriptor.empty());
-    }
-
-    /**
-     * 加载一个插件（无展示信息）。
-     *
-     * @param plugin   插件实例
-     * @param artifact 所属加载单元；不能为 {@code null}
-     * @return 建好的 Fiber
-     */
-    public PluginFiber load(YuniPlugin plugin, PluginArtifact artifact) {
-        return load(plugin, artifact, PluginDescriptor.empty());
-    }
-
-    /**
      * 加载一个插件。
      *
      * <p>流程：读声明 → 组装元数据 → 建 Fiber → 检查依赖 → 调 {@code apply(ctx)}

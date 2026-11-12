@@ -20,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static com.yuier.yuni.plugin.runtime.TestPlugins.load;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -190,7 +192,7 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        runtime.load(plugin);
+        load(runtime, plugin);
 
         runtime.setPluginGlobalEnabled("主动插件", filter.isEnabledByDefault());
         for (Long groupId : filter.getExceptionGroups()) {
@@ -267,7 +269,7 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        runtime.load(disabled);
+        load(runtime, disabled);
 
         // 无用户配置 → 回落 defaultEnable=false
         assertFalse(captured[0].isEnabledIn(100L));
