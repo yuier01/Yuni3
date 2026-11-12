@@ -16,7 +16,6 @@ import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.message.segment.TextSegment;
 import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
-import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageEvent;
 import com.yuier.yuni.plugin.api.event.MessageSentEvent;
@@ -394,33 +393,6 @@ class CoreEventAdapterTest {
         assertEquals("connect", event.getLifecyclePhase().orElseThrow());
         // 元事件是连接层事件，不属于任何群——ScopeFilter 会看到 groupId 为空
         assertTrue(event.getGroupId().isEmpty());
-    }
-
-    // ==================== 匹配令牌 ====================
-
-    @Test
-    @DisplayName("匹配令牌可由分发器回填，供处理器内二次判定")
-    void matchedTokenCanBeSetByDispatcher() {
-        CoreLifecycleEvents.CoreNoticeEvent event = new CoreLifecycleEvents.CoreNoticeEvent(pokeNotice("poke"), reply);
-
-        // 初始未回填
-        assertEquals(null, event.getMatched());
-
-        event.setMatched(new MatchToken() {
-            @Override
-            public String getType() {
-                return "poke";
-            }
-
-            @Override
-            public Object getFrame() {
-                return null;
-            }
-        });
-
-        assertEquals("poke", event.getMatched().getType());
-        assertTrue(event.getMatched().is("poke"));
-        assertFalse(event.getMatched().is("honor"));
     }
 
     // ==================== 公共字段访问 ====================

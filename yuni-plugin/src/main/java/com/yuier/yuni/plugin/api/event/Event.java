@@ -1,7 +1,5 @@
 package com.yuier.yuni.plugin.api.event;
 
-import com.yuier.yuni.plugin.api.MatchToken;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -82,8 +80,8 @@ public interface Event {
     /**
      * 判定本事件的子类型是否匹配。
      *
-     * <p>与 {@link MatchToken#is(String)} 对称。在处理器里做二次判定时比
-     * {@code "poke".equals(ev.getSubType())} 更简洁，且 {@code null} 安全。</p>
+     * <p>在处理器里做二次判定时比 {@code "poke".equals(ev.getSubType())} 更简洁，
+     * 且 {@code null} 安全。</p>
      *
      * <pre>{@code
      * ctx.onNotice((ev, reply) -> {
@@ -205,29 +203,6 @@ public interface Event {
      */
     default String getRawJson() {
         return null;
-    }
-
-    /**
-     * 本事件被哪个探测器/类型化处理器匹配到的令牌。
-     *
-     * <p>类型化处理器（如 {@code ctx.onNotice("poke", handler)}）在调用前会把它
-     * 写入事件，供处理器内做二次判定。非类型化匹配时为 {@code null}。</p>
-     *
-     * @return 匹配令牌，可能为 {@code null}
-     */
-    default MatchToken getMatched() {
-        return null;
-    }
-
-    /**
-     * 供框架在类型化匹配成功后回填匹配令牌。
-     *
-     * <p>实现应为幂等赋值；插件不应调用本方法。</p>
-     *
-     * @param token 匹配令牌
-     */
-    default void setMatched(MatchToken token) {
-        // 默认空实现：不可变事件实现可以忽略
     }
 
     /**

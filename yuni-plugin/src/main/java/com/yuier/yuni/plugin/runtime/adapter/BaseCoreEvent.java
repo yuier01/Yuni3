@@ -1,6 +1,5 @@
 package com.yuier.yuni.plugin.runtime.adapter;
 
-import com.yuier.yuni.plugin.api.MatchToken;
 import com.yuier.yuni.plugin.api.event.Event;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
 import java.util.Collections;
@@ -55,9 +54,6 @@ public abstract class BaseCoreEvent implements Event {
     /** 原始协议 JSON 逃生舱。 */
     private final String rawJson;
 
-    /** 匹配令牌；由分发器在类型化匹配成功后回填。 */
-    private volatile MatchToken matched;
-
     /**
      * 构造事件。
      *
@@ -91,12 +87,11 @@ public abstract class BaseCoreEvent implements Event {
 
     /*
      * getTime() / getSelfId() / getSubType() / getRawJson() 由类上的
-     * @Getter + @Accessors(fluent) 生成。
+     * @Getter 生成。
      *
      * 其余成员保持手写，因为它们并非简单转发：
      * - getGroupId() 包装成 Optional；
      * - getRawFields() 与 value() 读取字段表；
-     * - getMatched() / setMatched() 是可变匹配令牌；
      * - fields() 供子类访问（Lombok 发现同名方法会跳过生成）。
      */
 
@@ -108,16 +103,6 @@ public abstract class BaseCoreEvent implements Event {
     @Override
     public Map<String, Object> getRawFields() {
         return fields;
-    }
-
-    @Override
-    public MatchToken getMatched() {
-        return matched;
-    }
-
-    @Override
-    public void setMatched(MatchToken token) {
-        this.matched = token;
     }
 
     /**
