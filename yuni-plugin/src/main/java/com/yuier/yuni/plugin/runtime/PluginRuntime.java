@@ -77,7 +77,7 @@ import lombok.extern.slf4j.Slf4j;
  * 重构 P1–P6 已全部完成，本类不再有「待接线」的方法。</p>
  *
  * @see PluginFiber
- * @see FiberRegistry
+ * @see FiberContainer
  * @see RegistrationTable
  * @see com.yuier.yuni.plugin.runtime.UserScopeOverrides
  */
@@ -95,7 +95,7 @@ public final class PluginRuntime {
 
     /** Fiber 容器：插件与加载单元索引。 */
     @Getter
-    private final FiberRegistry fibers = new FiberRegistry();
+    private final FiberContainer fibers = new FiberContainer();
 
     /** 插件标识 → 资源目录；用于依赖推进时重建上下文。 */
     private final Map<String, Path> pluginDataDirs = new ConcurrentHashMap<>();
@@ -233,6 +233,7 @@ public final class PluginRuntime {
     public PluginFiber load(YuniPlugin plugin,
                             PluginArtifact artifact,
                             PluginDescriptor descriptor) {
+        // 判空
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(artifact, "artifact");
         Objects.requireNonNull(descriptor, "descriptor");
@@ -241,6 +242,8 @@ public final class PluginRuntime {
             // 「插件已加载但管理端/重载流程找不到它所属的加载单元」
             throw new IllegalStateException("加载单元未登记: " + artifact);
         }
+
+        // 组装 metadata
         PluginDeclaration declaration = safeDeclaration(plugin);
         List<Class<?>> requiredServices = safeRequiredServices(plugin);
         PluginMetadata metadata = new PluginMetadata(declaration, descriptor, requiredServices);
@@ -252,6 +255,7 @@ public final class PluginRuntime {
                     "插件 " + id + " 已加载。请先 unload 再重新 load，或使用 reload。");
         }
 
+        // 组装 fiber
         ClassLoader classLoader = artifact.getClassLoader();
         PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
         fibers.add(fiber);

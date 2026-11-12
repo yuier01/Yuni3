@@ -4,7 +4,7 @@ import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginAdminException;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
-import com.yuier.yuni.plugin.runtime.FiberRegistry;
+import com.yuier.yuni.plugin.runtime.FiberContainer;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import java.util.LinkedHashMap;
@@ -194,7 +194,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
 
     @Override
     public String getSummary() {
-        FiberRegistry fibers = runtime.getFibers();
+        FiberContainer fibers = runtime.getFibers();
         var counts = fibers.countByState();
         return "插件 " + fibers.getPluginCount()
                 + " / 运行中 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.ACTIVE, 0)

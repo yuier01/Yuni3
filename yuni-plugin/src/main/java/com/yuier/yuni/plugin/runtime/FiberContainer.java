@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @see PluginFiber
  * @see PluginRuntime
  */
-public final class FiberRegistry {
+public final class FiberContainer {
 
     /** 插件标识 → Fiber。 */
     private final Map<String, PluginFiber> fibersById = new ConcurrentHashMap<>();
