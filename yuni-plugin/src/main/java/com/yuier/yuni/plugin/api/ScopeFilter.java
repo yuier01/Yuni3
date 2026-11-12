@@ -4,7 +4,6 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -23,8 +22,8 @@ import java.util.stream.Collectors;
  * </ul>
  * <p>因此「白名单」与「黑名单」不是两套机制，而是同一模型的两个取值：</p>
  * <ul>
- *   <li>{@code onlyGroups({100, 200})} = 默认关闭 + 例外群 {100, 200}；</li>
- *   <li>{@code excludeGroups({100, 200})} = 默认开启 + 例外群 {100, 200}。</li>
+ *   <li>白名单语义 = 默认关闭 + 例外群（只有列出的群生效）；</li>
+ *   <li>黑名单语义 = 默认开启 + 例外群（只有列出的群不生效）。</li>
  * </ul>
  * <p>持久化、管理端展示、数据库表（{@code group_plugin_ability}）都直接使用
  * 这两个字段，不再需要单独的「持久化类型」或反向解析。</p>
@@ -91,8 +90,8 @@ public final class ScopeFilter {
      *
      * <p>非群事件（{@code groupId == null}）按默认值处理——这既符合
      * {@link #ALL}（true）与 {@link #NONE}（false）的直觉，也让
-     * {@code onlyGroups} 的「非群事件不生效」与 {@code excludeGroups} 的
-     * 「非群事件照常生效」成为同一公式的两个特例。</p>
+     * 「白名单语义（默认关闭）」的「非群事件不生效」与
+     * 「黑名单语义（默认开启）」的「非群事件照常生效」成为同一公式的两个特例。</p>
      *
      * @param groupId 当前事件的群号；{@code null} 表示非群事件
      * @return 生效返回 {@code true}
@@ -104,43 +103,4 @@ public final class ScopeFilter {
         return exceptionGroups.contains(groupId) != enabledByDefault;
     }
 
-    /**
-     * 只在指定群生效（默认关闭 + 例外群）。
-     *
-     * @param groupIds 生效的群号
-     * @return 过滤器
-     */
-    public static ScopeFilter onlyGroups(long... groupIds) {
-        return onlyGroups(Arrays.stream(groupIds).boxed().collect(Collectors.toSet()));
-    }
-
-    /**
-     * 只在指定群生效（集合重载）。
-     *
-     * @param groupIds 生效的群号集合；会被防御性拷贝
-     * @return 过滤器
-     */
-    public static ScopeFilter onlyGroups(Collection<Long> groupIds) {
-        return new ScopeFilter(false, groupIds);
-    }
-
-    /**
-     * 除指定群外都生效（默认开启 + 例外群）。
-     *
-     * @param groupIds 不生效的群号
-     * @return 过滤器
-     */
-    public static ScopeFilter excludeGroups(long... groupIds) {
-        return excludeGroups(Arrays.stream(groupIds).boxed().collect(Collectors.toSet()));
-    }
-
-    /**
-     * 除指定群外都生效（集合重载）。
-     *
-     * @param groupIds 不生效的群号集合；会被防御性拷贝
-     * @return 过滤器
-     */
-    public static ScopeFilter excludeGroups(Collection<Long> groupIds) {
-        return new ScopeFilter(true, groupIds);
-    }
 }

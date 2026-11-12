@@ -773,11 +773,6 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Disposable plugin(YuniPlugin child) {
-        return plugin(child, ScopeFilter.ALL);
-    }
-
-    @Override
-    public Disposable plugin(YuniPlugin child, ScopeFilter filter) {
         if (child == null) {
             throw new IllegalArgumentException("子插件不能为 null");
         }
@@ -787,7 +782,7 @@ public final class PluginContext implements YuniContext {
                             + "。请通过 PluginRuntime.load(...) 创建上下文。");
         }
         // 子插件继承本插件的类加载器与资源目录
-        PluginFiber childFiber = runtime.mountChild(child, fiber, dataDir, filter);
+        PluginFiber childFiber = runtime.mountChild(child, fiber, dataDir);
 
         /*
          * 子插件可能因依赖未满足而停在 PENDING。此时注册一个撤销句柄是不够的——

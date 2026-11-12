@@ -102,38 +102,21 @@ public final class PluginRuntime {
     private final Map<String, Path> pluginDataDirs = new ConcurrentHashMap<>();
 
     /**
-     * 用户作用域覆盖——只存「用户显式改过」的部分，<b>不含作者基线</b>。
+     * 用户作用域覆盖——只存「用户显式改过」的部分。
      *
-     * <p>它是三层模型里的用户层：</p>
+     * <p>作用域最终只有两层：</p>
      * <pre>
-     *   用户覆盖  &gt;  作者基线（{@link #authorBaselines}）  &gt;  元数据 defaultEnable
+     *   用户覆盖（本表）  &gt;  元数据 defaultEnable
      * </pre>
      *
-     * <p>它不是「最终生效视图」——最终值由 {@link #effectiveScopeOf} /
-     * {@link #isPluginEnabledIn} 每次现算。把三层合并结果缓存下来会成为一份
-     * 随时可能过期的快照，反而需要额外维护失效逻辑。</p>
+     * <p>插件作者不参与群级配置——作者不可能预知用户会在哪些群使用，
+     * 因此没有「作者基线」这一层。</p>
      *
-     * <p>用途：管理端读写、持久化（重启恢复）、以及合成事件分发过滤器时的
-     * 用户层输入。</p>
+     * <p>最终值由 {@link #effectiveScopeOf} / {@link #isPluginEnabledIn}
+     * 每次现算。把合并结果缓存下来会成为一份随时可能过期的快照。</p>
      */
     private final UserScopeOverrides userScopeOverrides =
             new UserScopeOverrides();
-
-    /**
-     * 作者基线——插件注册时自带的 {@link ScopeFilter}（{@code ctx.plugin(child, filter)}）。
-     *
-     * <p>与 {@link #userScopeOverrides}（用户覆盖）分工明确：</p>
-     * <ul>
-     *   <li><b>基线</b>来自插件作者的代码；</li>
-     *   <li><b>用户覆盖</b>来自管理端的显式操作，优先于基线。</li>
-     * </ul>
-     * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
-     *
-     * <p>基线就是 {@link ScopeFilter} 本身——它已经是「默认值 + 例外群」的
-     * 值对象，不需要另一种表示，也不需要记「原本是白名单还是黑名单」：
-     * 默认值本身就把两种意图区分开了。</p>
-     */
-    private final Map<String, ScopeFilter> authorBaselines = new ConcurrentHashMap<>();
 
     /**
      * 作用域持久化端口。
@@ -253,26 +236,27 @@ public final class PluginRuntime {
      * @return 建好的 Fiber（无论加载成功、失败还是停在 PENDING）
      */
     public PluginFiber load(YuniPlugin plugin, String moduleId, Path dataDir, ClassLoader classLoader) {
-        return load(plugin, moduleId, dataDir, classLoader, null, null);
+        return load(plugin, moduleId, dataDir, classLoader, null);
     }
 
     /**
      * 加载一个插件（完整签名）。
+     *
+     * <p>作用域完全由「元数据 {@code defaultEnable} + 用户配置的群例外」决定，
+     * 插件代码不参与——作者不可能预知用户会在哪些群使用。</p>
      *
      * @param plugin      插件实例
      * @param moduleId    所属模块 ID；可为 {@code null}
      * @param dataDir     插件资源目录；可为 {@code null}
      * @param classLoader 类加载器；可为 {@code null}
      * @param parent      父 Fiber；挂载子插件时传入，顶层插件传 {@code null}
-     * @param filter      作用域过滤器；{@code null} 视为 {@link ScopeFilter#ALL}
      * @return 建好的 Fiber
      */
     public PluginFiber load(YuniPlugin plugin,
                             String moduleId,
                             Path dataDir,
                             ClassLoader classLoader,
-                            PluginFiber parent,
-                            ScopeFilter filter) {
+                            PluginFiber parent) {
         if (plugin == null) {
             throw new IllegalArgumentException("插件实例不能为 null");
         }
@@ -294,16 +278,6 @@ public final class PluginRuntime {
             // 需要用同一个目录重建上下文
             pluginDataDirs.put(id, dataDir);
         }
-        if (filter != null && !isNoConstraint(filter)) {
-            /*
-             * 记录「插件注册时自带的基线过滤器」。
-             *
-             * 它表达的是插件作者写下的建议（例如 ctx.plugin(child, onlyGroups(a,b))），
-             * 本身就是「默认值 + 例外群」——与用户配置同一模型，因此直接存，
-             * 不需要再做一次形态转换。
-             */
-            authorBaselines.put(id, filter);
-        }
         if (parent != null) {
             parent.addChild(fiber);
         }
@@ -321,7 +295,7 @@ public final class PluginRuntime {
             return fiber;
         }
 
-        applyTo(fiber, dataDir, filter);
+        applyTo(fiber, dataDir);
         return fiber;
     }
 
@@ -419,19 +393,6 @@ public final class PluginRuntime {
     private final Object moduleHandles = new Object();
 
     /**
-     * 过滤器是否「不施加任何约束」——即默认开启且没有例外群。
-     *
-     * <p>这种过滤器不需要记为基线：它等价于「没有作者意图」，后续判定
-     * 应直接回落到元数据 {@code defaultEnable}。</p>
-     *
-     * @param filter 过滤器
-     * @return 不施加约束返回 {@code true}
-     */
-    private static boolean isNoConstraint(ScopeFilter filter) {
-        return filter.isEnabledByDefault() && filter.getExceptionGroups().isEmpty();
-    }
-
-    /**
      * 执行 {@code apply(ctx)} 并处理成功 / 失败。
      *
      * @param fiber  目标 Fiber
@@ -450,10 +411,9 @@ public final class PluginRuntime {
      *
      * @param fiber   目标 Fiber，必须仍处于 PENDING
      * @param dataDir 插件资源目录；可为 {@code null}
-     * @param filter  基线作用域过滤器；可为 {@code null}
      * @return 成功转为 ACTIVE 返回 {@code true}
      */
-    private boolean applyTo(PluginFiber fiber, Path dataDir, ScopeFilter filter) {
+    private boolean applyTo(PluginFiber fiber, Path dataDir) {
         /*
          * 用 CAS 抢占 PENDING → LOADING。
          *
@@ -551,7 +511,7 @@ public final class PluginRuntime {
          * 并发调用时只有一个线程能真正执行 apply。上面的 getState() 检查只是
          * 快速跳过已确定不在 PENDING 的 Fiber，不承担正确性。
          */
-        return applyTo(fiber, dataDir, ScopeFilter.ALL);
+        return applyTo(fiber, dataDir);
     }
 
     /**
@@ -669,17 +629,10 @@ public final class PluginRuntime {
         fibers.remove(fiber);
         pluginDataDirs.remove(pluginId);
         /*
-         * 移除基线过滤器。
-         *
-         * 基线来自「插件注册时代码里传的 filter」，生命周期与插件实例一致；
-         * 卸载后必须清掉，否则热重载会留下旧类的配置、并且旧插件标识会持续
-         * 占用这张表（{@link #effectiveScopeOf} 依赖 Fiber 存在，但这些条目是泄漏）。
-         *
-         * 注意：用户配置的群例外表（{@link #userScopeOverrides}）<b>不</b>在这里清除
+         * 用户配置的群例外（{@link #userScopeOverrides}）<b>不</b>在这里清除
          * ——重载会先 unload 再 load，清掉就等于重载丢配置。
          * 需要真正清除用户配置时走 resetPluginScope。
          */
-        authorBaselines.remove(pluginId);
 
         if (failures.isEmpty()) {
             log.info("插件已卸载: {}", pluginId);
@@ -919,16 +872,15 @@ public final class PluginRuntime {
     /**
      * 判定插件是否在指定群生效（供主动插件经 {@code ctx.getScope()} 查询）。
      *
-     * <p>判定链：用户显式例外 → 插件注册时的基线过滤器 → 元数据的
-     * {@code defaultEnable}。</p>
+     * <p>判定链：用户显式例外 → 元数据的 {@code defaultEnable}（用户显式全局开关
+     * 优先于元数据）。插件作者不参与群级配置。</p>
      *
      * @param pluginId 插件标识
      * @param groupId  群号
-     * @return 生效返回 {@code true}；<b>无任何配置信息时返回 {@code null}</b>，
-     *         由调用方回落到插件的 {@code defaultEnable}
+     * @return 生效返回 {@code true}；<b>插件不存在时返回 {@code null}</b>
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
-        // ① 用户显式配置的群例外优先级最高
+        // 用户显式配置的群例外优先级最高
         Optional<Boolean> explicit = userScopeOverrides.explicitValue(pluginId, groupId);
         if (explicit.isPresent()) {
             return explicit.get();
@@ -936,19 +888,6 @@ public final class PluginRuntime {
         if (!fiberExists(pluginId)) {
             return null;
         }
-        /*
-         * ② 插件注册时自带的基线例外。
-         *
-         * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
-         * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
-         */
-        ScopeFilter base = authorBaselineOf(pluginId);
-        if (base != null && !base.getExceptionGroups().isEmpty()) {
-            boolean listed = base.getExceptionGroups().contains(groupId);
-            // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
-            return base.isEnabledByDefault() ? !listed : listed;
-        }
-        // ③ 没有任何例外信息 → 按有效默认值（用户全局开关 > 基线 > 元数据）
         return effectiveDefaultEnabled(pluginId);
     }
 
@@ -963,7 +902,7 @@ public final class PluginRuntime {
     }
 
     /**
-     * 取插件的有效默认启用值——基线优先，否则看元数据。
+     * 取插件的有效默认启用值——用户显式全局开关优先，否则看元数据。
      *
      * @param pluginId 插件标识
      * @return 默认启用返回 {@code true}
@@ -974,26 +913,11 @@ public final class PluginRuntime {
         if (userGlobal.isPresent()) {
             return userGlobal.get();
         }
-        // 其次看插件注册时的基线
-        ScopeFilter base = authorBaselineOf(pluginId);
-        if (base != null) {
-            return base.isEnabledByDefault();
-        }
-        // 最后回落到元数据。插件不存在时保守返回 false：
+        // 否则回落到元数据。插件不存在时保守返回 false：
         // 配置损坏时「不放行」比「误放行」安全
         return fibers.byId(pluginId)
                 .map(fiber -> fiber.getMetadata().isDefaultEnable())
                 .orElse(false);
-    }
-
-    /**
-     * 取插件注册时的基线配置。
-     *
-     * @param pluginId 插件标识
-     * @return 基线配置；没有时为 {@code null}
-     */
-    private ScopeFilter authorBaselineOf(String pluginId) {
-        return pluginId == null ? null : authorBaselines.get(pluginId);
     }
 
     /**
@@ -1079,19 +1003,7 @@ public final class PluginRuntime {
      * @return 过滤器描述；未记录时返回 {@code "(未记录)"}
      */
     public String describeScope(String pluginId) {
-        /*
-         * 优先描述基线：插件注册时传的 filter 是更强的意图表达
-         * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
-         */
-        ScopeFilter base = authorBaselineOf(pluginId);
-        if (base != null && !base.getExceptionGroups().isEmpty()) {
-            // 默认开启 → 列出的是被排除的群；默认关闭 → 列出的是被允许的群
-            return base.isEnabledByDefault()
-                    ? "排除群 " + base.getExceptionGroups()
-                    : "仅限群 " + base.getExceptionGroups();
-        }
-
-        // 再看用户配置的群例外
+        // 用户配置的群例外 + 有效默认值
         ScopeFilter persisted =
                 userScopeOverrides.toFilter(pluginId, effectiveDefaultEnabled(pluginId));
         if (persisted.getExceptionGroups().isEmpty()) {
@@ -1131,10 +1043,13 @@ public final class PluginRuntime {
      * @throws IllegalArgumentException 插件不存在
      */
     public void setPluginEnabledIn(String pluginId, long groupId, boolean enabled) {
-        PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
+        // 存在性校验；后续比较用「有效默认值」而不是元数据默认值——
+        // 否则「全局关 + 单独开启某群」在 metadata.defaultEnable = true 时
+        // 会被误判为「与默认值一致」而丢掉该群的显式值。
+        fibers.byId(pluginId).orElseThrow(() ->
                 new IllegalArgumentException("插件不存在: " + pluginId));
 
-        userScopeOverrides.set(pluginId, groupId, enabled, fiber.getMetadata().isDefaultEnable());
+        userScopeOverrides.set(pluginId, groupId, enabled, effectiveDefaultEnabled(pluginId));
         log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
                 pluginId, groupId, enabled, describeScope(pluginId));
         persistScope(pluginId);
@@ -1491,8 +1406,8 @@ public final class PluginRuntime {
      * @param filter  作用域过滤器
      * @return 子插件 Fiber
      */
-    PluginFiber mountChild(YuniPlugin child, PluginFiber parent, Path dataDir, ScopeFilter filter) {
-        return load(child, null, dataDir, parent == null ? null : parent.getClassLoader(), parent, filter);
+    PluginFiber mountChild(YuniPlugin child, PluginFiber parent, Path dataDir) {
+        return load(child, null, dataDir, parent == null ? null : parent.getClassLoader(), parent);
     }
 
     /**

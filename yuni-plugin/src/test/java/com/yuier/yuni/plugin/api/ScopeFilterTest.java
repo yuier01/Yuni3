@@ -14,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * {@link ScopeFilter} 的模型测试。
  *
- * <p>统一后的模型只有「默认值 + 例外群」两个字段，白名单 / 黑名单只是它的
- * 两个取值。因此本类验证的是同一个公式的边界，而不是两套实现。</p>
+ * <p>作用域只有一个模型：<b>默认值 + 与默认值相反的例外群</b>。
+ * 白名单 / 黑名单只是这一模型的两个取值，不再有独立实现。</p>
  */
 class ScopeFilterTest {
 
@@ -38,55 +38,35 @@ class ScopeFilterTest {
     }
 
     @Test
-    @DisplayName("onlyGroups：只在列出的群生效，非群事件不生效")
-    void onlyGroups() {
-        ScopeFilter filter = ScopeFilter.onlyGroups(100L, 200L);
+    @DisplayName("默认关闭 + 例外群：只有列出的群生效，非群事件不生效")
+    void defaultOffWithExceptions() {
+        ScopeFilter filter = new ScopeFilter(false, Set.of(100L, 200L));
 
         assertTrue(filter.matches(100L));
         assertTrue(filter.matches(200L));
         assertFalse(filter.matches(300L));
-        assertFalse(filter.matches(null), "白名单暗含「群内功能」，非群事件不生效");
+        assertFalse(filter.matches(null));
         assertFalse(filter.isEnabledByDefault());
         assertEquals(Set.of(100L, 200L), filter.getExceptionGroups());
     }
 
     @Test
-    @DisplayName("excludeGroups：除列出的群外都生效，含非群事件")
-    void excludeGroups() {
-        ScopeFilter filter = ScopeFilter.excludeGroups(100L);
+    @DisplayName("默认开启 + 例外群：只有列出的群不生效，非群事件照常生效")
+    void defaultOnWithExceptions() {
+        ScopeFilter filter = new ScopeFilter(true, Set.of(100L));
 
         assertFalse(filter.matches(100L));
         assertTrue(filter.matches(200L));
-        assertTrue(filter.matches(null), "黑名单只排除列出的群，非群事件照常生效");
+        assertTrue(filter.matches(null));
         assertTrue(filter.isEnabledByDefault());
         assertEquals(Set.of(100L), filter.getExceptionGroups());
-    }
-
-    @Test
-    @DisplayName("构造器直接表达同一模型：默认值 + 例外群")
-    void constructorIsEquivalentToFactories() {
-        assertEquals(ScopeFilter.onlyGroups(100L),
-                new ScopeFilter(false, Set.of(100L)));
-        assertEquals(ScopeFilter.excludeGroups(100L),
-                new ScopeFilter(true, Set.of(100L)));
-        assertEquals(ScopeFilter.ALL, new ScopeFilter(true, Set.of()));
-        assertEquals(ScopeFilter.NONE, new ScopeFilter(false, Set.of()));
-    }
-
-    @Test
-    @DisplayName("可变参数重载与集合重载语义一致")
-    void overloadsAgree() {
-        assertEquals(ScopeFilter.onlyGroups(1L, 2L),
-                ScopeFilter.onlyGroups(Set.of(1L, 2L)));
-        assertEquals(ScopeFilter.excludeGroups(1L, 2L),
-                ScopeFilter.excludeGroups(Set.of(1L, 2L)));
     }
 
     @Test
     @DisplayName("构造后修改传入集合不影响过滤器（防御性拷贝）")
     void defensiveCopy() {
         Set<Long> source = new HashSet<>(Set.of(1L));
-        ScopeFilter filter = ScopeFilter.onlyGroups(source);
+        ScopeFilter filter = new ScopeFilter(false, source);
 
         source.add(2L);
 
@@ -104,10 +84,10 @@ class ScopeFilterTest {
     }
 
     @Test
-    @DisplayName("值语义：字段相同即相等，与构造方式无关")
+    @DisplayName("值语义：字段相同即相等")
     void valueEquality() {
-        assertEquals(ScopeFilter.onlyGroups(1L), ScopeFilter.onlyGroups(1L));
-        assertNotEquals(ScopeFilter.onlyGroups(1L), ScopeFilter.excludeGroups(1L));
-        assertNotEquals(ScopeFilter.onlyGroups(1L), ScopeFilter.onlyGroups(2L));
+        assertEquals(new ScopeFilter(false, Set.of(1L)), new ScopeFilter(false, Set.of(1L)));
+        assertNotEquals(new ScopeFilter(false, Set.of(1L)), new ScopeFilter(true, Set.of(1L)));
+        assertNotEquals(new ScopeFilter(false, Set.of(1L)), new ScopeFilter(false, Set.of(2L)));
     }
 }

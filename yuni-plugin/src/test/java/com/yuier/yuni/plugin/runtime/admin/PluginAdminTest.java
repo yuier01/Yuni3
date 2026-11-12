@@ -6,7 +6,6 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
-import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
@@ -69,14 +68,12 @@ class PluginAdminTest {
      * @param pluginName    插件显示名
      * @param buildIn       是否内置
      * @param defaultEnable 元数据默认启用值
-     * @param filter        作用域过滤器；可为 {@code null}
      * @return 建好的 Fiber
      */
     private PluginFiber load(String moduleId,
                              String pluginName,
                              boolean buildIn,
-                             boolean defaultEnable,
-                             ScopeFilter filter) {
+                             boolean defaultEnable) {
         YuniPlugin plugin = new YuniPlugin() {
             @Override
             public PluginMetadata getMetadata() {
@@ -95,7 +92,7 @@ class PluginAdminTest {
                 // 无能力：本测试只关心管理视图
             }
         };
-        return runtime.load(plugin, moduleId, null, null, null, filter);
+        return runtime.load(plugin, moduleId, null, null);
     }
 
     /**
@@ -116,7 +113,7 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new IllegalStateException(message);
             }
-        }, moduleId, null, null, null, null);
+        }, moduleId, null, null);
     }
 
     // ==================== 查询 ====================
@@ -124,7 +121,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("modules/plugins 把 Fiber 投影为公共视图，元数据字段平铺且完整")
     void projectsMetadataIntoViews() {
-        load("fortune", "Fortune", false, true, ScopeFilter.ALL);
+        load("fortune", "Fortune", false, true);
 
         List<PluginModuleView> modules = admin.getModules();
         assertEquals(1, modules.size());
@@ -176,7 +173,7 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new AssertionError("依赖未满足时不应调用 apply");
             }
-        }, "pending", null, null, null, null);
+        }, "pending", null, null);
 
         PluginView view = admin.plugin("pending/Needs").orElseThrow();
         assertEquals(PluginState.PENDING, view.getState());
@@ -196,7 +193,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("setEnabled 关闭某群后 isEnabledIn 返回 false，重开又回到 true")
     void setEnabledIsReversible() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
         assertTrue(admin.isEnabledIn("p/P", 100L));
 
         admin.setEnabled("p/P", 100L, false, false);
@@ -216,7 +213,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("默认关闭的插件可以逐个群开启")
     void enableByIdForDefaultDisabledPlugin() {
-        load("p", "P", false, false, null);
+        load("p", "P", false, false);
 
         // 无过滤器记录 → 回落到 defaultEnable(false)
         assertFalse(admin.isEnabledIn("p/P", 100L));
@@ -230,7 +227,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("resetScope 清空全部群例外，回到 defaultEnable")
     void resetScopeRestoresDefault() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
         admin.setEnabled("p/P", 100L, false, false);
         assertFalse(admin.isEnabledIn("p/P", 100L));
 
@@ -242,7 +239,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("内置插件只有 bot 拥有者能启停——旧 PluginEnable 的判定逻辑收拢到这里")
     void builtInPluginRequiresMaster() {
-        load("help", "HelpInfo", true, true, ScopeFilter.ALL);
+        load("help", "HelpInfo", true, true);
 
         PluginAdminException e = assertThrows(PluginAdminException.class,
                 () -> admin.setEnabled("help/HelpInfo", 100L, false, false));
@@ -266,7 +263,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("全局开关与群例外正交：群例外不影响 isGloballyEnabled")
     void globalSwitchIsOrthogonalToGroupExceptions() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
         assertTrue(admin.isGloballyEnabled("p/P"), "默认开启 → 全局开");
 
         // 关掉一个群：这是「群例外」，不是「全局关闭」
@@ -291,7 +288,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("全局开关读写对偶：setGlobalEnabled(V) 之后 isGloballyEnabled 恒等于 V")
     void globalSwitchReadWriteAreDual() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
 
         for (boolean value : new boolean[] {false, true, false}) {
             admin.setGlobalEnabled("p/P", value, false);
@@ -309,7 +306,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("默认关闭的插件在全局打开之前 isGloballyEnabled 为 false")
     void defaultDisabledPluginIsNotGloballyEnabled() {
-        load("p", "P", false, false, null);
+        load("p", "P", false, false);
         assertFalse(admin.isGloballyEnabled("p/P"),
                 "从未启用过的插件不应显示为「全局开」");
 
@@ -324,7 +321,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("内置插件不能单独卸载——卸载后没有任何入口能把它装回来")
     void builtInPluginCannotBeUnloaded() {
-        load("help", "HelpInfo", true, true, ScopeFilter.ALL);
+        load("help", "HelpInfo", true, true);
 
         PluginAdminException e = assertThrows(PluginAdminException.class,
                 () -> admin.unload("help/HelpInfo"));
@@ -336,7 +333,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("普通插件可以被卸载，卸载后从视图中消失")
     void pluginCanBeUnloaded() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
         assertNotNull(admin.plugin("p/P").orElse(null));
 
         admin.unload("p/P");
@@ -356,7 +353,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("重载已存在的模块但缺少 jar 时抛可读错误，而不是 NPE")
     void reloadModuleWithoutJarFailsReadably() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
 
         PluginAdminException e = assertThrows(PluginAdminException.class,
                 () -> admin.reload("p"));
@@ -370,8 +367,8 @@ class PluginAdminTest {
     @Test
     @DisplayName("summary 与 countByState 给出管理端看板需要的数字")
     void summaryAndCounts() {
-        load("a", "A", false, true, ScopeFilter.ALL);
-        load("b", "B", false, true, ScopeFilter.ALL);
+        load("a", "A", false, true);
+        load("b", "B", false, true);
         loadFailing("c", "C", "boom");
 
         String summary = admin.getSummary();
@@ -392,7 +389,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("视图是快照：卸载后已取出的视图仍可读，但状态不自动更新")
     void viewIsSnapshot() {
-        load("p", "P", false, true, ScopeFilter.ALL);
+        load("p", "P", false, true);
         PluginView view = admin.plugin("p/P").orElseThrow();
 
         admin.unload("p/P");
@@ -418,7 +415,7 @@ class PluginAdminTest {
                 ctx.plugin(YuniPlugin.of("子插件", c -> { }));
             }
         };
-        runtime.load(parent, "m", null, null, null, null);
+        runtime.load(parent, "m", null, null);
 
         List<PluginView> views = admin.getPlugins();
         assertEquals(1, views.size(), "只应看到父插件: " + views);
@@ -430,9 +427,9 @@ class PluginAdminTest {
     @Test
     @DisplayName("插件可按模块分组取出")
     void pluginsOfModule() {
-        load("m1", "A", false, true, ScopeFilter.ALL);
-        load("m2", "B", false, true, ScopeFilter.ALL);
-        load("m2", "C", false, true, ScopeFilter.ALL);
+        load("m1", "A", false, true);
+        load("m2", "B", false, true);
+        load("m2", "C", false, true);
 
         assertEquals(1, admin.pluginsOfModule("m1").size());
         assertEquals(2, admin.pluginsOfModule("m2").size());
@@ -442,7 +439,7 @@ class PluginAdminTest {
     @Test
     @DisplayName("moduleIdOf 能反查插件所属模块，供视图补全 moduleId")
     void moduleIdOfPlugin() {
-        load("steam", "MemberSteamStatus", false, true, ScopeFilter.ALL);
+        load("steam", "MemberSteamStatus", false, true);
         Optional<String> moduleId = runtime.moduleIdOf("steam/MemberSteamStatus");
         assertTrue(moduleId.isPresent());
         assertEquals("steam", moduleId.get());

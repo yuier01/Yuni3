@@ -18,6 +18,7 @@ import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.ArgDef;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.PluginMetadata;
+import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
@@ -28,6 +29,7 @@ import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
@@ -214,14 +216,14 @@ class EventPipelineTest {
 
         runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, inScope,
-                com.yuier.yuni.plugin.api.ScopeFilter.onlyGroups(999L),
+                new ScopeFilter(false, Set.of(999L)),
                 null, null,
                 (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
         runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, outOfScope,
-                com.yuier.yuni.plugin.api.ScopeFilter.excludeGroups(999L),
+                new ScopeFilter(true, Set.of(999L)),
                 null, null,
                 (NoticeHandler)
                         (ev, reply) -> outOfScopeHits.incrementAndGet()));

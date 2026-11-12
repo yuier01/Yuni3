@@ -559,23 +559,18 @@ public interface YuniContext {
     /**
      * 挂载一个子插件。
      *
-     * <p>子插件继承本上下文的服务与作用域，并<b>随父插件一同卸载</b>。
+     * <p>子插件继承本上下文的服务，并<b>随父插件一同卸载</b>。
      * 用于复杂插件的模块化拆分，以及取代现行「一个插件的 enable 回调里
      * 去启停另一个插件」的耦合写法。</p>
+     *
+     * <p>子插件的作用域与普通插件相同：由它的元数据 {@code defaultEnable}
+     * 和用户在管理端配置的群例外决定。插件代码不参与群级配置——作者不可能
+     * 预知用户会在哪些群使用。</p>
      *
      * @param child 子插件
      * @return 撤销句柄
      */
     Disposable plugin(YuniPlugin child);
-
-    /**
-     * 挂载一个带作用域过滤的子插件。
-     *
-     * @param child  子插件
-     * @param filter 作用域过滤；{@code null} 视为 {@link ScopeFilter#ALL}
-     * @return 撤销句柄
-     */
-    Disposable plugin(YuniPlugin child, ScopeFilter filter);
 
     // ==================== 生命周期查询 ====================
 

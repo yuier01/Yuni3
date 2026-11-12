@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -169,9 +170,10 @@ class ScopeQueryTest {
     }
 
     /**
-     * 加载一个在 apply 期间捕获 {@link ScopeQuery} 的插件。
+     * 加载一个在 apply 期间捕获 {@link ScopeQuery} 的插件，并把传入的过滤器
+     * 作为<b>用户配置</b>写入（插件作者不参与群级配置）。
      *
-     * @param filter 作用域过滤器
+     * @param filter 期望的用户作用域配置
      * @return 捕获到的查询对象（单元素数组，便于 lambda 内赋值）
      */
     private ScopeQuery[] loadPluginCapturingScope(ScopeFilter filter) {
@@ -187,14 +189,19 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        runtime.load(plugin, null, null, null, null, filter);
+        runtime.load(plugin, null, null, null);
+
+        runtime.setPluginGlobalEnabled("主动插件", filter.isEnabledByDefault());
+        for (Long groupId : filter.getExceptionGroups()) {
+            runtime.setPluginEnabledIn("主动插件", groupId, filter.matches(groupId));
+        }
         return captured;
     }
 
     @Test
     @DisplayName("白名单：只在列出的群生效；全局开关是「关」")
     void whitelistScope() {
-        ScopeQuery scope = loadPluginCapturingScope(ScopeFilter.onlyGroups(200L))[0];
+        ScopeQuery scope = loadPluginCapturingScope(new ScopeFilter(false, Set.of(200L)))[0];
 
         assertFalse(scope.isEnabledIn(100L));
         assertTrue(scope.isEnabledIn(200L));
@@ -206,7 +213,7 @@ class ScopeQueryTest {
     @Test
     @DisplayName("黑名单：除列出的群外都生效；全局开关仍是「开」")
     void blacklistScope() {
-        ScopeQuery scope = loadPluginCapturingScope(ScopeFilter.excludeGroups(300L))[0];
+        ScopeQuery scope = loadPluginCapturingScope(new ScopeFilter(true, Set.of(300L)))[0];
 
         assertTrue(scope.isEnabledIn(100L));
         assertTrue(scope.isEnabledIn(200L));
@@ -236,7 +243,7 @@ class ScopeQueryTest {
     void enabledGroupsIntersectsWithActualGroups() {
         // 白名单里有 200 与 999（后者机器人不在其中）
         ScopeQuery scope = loadPluginCapturingScope(
-                ScopeFilter.onlyGroups(200L, 999L))[0];
+                new ScopeFilter(false, Set.of(200L, 999L)))[0];
 
         List<Long> groups = scope.getEnabledGroups();
 
@@ -245,7 +252,7 @@ class ScopeQueryTest {
     }
 
     @Test
-    @DisplayName("无过滤器记录时按元数据的 defaultEnable 回落")
+    @DisplayName("无用户配置时按元数据的 defaultEnable 回落")
     void fallsBackToMetadataDefaultEnable() {
         ScopeQuery[] captured = new ScopeQuery[1];
         YuniPlugin disabled = new YuniPlugin() {
@@ -259,17 +266,16 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        // 不传 filter，也不记录到 pluginScopeFilters
-        runtime.load(disabled, null, null, null, null, null);
+        runtime.load(disabled, null, null, null);
 
-        // 无过滤器记录 → 回落 defaultEnable=false
+        // 无用户配置 → 回落 defaultEnable=false
         assertFalse(captured[0].isEnabledIn(100L));
     }
 
     @Test
     @DisplayName("插件卸载后作用域记录被清理")
     void scopeFilterIsRemovedOnUnload() {
-        ScopeQuery[] captured = loadPluginCapturingScope(ScopeFilter.onlyGroups(100L));
+        ScopeQuery[] captured = loadPluginCapturingScope(new ScopeFilter(false, Set.of(100L)));
         assertTrue(captured[0].isEnabledIn(100L));
 
         runtime.unload("主动插件");
@@ -281,7 +287,7 @@ class ScopeQueryTest {
     @Test
     @DisplayName("describeScope 给出人类可读的作用域描述")
     void describeScopeIsReadable() {
-        loadPluginCapturingScope(ScopeFilter.onlyGroups(100L, 200L));
+        loadPluginCapturingScope(new ScopeFilter(false, Set.of(100L, 200L)));
         assertTrue(runtime.describeScope("主动插件").contains("仅限群"));
 
         // 未知插件（无 Fiber、无配置）按默认值处理，因此描述里不带群例外
