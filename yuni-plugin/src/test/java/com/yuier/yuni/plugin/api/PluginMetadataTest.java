@@ -19,10 +19,8 @@ class PluginMetadataTest {
     @Test
     @DisplayName("配置缺失时名称回落到插件 ID，其余字段为空")
     void emptyDescriptorFallsBackToId() {
-        PluginMetadata metadata = new PluginMetadata(
-                PluginDeclaration.of("steam").build(),
-                PluginDescriptor.empty(),
-                List.of());
+        PluginMetadata metadata = PluginMetadata.of(
+                null, PluginDeclaration.of("steam").build(), PluginDescriptor.empty(), List.of());
 
         assertEquals("steam", metadata.getId());
         assertEquals("steam", metadata.getName());
@@ -40,8 +38,8 @@ class PluginMetadataTest {
         PluginDescriptor descriptor = PluginDescriptor.builder()
                 .description("一句描述")
                 .build();
-        PluginMetadata metadata = new PluginMetadata(
-                PluginDeclaration.of("x").build(), descriptor, List.of());
+        PluginMetadata metadata = PluginMetadata.of(
+                null, PluginDeclaration.of("x").build(), descriptor, List.of());
 
         assertEquals(List.of("一句描述"), metadata.getTips());
     }
@@ -59,8 +57,8 @@ class PluginMetadataTest {
                 .repository("repo")
                 .icon("icon")
                 .build();
-        PluginMetadata metadata = new PluginMetadata(
-                PluginDeclaration.of("x").build(), descriptor, List.of());
+        PluginMetadata metadata = PluginMetadata.of(
+                null, PluginDeclaration.of("x").build(), descriptor, List.of());
 
         assertEquals("x", metadata.getId());
         assertEquals("显示名", metadata.getName());
@@ -76,11 +74,15 @@ class PluginMetadataTest {
     @Test
     @DisplayName("行为字段只来自代码声明")
     void behaviourComesFromDeclaration() {
-        PluginMetadata metadata = new PluginMetadata(
+        PluginMetadata metadata = PluginMetadata.of(
+                "mod",
                 PluginDeclaration.of("help").defaultEnable(false).buildIn(true).build(),
                 PluginDescriptor.builder().name("帮助").build(),
                 List.of(Runnable.class));
 
+        assertEquals("mod/help", metadata.getId());
+        assertEquals("mod", metadata.getArtifactId());
+        assertEquals("help", metadata.getPluginId());
         assertFalse(metadata.isDefaultEnable());
         assertTrue(metadata.isBuildIn());
         assertEquals(List.of(Runnable.class), metadata.getRequiredServices());

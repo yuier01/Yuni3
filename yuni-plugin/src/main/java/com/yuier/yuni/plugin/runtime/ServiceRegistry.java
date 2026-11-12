@@ -59,8 +59,6 @@ public final class ServiceRegistry {
      * 区分「内置」与「插件提供」。</p>
      */
     private static final PluginFiber BUILTIN = new PluginFiber(
-            "<builtin>",
-            null,
             ctx -> { },
             PluginMetadata.of("<builtin>"),
             null);

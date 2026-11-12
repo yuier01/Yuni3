@@ -246,9 +246,9 @@ public final class PluginRuntime {
         // 组装 metadata
         PluginDeclaration declaration = safeDeclaration(plugin);
         List<Class<?>> requiredServices = safeRequiredServices(plugin);
-        PluginMetadata metadata = new PluginMetadata(declaration, descriptor, requiredServices);
-        String artifactId = artifact.getId();
-        String id = buildPluginId(artifactId, declaration);
+        PluginMetadata metadata = PluginMetadata.of(
+                artifact.getId(), declaration, descriptor, requiredServices);
+        String id = metadata.getId();
 
         if (fibers.byId(id).isPresent()) {
             throw new IllegalStateException(
@@ -257,7 +257,7 @@ public final class PluginRuntime {
 
         // 组装 fiber
         ClassLoader classLoader = artifact.getClassLoader();
-        PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
+        PluginFiber fiber = new PluginFiber(plugin, metadata, classLoader);
         fibers.add(fiber);
         Path dataDir = artifact.getDataDir();
         pluginDataDirs.put(id, dataDir);
@@ -1245,24 +1245,6 @@ public final class PluginRuntime {
                     plugin.getClass().getName(), t);
             return List.of();
         }
-    }
-
-    /**
-     * 构造插件标识。
-     *
-     * <p>格式为 {@code 加载单元ID/插件ID}；无加载单元时退化为插件 ID。
-     * 插件 ID 来自代码声明，与展示名无关——改配置里的名称不会改变标识。</p>
-     *
-     * @param artifactId  加载单元标识；可为 {@code null}
-     * @param declaration 插件声明
-     * @return 插件标识
-     */
-    private static String buildPluginId(String artifactId, PluginDeclaration declaration) {
-        String id = declaration.getId();
-        if (id == null || id.isBlank()) {
-            throw new IllegalStateException("插件声明缺少标识: " + declaration);
-        }
-        return (artifactId == null || artifactId.isBlank()) ? id : artifactId + "/" + id;
     }
 
     /**

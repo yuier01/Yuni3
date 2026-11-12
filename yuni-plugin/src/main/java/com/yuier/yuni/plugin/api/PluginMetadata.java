@@ -5,26 +5,18 @@ import lombok.Getter;
 import java.util.List;
 
 /**
- * 插件元数据——{@link PluginDeclaration}（代码）与 {@link PluginDescriptor}
- * （配置）组装后的只读视图。
+ * 插件元数据——加载时组装完成的扁平视图。
  *
- * <h2>两个来源，各管各的</h2>
- * <table border="1">
- *   <caption>职责划分</caption>
- *   <tr><th>来源</th><th>类型</th><th>字段</th></tr>
- *   <tr><td>代码</td><td>{@link PluginDeclaration}</td>
- *       <td>id、defaultEnable、buildIn</td></tr>
- *   <tr><td>metadata.json</td><td>{@link PluginDescriptor}</td>
- *       <td>name、version、description、tips、author、homepage、repository、icon</td></tr>
- * </table>
+ * <h2>三个模型的关系</h2>
+ * <ul>
+ *   <li>{@link PluginDeclaration}：代码侧输入（本地 id / defaultEnable / buildIn）；</li>
+ *   <li>{@link PluginDescriptor}：配置侧输入（展示信息）；</li>
+ *   <li>{@link PluginMetadata}：两者与加载单元拼装后的<b>单层</b>结果，
+ *       不再持有前两者。</li>
+ * </ul>
  *
- * <p>配置缺失时 {@link PluginDescriptor} 为空：名称回落到插件 ID，其余字段为空串/空列表。
- * 这不影响插件加载与启停——展示信息缺失不是功能故障。</p>
- *
- * <h2>依赖展示</h2>
- * <p>{@link #getRequiredServices()} 来自插件代码的
- * {@link YuniPlugin#declareRequiredServices()}，是<b>真实的</b>服务依赖，
- * 而非配置文件中手写的声明。</p>
+ * <p>唯一 id 由这里持有：{@code 加载单元ID/本地ID}。{@code PluginFiber}
+ * 不再单独保存 id，直接委托本对象。</p>
  *
  * @see PluginDeclaration
  * @see PluginDescriptor
@@ -32,85 +24,140 @@ import java.util.List;
 @Getter
 public final class PluginMetadata {
 
-    /** 代码侧声明。 */
-    private final PluginDeclaration declaration;
+    /** 全局唯一标识：{@code 加载单元ID/本地ID}。 */
+    private final String id;
 
-    /** 配置侧描述。 */
-    private final PluginDescriptor descriptor;
+    /** 所属加载单元标识。 */
+    private final String artifactId;
+
+
+    /** 插件显示名；配置未提供时回落到本地 ID。 */
+    private final String name;
+
+    /** 版本号；未配置时为空串。 */
+    private final String version;
+
+    /** 描述；未配置时为空串。 */
+    private final String description;
+
+    /** 使用提示。 */
+    private final List<String> tips;
+
+    /** 作者 / 版权声明；未配置时为空串。 */
+    private final String author;
+
+    /** 项目主页；未配置时为空串。 */
+    private final String homepage;
+
+    /** 代码仓库；未配置时为空串。 */
+    private final String repository;
+
+    /** 图标；未配置时为空串。 */
+    private final String icon;
+
+    /** 无用户配置时默认是否生效。 */
+    private final boolean defaultEnable;
+
+    /** 是否内置插件。 */
+    private final boolean buildIn;
 
     /** 插件声明的必需服务类型。 */
     private final List<Class<?>> requiredServices;
 
+    private PluginMetadata(String id,
+                           String artifactId,
+                           String name,
+                           String version,
+                           String description,
+                           List<String> tips,
+                           String author,
+                           String homepage,
+                           String repository,
+                           String icon,
+                           boolean defaultEnable,
+                           boolean buildIn,
+                           List<Class<?>> requiredServices) {
+        this.id = id;
+        this.artifactId = artifactId;
+        this.name = name == null || name.isBlank() ? localIdOf(id) : name;
+        this.version = nullToEmpty(version);
+        this.description = nullToEmpty(description);
+        this.tips = tips == null ? List.of() : List.copyOf(tips);
+        this.author = nullToEmpty(author);
+        this.homepage = nullToEmpty(homepage);
+        this.repository = nullToEmpty(repository);
+        this.icon = nullToEmpty(icon);
+        this.defaultEnable = defaultEnable;
+        this.buildIn = buildIn;
+        this.requiredServices = requiredServices == null ? List.of() : List.copyOf(requiredServices);
+    }
+
     /**
      * 组装元数据。
      *
+     * @param artifactId       加载单元标识；可为 {@code null}
      * @param declaration      代码侧声明
-     * @param descriptor       配置侧描述
+     * @param descriptor       配置侧描述；可为 {@code null}
      * @param requiredServices 必需服务类型
+     * @return 扁平元数据
      */
-    public PluginMetadata(PluginDeclaration declaration,
-                          PluginDescriptor descriptor,
-                          List<Class<?>> requiredServices) {
-        this.declaration = declaration;
-        this.descriptor = descriptor == null ? PluginDescriptor.empty() : descriptor;
-        this.requiredServices = requiredServices == null ? List.of() : List.copyOf(requiredServices);
-        this.tips = this.descriptor.getTips();
+    public static PluginMetadata of(String artifactId,
+                                    PluginDeclaration declaration,
+                                    PluginDescriptor descriptor,
+                                    List<Class<?>> requiredServices) {
+        PluginDescriptor config = descriptor == null ? PluginDescriptor.empty() : descriptor;
+        String pluginId = declaration.getId();
+        String id = (artifactId == null || artifactId.isBlank())
+                ? pluginId
+                : artifactId + "/" + pluginId;
+        return new PluginMetadata(
+                id,
+                artifactId,
+                config.getName(),
+                config.getVersion(),
+                config.getDescription(),
+                config.getTips(),
+                config.getAuthor(),
+                config.getHomepage(),
+                config.getRepository(),
+                config.getIcon(),
+                declaration.isDefaultEnable(),
+                declaration.isBuildIn(),
+                requiredServices);
     }
 
-    /** 配置里的提示列表（不代替描述）。 */
-    private final List<String> tips;
-
     /**
-     * 按标识构造最小元数据——无配置展示信息、无依赖。
+     * 构造最小元数据——无加载单元、无配置描述。
      *
-     * <p>供测试与框架占位使用；正常加载路径由加载器提供
-     * {@link PluginDescriptor}。</p>
+     * <p>供测试与框架占位使用；正常加载路径由加载器提供完整声明与描述。</p>
      *
-     * @param id 插件标识
+     * @param pluginId 本地 ID
      * @return 元数据
      */
-    public static PluginMetadata of(String id) {
+    public static PluginMetadata of(String pluginId) {
         return new PluginMetadata(
-                PluginDeclaration.of(id).build(),
-                PluginDescriptor.empty(),
+                pluginId,
+                null,
+                pluginId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                false,
                 List.of());
     }
 
     /**
-     * 插件稳定标识。
+     * 本地 ID（加载单元内唯一）——从全局 ID 前缀中截出，不单独存字段。
      *
-     * @return 标识
+     * @return 本地 ID
      */
-    public String getId() {
-        return declaration.getId();
-    }
-
-    /**
-     * 插件显示名；配置未提供时回落到插件 ID。
-     *
-     * @return 显示名
-     */
-    public String getName() {
-        String name = descriptor.getName();
-        return name == null || name.isBlank() ? declaration.getId() : name;
-    }
-
-    /**
-     * 版本号；未配置时为空串。
-     *
-     * @return 版本
-     */
-    public String getVersion() {
-        return descriptor.getVersion();
-    }
-
-    /**
-     * 描述；未配置时为空串。
-     *
-     * @return 描述
-     */
-    public String getDescription() {
-        return descriptor.getDescription();
+    public String getPluginId() {
+        return localIdOf(id);
     }
 
     /**
@@ -122,64 +169,7 @@ public final class PluginMetadata {
         if (!tips.isEmpty()) {
             return tips;
         }
-        String description = getDescription();
-        return description == null || description.isBlank()
-                ? List.of()
-                : List.of(description);
-    }
-
-    /**
-     * 作者 / 版权声明；未配置时为空串。
-     *
-     * @return 作者
-     */
-    public String getAuthor() {
-        return descriptor.getAuthor();
-    }
-
-    /**
-     * 项目主页；未配置时为空串。
-     *
-     * @return 主页
-     */
-    public String getHomepage() {
-        return descriptor.getHomepage();
-    }
-
-    /**
-     * 代码仓库；未配置时为空串。
-     *
-     * @return 仓库
-     */
-    public String getRepository() {
-        return descriptor.getRepository();
-    }
-
-    /**
-     * 图标；未配置时为空串。
-     *
-     * @return 图标
-     */
-    public String getIcon() {
-        return descriptor.getIcon();
-    }
-
-    /**
-     * 无用户配置时默认是否生效。
-     *
-     * @return 默认生效返回 {@code true}
-     */
-    public boolean isDefaultEnable() {
-        return declaration.isDefaultEnable();
-    }
-
-    /**
-     * 是否内置插件。
-     *
-     * @return 内置返回 {@code true}
-     */
-    public boolean isBuildIn() {
-        return declaration.isBuildIn();
+        return description.isBlank() ? List.of() : List.of(description);
     }
 
     /**
@@ -189,15 +179,15 @@ public final class PluginMetadata {
      */
     @Override
     public String toString() {
-        return "PluginMetadata{id='" + getKey() + "', name='" + getName() + "'}";
+        return "PluginMetadata{id='" + id + "', name='" + name + "'}";
     }
 
-    /**
-     * 不带加载单元前缀的标识。
-     *
-     * @return 插件 ID
-     */
-    public String getKey() {
-        return declaration.getId();
+    private static String localIdOf(String id) {
+        int slash = id.lastIndexOf('/');
+        return slash < 0 ? id : id.substring(slash + 1);
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 }

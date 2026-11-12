@@ -57,11 +57,6 @@ import lombok.Getter;
 @Getter
 public final class PluginFiber {
 
-    /** 插件的稳定标识（加载单元 + 插件名），用于日志与管理端展示。 */
-    private final String id;
-
-    /** 所属加载单元标识；测试场景为 {@code null}。 */
-    private final String artifactId;
 
     /** 插件实现实例。热重载后由新 Fiber 持有新实例，旧 Fiber 保留旧实例引用直至回收。 */
     private final YuniPlugin plugin;
@@ -107,7 +102,7 @@ public final class PluginFiber {
      * 「是否已卸载<b>完毕</b>」要问 {@code getState() == DISPOSED}。</p>
      *
      * <p>访问器 {@code isDisposed()} 由 Lombok {@link Getter} 生成
-     * （类上使用 {@code @Accessors(fluent = true)}，与其余访问器命名一致）。</p>
+     * （由类上的 {@link Getter} 生成）。</p>
      */
     @Getter
     private volatile boolean disposed;
@@ -115,18 +110,13 @@ public final class PluginFiber {
     /**
      * 构造一个 Fiber。
      *
-     * @param id          插件标识
      * @param plugin      插件实现实例
      * @param metadata    元数据
      * @param classLoader 加载该插件的类加载器；可为 {@code null}（测试场景）
      */
-    PluginFiber(String id,
-                       String artifactId,
-                       YuniPlugin plugin,
-                       PluginMetadata metadata,
-                       ClassLoader classLoader) {
-        this.id = Objects.requireNonNull(id, "插件标识不能为 null");
-        this.artifactId = artifactId;
+    PluginFiber(YuniPlugin plugin,
+                PluginMetadata metadata,
+                ClassLoader classLoader) {
         this.plugin = Objects.requireNonNull(plugin, "插件实例不能为 null");
         this.metadata = Objects.requireNonNull(metadata, "插件元数据不能为 null");
         this.classLoader = classLoader;
@@ -134,10 +124,23 @@ public final class PluginFiber {
 
     // ==================== 身份 ====================
 
-    /*
-     * getId() / getPlugin() / getMetadata() / getClassLoader() 由类上的
-     * @Getter + @Accessors(fluent) 生成（字段注释已说明各自语义）。
+    /**
+     * 插件唯一标识。
+     *
+     * @return 标识
      */
+    public String getId() {
+        return metadata.getId();
+    }
+
+    /**
+     * 所属加载单元标识。
+     *
+     * @return 加载单元标识；测试元数据可能为 {@code null}
+     */
+    public String getArtifactId() {
+        return metadata.getArtifactId();
+    }
 
     // ==================== 状态 ====================
 
@@ -293,7 +296,7 @@ public final class PluginFiber {
 
         // 撤销本 Fiber 的 PluginEffect（逆序），并带上插件名便于定位
         for (String failure : effects.disposeAll()) {
-            failures.add("[" + id + "] " + failure);
+            failures.add("[" + getId() + "] " + failure);
         }
 
         state.set(FiberState.DISPOSED);
@@ -318,7 +321,7 @@ public final class PluginFiber {
     List<String> rollbackEffects() {
         List<String> failures = new ArrayList<>();
         for (String failure : effects.disposeAll()) {
-            failures.add("[" + id + "] " + failure);
+            failures.add("[" + getId() + "] " + failure);
         }
         return Collections.unmodifiableList(failures);
     }
@@ -331,7 +334,7 @@ public final class PluginFiber {
      * @return 形如 {@code "fortune/Fortune[ACTIVE, effects=3]"}
      */
     public String describe() {
-        return id + "[" + state.get().getDisplayName()
+        return getId() + "[" + state.get().getDisplayName()
                 + ", effects=" + getEffectCount() + "]";
     }
 
