@@ -9,9 +9,10 @@ import lombok.ToString;
  *
  * <h2>为什么只有这三个字段</h2>
  * <ul>
- *   <li>{@link #getId()}：稳定身份。插件标识 = {@code 加载单元ID/插件ID}，
- *       用户配置按它持久化，因此它<b>不能</b>由配置文件决定——改配置不应该
- *       让用户的群启停记录失效。</li>
+ *   <li>{@link #getKey()}：声明键，只在所属加载单元内唯一。全局标识由
+ *       {@link PluginMetadata#getId()} 拼上加载单元 ID 得到，用户配置按全局
+ *       标识持久化，因此它<b>不能</b>由配置文件决定——改配置不应该让用户的
+ *       群启停记录失效。</li>
  *   <li>{@link #isDefaultEnable()}：没有任何用户配置时的默认生效值。
  *       它是产品行为，不是展示信息；放在配置里会让运维改一个 json 就悄悄
  *       改变所有群的默认行为。</li>
@@ -31,8 +32,8 @@ import lombok.ToString;
 @EqualsAndHashCode
 public final class PluginDeclaration {
 
-    /** 插件稳定标识；默认取插件类的简单名。 */
-    private final String id;
+    /** 插件键——在所属加载单元内唯一；全局 ID 由 {@link PluginMetadata#getId()} 拼出。 */
+    private final String key;
 
     /** 无用户配置时默认是否生效。 */
     private final boolean defaultEnable;
@@ -41,7 +42,7 @@ public final class PluginDeclaration {
     private final boolean buildIn;
 
     private PluginDeclaration(Builder builder) {
-        this.id = builder.id;
+        this.key = builder.key;
         this.defaultEnable = builder.defaultEnable;
         this.buildIn = builder.buildIn;
     }
@@ -49,11 +50,11 @@ public final class PluginDeclaration {
     /**
      * 创建声明构建器。
      *
-     * @param id 插件稳定标识；不能为空
+     * @param key 插件键；不能为空
      * @return 构建器
      */
-    public static Builder of(String id) {
-        return new Builder(id);
+    public static Builder of(String key) {
+        return new Builder(key);
     }
 
     /**
@@ -61,15 +62,15 @@ public final class PluginDeclaration {
      */
     public static final class Builder {
 
-        private final String id;
+        private final String key;
         private boolean defaultEnable = true;
         private boolean buildIn;
 
-        private Builder(String id) {
-            if (id == null || id.isBlank()) {
-                throw new IllegalArgumentException("插件标识不能为空");
+        private Builder(String key) {
+            if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("插件键不能为空");
             }
-            this.id = id;
+            this.key = key;
         }
 
         /**

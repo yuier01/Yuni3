@@ -82,7 +82,7 @@ class PluginMetadataTest {
 
         assertEquals("mod/help", metadata.getId());
         assertEquals("mod", metadata.getArtifactId());
-        assertEquals("help", metadata.getPluginId());
+        assertEquals("help", metadata.getKey());
         assertFalse(metadata.isDefaultEnable());
         assertTrue(metadata.isBuildIn());
         assertEquals(List.of(Runnable.class), metadata.getRequiredServices());

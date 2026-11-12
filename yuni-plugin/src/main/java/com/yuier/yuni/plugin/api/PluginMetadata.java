@@ -10,7 +10,7 @@ import java.util.Objects;
  *
  * <h2>三个模型的关系</h2>
  * <ul>
- *   <li>{@link PluginDeclaration}：代码侧输入（本地 id / defaultEnable / buildIn）；</li>
+ *   <li>{@link PluginDeclaration}：代码侧输入（声明键 / defaultEnable / buildIn）；</li>
  *   <li>{@link PluginDescriptor}：配置侧输入（展示信息）；</li>
  *   <li>{@link PluginMetadata}：两者与加载单元拼装后的<b>单层</b>结果，
  *       不再持有前两者。</li>
@@ -80,7 +80,7 @@ public final class PluginMetadata {
                            List<Class<?>> requiredServices) {
         this.id = id;
         this.artifactId = Objects.requireNonNull(artifactId, "artifactId");
-        this.name = name == null || name.isBlank() ? localIdOf(id) : name;
+        this.name = name == null || name.isBlank() ? keyOf(id) : name;
         this.version = nullToEmpty(version);
         this.description = nullToEmpty(description);
         this.tips = tips == null ? List.of() : List.copyOf(tips);
@@ -108,8 +108,8 @@ public final class PluginMetadata {
                                     List<Class<?>> requiredServices) {
         Objects.requireNonNull(artifactId, "artifactId");
         PluginDescriptor config = descriptor == null ? PluginDescriptor.empty() : descriptor;
-        String pluginId = declaration.getId();
-        String id = artifactId.isBlank() ? pluginId : artifactId + "/" + pluginId;
+        String key = declaration.getKey();
+        String id = artifactId.isBlank() ? key : artifactId + "/" + key;
         return new PluginMetadata(
                 id,
                 artifactId,
@@ -131,14 +131,14 @@ public final class PluginMetadata {
      *
      * <p>供测试与框架占位使用；正常加载路径由加载器提供完整声明与描述。</p>
      *
-     * @param pluginId 本地 ID
+     * @param key 声明键
      * @return 元数据
      */
-    public static PluginMetadata of(String pluginId) {
+    public static PluginMetadata of(String key) {
         return new PluginMetadata(
-                pluginId,
+                key,
                 "",
-                pluginId,
+                key,
                 null,
                 null,
                 null,
@@ -152,12 +152,12 @@ public final class PluginMetadata {
     }
 
     /**
-     * 本地 ID（加载单元内唯一）——从全局 ID 前缀中截出，不单独存字段。
+     * 声明键（加载单元内唯一）——从全局 ID 前缀中截出，不单独存字段。
      *
-     * @return 本地 ID
+     * @return 声明键
      */
-    public String getPluginId() {
-        return localIdOf(id);
+    public String getKey() {
+        return keyOf(id);
     }
 
     /**
@@ -182,7 +182,7 @@ public final class PluginMetadata {
         return "PluginMetadata{id='" + id + "', name='" + name + "'}";
     }
 
-    private static String localIdOf(String id) {
+    private static String keyOf(String id) {
         int slash = id.lastIndexOf('/');
         return slash < 0 ? id : id.substring(slash + 1);
     }
