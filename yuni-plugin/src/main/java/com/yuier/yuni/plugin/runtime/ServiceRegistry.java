@@ -200,7 +200,15 @@ public final class ServiceRegistry {
         if (provider == null) {
             return removed;
         }
-        // 先快照 entrySet，避免在遍历中修改 Map
+        /*
+         * 遍历的是 entrySet 的**副本**（new ArrayList<>(...)），不是 entries 本身：
+         * 循环体里 remove 作用于 entries，而迭代器属于这个副本，两者是不同的对象。
+         * 这样既不会边遍历边改同一个集合，也保证「快照时刻的每个注册项恰好被
+         * 考虑一次」——不受遍历期间新增/删除的影响。
+         *
+         * 两参 remove 是 CAS：若期间该类型被并发覆盖注册，旧 entry 不再匹配，
+         * 这里返回 false，既不会误删新注册项，也不会把它算进 removed。
+         */
         for (Map.Entry<Class<?>, ServiceEntry> entry : new ArrayList<>(entries.entrySet())) {
             if (entry.getValue().provider() == provider
                     && entries.remove(entry.getKey(), entry.getValue())) {
