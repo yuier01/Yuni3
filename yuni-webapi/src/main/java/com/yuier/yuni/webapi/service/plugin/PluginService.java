@@ -75,7 +75,11 @@ public class PluginService {
                     admin.isGloballyEnabled(plugin.getId()),
                     new LinkedHashSet<>(admin.enabledGroups(plugin.getId())),
                     plugin.getFailureSummary().orElse(null),
-                    plugin.getMissingServices()));
+                    plugin.getMissingServices(),
+                    plugin.getRequiredServices(),
+                    plugin.getHomepage(),
+                    plugin.getRepository(),
+                    plugin.getIcon()));
         }
         return result;
     }

@@ -26,7 +26,7 @@ import java.util.Optional;
  *
  * <h2>与 {@link PluginMetadata} 的关系</h2>
  * <p>本接口把 {@code PluginMetadata} 的字段<b>平铺</b>出来，而不是返回一个
- * {@code getMetadata()}。原因是视图需要把元数据与运行时状态（{@link #getState()}、
+ * {@code PluginMetadata}。原因是视图需要把元数据与运行时状态（{@link #getState()}、
  * {@link #getMissingServices()}）放在一起展示，而元数据本身不包含这些。
  * 平铺使消费方写模板时不必在两层对象间跳转。</p>
  *
@@ -39,7 +39,7 @@ public interface PluginView {
     /**
      * 插件标识。
      *
-     * <p>格式由运行时决定，形如 {@code "artifactId/PluginName"}。这是
+     * <p>格式由运行时决定，形如 {@code "加载单元ID/插件ID"}。这是
      * 启停与重载操作使用的键——比「序号」稳定（序号会随加载顺序与热重载变化，
      * 现行系统的 index 偏移修正正是由此而来）。</p>
      *
@@ -92,6 +92,37 @@ public interface PluginView {
      * @return 作者信息
      */
     String getAuthor();
+
+    /**
+     * 依赖的服务类型名。
+     *
+     * <p>来自插件代码的 {@code declareRequiredServices()}，是真实依赖，
+     * 不是配置文件里的手写声明。</p>
+     *
+     * @return 服务类型全限定名；无依赖时为空列表
+     */
+    List<String> getRequiredServices();
+
+    /**
+     * 项目主页；未配置时为空串。
+     *
+     * @return 主页
+     */
+    String getHomepage();
+
+    /**
+     * 代码仓库；未配置时为空串。
+     *
+     * @return 仓库
+     */
+    String getRepository();
+
+    /**
+     * 图标；未配置时为空串。
+     *
+     * @return 图标
+     */
+    String getIcon();
 
     /**
      * 是否为系统内置插件。

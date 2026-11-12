@@ -33,13 +33,10 @@ import java.util.function.Predicate;
  * <pre>{@code
  * public final class OhaYo implements YuniPlugin {
  *
+ *     // 展示信息写在 metadata.json，这里只声明稳定身份与行为
  *     @Override
- *     public PluginMetadata getMetadata() {
- *         return PluginMetadata.of("定时问候")
- *                 .version("0.0.1")
- *                 .description("每天早上向 bot master 问好")
- *                 .author("Yuier me@yuier.com")
- *                 .build();
+ *     public PluginDeclaration getDeclaration() {
+ *         return PluginDeclaration.of("oha-yo").build();
  *     }
  *
  *     @Override
@@ -69,7 +66,7 @@ import java.util.function.Predicate;
  * </ul>
  *
  * <h2>实现方式</h2>
- * <p>本接口<b>不是</b>函数式接口（有两个方法），但 {@link #getMetadata()} 有默认实现，
+ * <p>本接口<b>不是</b>函数式接口（有两个方法），但 {@link #getDeclaration()} 有默认实现，
  * 因此对不需要元数据的内部插件可以用 lambda：</p>
  * <pre>{@code
  * YuniPlugin greet = ctx -> ctx.onMessage(ev -> ev.getChain().containsText("早"),
@@ -109,15 +106,23 @@ public interface YuniPlugin {
     void apply(YuniContext ctx) throws Exception;
 
     /**
-     * 插件元数据。
+     * 插件声明——稳定身份与行为字段。
      *
-     * <p>默认实现返回一个「以类名命名、全部字段取默认值」的元数据，
-     * 便于编写无需展示信息的内部插件。对外发布的插件应当覆写本方法。</p>
+     * <p>默认实现以类名作为插件 ID、默认启用、非内置。需要自定义
+     * {@code defaultEnable} / {@code buildIn} 的插件覆写本方法。</p>
      *
-     * @return 元数据，永不为 {@code null}
+     * <p>名称、版本、描述、提示、作者等展示信息<b>不</b>在这里，
+     * 而在 metadata.json 的 {@code plugins} 节点。</p>
+     *
+     * @return 声明，永不为 {@code null}
      */
-    default PluginMetadata getMetadata() {
-        return PluginMetadata.of(getClass().getSimpleName()).build();
+    default PluginDeclaration getDeclaration() {
+        String id = getClass().getSimpleName();
+        if (id.isBlank()) {
+            // 匿名类没有简单名：退化为全限定名，至少保证标识非空
+            id = getClass().getName();
+        }
+        return PluginDeclaration.of(id).build();
     }
 
     /**
@@ -152,13 +157,13 @@ public interface YuniPlugin {
      * 用 lambda 构造一个无元数据的简单插件。
      *
      * <p>用于框架内部的胶水逻辑、以及把一段 {@code apply} 逻辑直接包装成插件。
-     * 对外发布的插件应实现本接口并覆写 {@link #getMetadata()}，以便管理端正确展示。</p>
+     * 展示信息仍由 metadata.json 提供；本方法只固定身份与行为。</p>
      *
-     * @param metadata 元数据
-     * @param apply    能力注册函数
+     * @param declaration 声明
+     * @param apply       能力注册函数
      * @return 插件实例
      */
-    static YuniPlugin of(PluginMetadata metadata, Consumer<YuniContext> apply) {
+    static YuniPlugin of(PluginDeclaration declaration, Consumer<YuniContext> apply) {
         return new YuniPlugin() {
             @Override
             public void apply(YuniContext ctx) {
@@ -166,8 +171,8 @@ public interface YuniPlugin {
             }
 
             @Override
-            public PluginMetadata getMetadata() {
-                return metadata;
+            public PluginDeclaration getDeclaration() {
+                return declaration;
             }
         };
     }
@@ -175,12 +180,12 @@ public interface YuniPlugin {
     /**
      * 用 lambda 构造一个仅指定名称的简单插件。
      *
-     * @param name  插件显示名
+     * @param name  插件标识
      * @param apply 能力注册函数
      * @return 插件实例
      */
     static YuniPlugin of(String name, Consumer<YuniContext> apply) {
-        return of(PluginMetadata.of(name).build(), apply);
+        return of(PluginDeclaration.of(name).build(), apply);
     }
 
     /**
@@ -191,7 +196,7 @@ public interface YuniPlugin {
      * YuniPlugin.of(name, ctx -> ctx.onMessage(when, handler));
      * }</pre>
      *
-     * @param name    插件显示名
+     * @param name    插件标识
      * @param when    消息探测条件
      * @param handler 消息处理器
      * @return 插件实例
@@ -217,7 +222,7 @@ public interface YuniPlugin {
     /**
      * 用 lambda 构造一个「只注册一条请求处理器」的极简插件。
      *
-     * @param name    插件显示名
+     * @param name    插件标识
      * @param subType 请求子类型（如 {@code "friend"}）
      * @param handler 请求处理器
      * @return 插件实例
@@ -229,7 +234,7 @@ public interface YuniPlugin {
     /**
      * 用 lambda 构造一个「只注册一条元事件处理器」的极简插件。
      *
-     * @param name    插件显示名
+     * @param name    插件标识
      * @param subType 元事件类型（如 {@code "heartbeat"}）
      * @param handler 元事件处理器
      * @return 插件实例
@@ -241,7 +246,7 @@ public interface YuniPlugin {
     /**
      * 用 lambda 构造一个「只注册一条消息发出处理器」的极简插件。
      *
-     * @param name    插件显示名
+     * @param name    插件标识
      * @param when    探测条件
      * @param handler 处理器
      * @return 插件实例

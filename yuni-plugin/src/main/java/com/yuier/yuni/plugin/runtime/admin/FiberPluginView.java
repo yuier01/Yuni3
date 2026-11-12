@@ -51,6 +51,10 @@ public final class FiberPluginView implements PluginView {
     private final String description;
     private final List<String> tips;
     private final String author;
+    private final List<String> requiredServices;
+    private final String homepage;
+    private final String repository;
+    private final String icon;
     private final boolean buildIn;
     private final boolean defaultEnable;
 
@@ -78,6 +82,12 @@ public final class FiberPluginView implements PluginView {
         this.description = metadata.getDescription();
         this.tips = metadata.getTips();
         this.author = metadata.getAuthor();
+        this.requiredServices = metadata.getRequiredServices().stream()
+                .map(Class::getName)
+                .toList();
+        this.homepage = metadata.getHomepage();
+        this.repository = metadata.getRepository();
+        this.icon = metadata.getIcon();
         this.buildIn = metadata.isBuildIn();
         this.defaultEnable = metadata.isDefaultEnable();
 

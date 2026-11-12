@@ -17,8 +17,9 @@ import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
 import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.ArgDef;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
-import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
@@ -267,8 +268,8 @@ class EventPipelineTest {
         // 插件通过正常的 ctx API 注册处理器——不手工构造注册项
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("可启停插件").defaultEnable(true).build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("可启停插件").build();
             }
 
             @Override
@@ -316,8 +317,8 @@ class EventPipelineTest {
 
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("全局可关插件").defaultEnable(true).build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("全局可关插件").build();
             }
 
             @Override
@@ -360,8 +361,8 @@ class EventPipelineTest {
 
         PluginFiber fiber = runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("失败插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("失败插件").build();
             }
 
             @Override

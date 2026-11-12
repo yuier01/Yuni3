@@ -6,6 +6,8 @@ import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.plugin.api.PluginAdmin;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
@@ -224,44 +226,57 @@ public final class PluginRuntime {
      * @return 建好的 Fiber
      */
     public PluginFiber load(YuniPlugin plugin) {
-        return load(plugin, PluginArtifact.none());
+        return load(plugin, PluginArtifact.none(), PluginDescriptor.empty());
     }
 
     /**
      * 在指定加载单元命名空间下加载插件（无 jar 文件，供测试使用）。
      *
      * @param plugin     插件实例
-     * @param artifactId 加载单元标识；{@code null} 时退化为插件名
+     * @param artifactId 加载单元标识；{@code null} 时退化为插件 ID
      * @return 建好的 Fiber
      */
     public PluginFiber load(YuniPlugin plugin, String artifactId) {
-        return load(plugin, new PluginArtifact(artifactId, artifactId, null, null, null));
+        return load(plugin,
+                new PluginArtifact(artifactId, artifactId, null, null, null),
+                PluginDescriptor.empty());
+    }
+
+    /**
+     * 加载一个插件（无展示信息）。
+     *
+     * @param plugin   插件实例
+     * @param artifact 所属加载单元；可为 {@code null}
+     * @return 建好的 Fiber
+     */
+    public PluginFiber load(YuniPlugin plugin, PluginArtifact artifact) {
+        return load(plugin, artifact, PluginDescriptor.empty());
     }
 
     /**
      * 加载一个插件。
      *
-     * <p>流程：解析元数据 → 建 Fiber → 检查依赖 → 调 {@code apply(ctx)} → 登记索引。
-     * 依赖未满足时停在 PENDING 并<b>不</b>调用 {@code apply}。</p>
+     * <p>流程：读声明 → 组装元数据 → 建 Fiber → 检查依赖 → 调 {@code apply(ctx)}
+     * → 登记索引。依赖未满足时停在 PENDING 并<b>不</b>调用 {@code apply}。</p>
      *
-     * <p>作用域完全由「元数据 {@code defaultEnable} + 用户配置的群例外」决定，
-     * 插件代码不参与——作者不可能预知用户会在哪些群使用。</p>
-     *
-     * @param plugin   插件实例
-     * @param artifact 所属加载单元；可为 {@code null}（测试场景）
+     * @param plugin     插件实例
+     * @param artifact   所属加载单元；可为 {@code null}（测试场景）
+     * @param descriptor 配置侧展示信息；可为 {@code null}
      * @return 建好的 Fiber（无论加载成功、失败还是停在 PENDING）
      */
-    public PluginFiber load(YuniPlugin plugin, PluginArtifact artifact) {
+    public PluginFiber load(YuniPlugin plugin,
+                            PluginArtifact artifact,
+                            PluginDescriptor descriptor) {
         if (plugin == null) {
             throw new IllegalArgumentException("插件实例不能为 null");
         }
-        PluginMetadata metadata = safeMetadata(plugin);
+        PluginDeclaration declaration = safeDeclaration(plugin);
+        List<Class<?>> requiredServices = safeRequiredServices(plugin);
+        PluginMetadata metadata = new PluginMetadata(declaration, descriptor, requiredServices);
         String artifactId = artifact == null ? null : artifact.getId();
-        String id = buildPluginId(artifactId, metadata, plugin);
+        String id = buildPluginId(artifactId, declaration);
 
         if (fibers.byId(id).isPresent()) {
-            // 同 ID 已存在：说明调用方没有先卸载旧实例。
-            // 不静默覆盖——静默覆盖正是现行系统「重载后旧实例仍活着」类问题的根源。
             throw new IllegalStateException(
                     "插件 " + id + " 已加载。请先 unload 再重新 load，或使用 reload。");
         }
@@ -272,15 +287,10 @@ public final class PluginRuntime {
         fibers.add(fiber);
         Path dataDir = artifact == null ? null : artifact.getDataDir();
         if (dataDir != null) {
-            // 记录资源目录：依赖未满足而停在 PENDING 的插件，后续推进时
-            // 需要用同一个目录重建上下文
             pluginDataDirs.put(id, dataDir);
         }
 
-        // 先登记索引再 apply：这样插件在 apply 期间就能通过 ctx.findService 找到自己
-        // 注册的服务，也能被其他插件按 ID 反查。
-
-        List<Class<?>> missing = missingDependencies(plugin);
+        List<Class<?>> missing = missingDependencies(requiredServices);
         if (!missing.isEmpty()) {
             for (Class<?> type : missing) {
                 fiber.addPendingDependency(type);
@@ -293,7 +303,6 @@ public final class PluginRuntime {
         applyTo(fiber, dataDir);
         return fiber;
     }
-
     /**
      * 登记一个加载单元。
      *
@@ -414,7 +423,7 @@ public final class PluginRuntime {
             // 已经 ACTIVE（可能被上一轮推进）或已 FAILED / DISPOSED，都不再尝试
             return false;
         }
-        List<Class<?>> missing = missingDependencies(fiber.getPlugin());
+        List<Class<?>> missing = missingDependencies(fiber.getMetadata().getRequiredServices());
         if (!missing.isEmpty()) {
             fiber.clearPendingDependencies();
             missing.forEach(fiber::addPendingDependency);
@@ -1230,66 +1239,74 @@ public final class PluginRuntime {
     // ==================== 内部 ====================
 
     /**
-     * 安全读取插件元数据。
+     * 安全读取插件声明。
      *
-     * <p>{@code getMetadata()} 是插件代码，可能抛异常。此处兜底为一个默认元数据，
-     * 使「元数据写错」不至于让插件完全无法加载——真正的失败应发生在
-     * {@code apply} 阶段并带上完整上下文。</p>
+     * <p>{@code getDeclaration()} 是插件代码，可能抛异常。此处兜底为
+     * 「以类名命名、默认启用、非内置」，使声明写错不至于让插件完全无法加载。</p>
      *
      * @param plugin 插件实例
-     * @return 元数据；读取失败时返回以类名命名的默认值
+     * @return 声明；读取失败时返回以类名命名的默认值
      */
-    private static PluginMetadata safeMetadata(YuniPlugin plugin) {
+    private static PluginDeclaration safeDeclaration(YuniPlugin plugin) {
         try {
-            PluginMetadata metadata = plugin.getMetadata();
-            return metadata == null
-                    ? PluginMetadata.of(plugin.getClass().getSimpleName()).build()
-                    : metadata;
+            PluginDeclaration declaration = plugin.getDeclaration();
+            return declaration == null
+                    ? PluginDeclaration.of(plugin.getClass().getSimpleName()).build()
+                    : declaration;
         } catch (Throwable t) {
-            log.warn("插件 {} 的 getMetadata() 执行失败，使用默认元数据", plugin.getClass().getName(), t);
-            return PluginMetadata.of(plugin.getClass().getSimpleName()).build();
+            log.warn("插件 {} 的 getDeclaration() 执行失败，使用默认声明",
+                    plugin.getClass().getName(), t);
+            return PluginDeclaration.of(plugin.getClass().getSimpleName()).build();
+        }
+    }
+
+    /**
+     * 安全读取插件声明的必需服务。
+     *
+     * @param plugin 插件实例
+     * @return 服务类型列表；读取失败时为空
+     */
+    private static List<Class<?>> safeRequiredServices(YuniPlugin plugin) {
+        try {
+            List<Class<?>> services = plugin.declareRequiredServices();
+            return services == null ? List.of() : List.copyOf(services);
+        } catch (Throwable t) {
+            log.warn("插件 {} 的 declareRequiredServices() 执行失败，按无依赖处理",
+                    plugin.getClass().getName(), t);
+            return List.of();
         }
     }
 
     /**
      * 构造插件标识。
      *
-     * <p>格式为 {@code 加载单元ID/插件名}；无加载单元时退化为 {@code 插件名}。
-     * 与现行系统的 {@code 模块ID-插件类全限定名} 相比，本实现改用「加载单元ID/插件名」，不再把类名暴露给用户——
-     * 类名是内部实现，改包名不应该导致插件标识变化。</p>
+     * <p>格式为 {@code 加载单元ID/插件ID}；无加载单元时退化为插件 ID。
+     * 插件 ID 来自代码声明，与展示名无关——改配置里的名称不会改变标识。</p>
      *
-     * @param artifactId 加载单元标识；可为 {@code null}
-     * @param metadata 元数据
-     * @param plugin   插件实例（元数据名为空时用作兜底）
+     * @param artifactId  加载单元标识；可为 {@code null}
+     * @param declaration 插件声明
      * @return 插件标识
      */
-    private static String buildPluginId(String artifactId, PluginMetadata metadata, YuniPlugin plugin) {
-        String name = metadata.getName();
-        if (name == null || name.isBlank()) {
-            name = plugin.getClass().getSimpleName();
+    private static String buildPluginId(String artifactId, PluginDeclaration declaration) {
+        String id = declaration.getId();
+        if (id == null || id.isBlank()) {
+            throw new IllegalStateException("插件声明缺少标识: " + declaration);
         }
-        return (artifactId == null || artifactId.isBlank()) ? name : artifactId + "/" + name;
+        return (artifactId == null || artifactId.isBlank()) ? id : artifactId + "/" + id;
     }
 
     /**
      * 计算插件尚未满足的依赖服务。
      *
-     * @param plugin 插件实例
+     * @param required 插件声明的必需服务
      * @return 缺失的服务类型列表；全部满足时为空列表
      */
-    private List<Class<?>> missingDependencies(YuniPlugin plugin) {
-        List<Class<?>> injected;
-        try {
-            injected = plugin.declareRequiredServices();
-        } catch (Throwable t) {
-            log.warn("插件 {} 的 declareRequiredServices() 执行失败，按无依赖处理", plugin.getClass().getName(), t);
-            return List.of();
-        }
-        if (injected == null || injected.isEmpty()) {
+    private List<Class<?>> missingDependencies(List<Class<?>> required) {
+        if (required == null || required.isEmpty()) {
             return List.of();
         }
         List<Class<?>> missing = new ArrayList<>();
-        for (Class<?> type : injected) {
+        for (Class<?> type : required) {
             if (type != null && !services.contains(type)) {
                 missing.add(type);
             }

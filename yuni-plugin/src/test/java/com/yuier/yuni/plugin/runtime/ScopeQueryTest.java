@@ -10,9 +10,10 @@ import com.yuier.yuni.core.bot.MessageTarget;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.model.message.MessageChain;
-import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.ScopeQuery;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import org.junit.jupiter.api.BeforeEach;
@@ -180,8 +181,8 @@ class ScopeQueryTest {
         ScopeQuery[] captured = new ScopeQuery[1];
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("主动插件").defaultEnable(true).build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("主动插件").build();
             }
 
             @Override
@@ -257,8 +258,8 @@ class ScopeQueryTest {
         ScopeQuery[] captured = new ScopeQuery[1];
         YuniPlugin disabled = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("默认关闭的插件").defaultEnable(false).build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("默认关闭的插件").defaultEnable(false).build();
             }
 
             @Override

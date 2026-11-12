@@ -1,6 +1,7 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.Disposable;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
@@ -53,8 +54,8 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("测试插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("测试插件").build();
             }
 
             @Override
@@ -108,8 +109,8 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("半初始化插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("半初始化插件").build();
             }
 
             @Override
@@ -159,8 +160,8 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("缺依赖插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("缺依赖插件").build();
             }
 
             @Override
@@ -195,8 +196,8 @@ class PluginRuntimeTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("等待服务").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("等待服务").build();
             }
 
             @Override
@@ -231,8 +232,8 @@ class PluginRuntimeTest {
 
         YuniPlugin consumer = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("消费者").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("消费者").build();
             }
 
             @Override
@@ -253,8 +254,8 @@ class PluginRuntimeTest {
         // 提供者插件在 apply 中注册服务——消费者应被自动推进，无需手动调用 activatePending
         YuniPlugin provider = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("提供者").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("提供者").build();
             }
 
             @Override
@@ -277,8 +278,8 @@ class PluginRuntimeTest {
         // 用两个标记接口模拟互相依赖
         YuniPlugin a = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("A").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("A").build();
             }
 
             @Override
@@ -293,8 +294,8 @@ class PluginRuntimeTest {
         };
         YuniPlugin b = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("B").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("B").build();
             }
 
             @Override
@@ -342,8 +343,8 @@ class PluginRuntimeTest {
 
         YuniPlugin provider = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("服务提供者").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("服务提供者").build();
             }
 
             @Override
@@ -429,8 +430,8 @@ class PluginRuntimeTest {
         // 保留 ctx 引用并在卸载后再注册——模拟「异步回调在插件卸载后才触发」
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("延迟注册").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("延迟注册").build();
             }
 
             @Override

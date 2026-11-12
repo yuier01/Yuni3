@@ -10,6 +10,7 @@ import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
@@ -173,12 +174,8 @@ class PluginLifecycleIntegrationTest {
         }
 
         @Override
-        public PluginMetadata getMetadata() {
-            return PluginMetadata.of("多能力插件")
-                    .version("0.0.1")
-                    .description("同时贡献消息监听、定时任务与服务的测试插件")
-                    .author("test")
-                    .build();
+ public PluginDeclaration getDeclaration() {
+            return PluginDeclaration.of("多能力插件").build();
         }
 
         @Override
@@ -273,8 +270,8 @@ class PluginLifecycleIntegrationTest {
         // 一个必失败的插件
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("必失败插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("必失败插件").build();
             }
 
             @Override
@@ -286,8 +283,8 @@ class PluginLifecycleIntegrationTest {
         // 一个缺依赖的插件
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("缺依赖插件").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("缺依赖插件").build();
             }
 
             @Override

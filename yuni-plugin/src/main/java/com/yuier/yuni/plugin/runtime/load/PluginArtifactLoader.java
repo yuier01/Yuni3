@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.runtime.load;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.runtime.PluginArtifact;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
@@ -17,7 +18,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
@@ -42,7 +45,7 @@ import java.util.stream.Stream;
  *
  * <h2>jar 描述文件</h2>
  * <p>{@code metadata.json} 只描述 jar 本身：{@code id} 与 {@code name}。
- * 插件级的名称、版本、描述、作者由 {@code YuniPlugin.getMetadata()} 提供。</p>
+ * 插件级的名称、版本、描述、作者由同文件 {@code plugins} 节点提供。</p>
  *
  * @see PluginClassLoader
  * @see PluginArtifact
@@ -69,9 +72,66 @@ public final class PluginArtifactLoader {
         /** 展示名；缺省时用 {@link #id}。 */
         private String name;
 
+        /** 插件简单类名 → 展示信息。 */
+        private Map<String, PluginDescriptorData> plugins = new LinkedHashMap<>();
+
         /** Jackson 反序列化需要无参构造。 */
         public ArtifactMetadata() {
             // 由 Jackson 填充字段
+        }
+    }
+
+    /**
+     * metadata.json 中单个插件的展示信息。
+     */
+    @Data
+    public static class PluginDescriptorData {
+
+        /** 显示名。 */
+        private String name;
+
+        /** 版本。 */
+        private String version;
+
+        /** 描述。 */
+        private String description;
+
+        /** 提示。 */
+        private List<String> tips;
+
+        /** 作者 / 版权声明。 */
+        private String author;
+
+        /** 项目主页。 */
+        private String homepage;
+
+        /** 代码仓库。 */
+        private String repository;
+
+        /** 图标。 */
+        private String icon;
+
+        /** Jackson 反序列化需要无参构造。 */
+        public PluginDescriptorData() {
+            // 由 Jackson 填充字段
+        }
+
+        /**
+         * 转为不可变描述。
+         *
+         * @return 描述
+         */
+        public PluginDescriptor toDescriptor() {
+            return PluginDescriptor.builder()
+                    .name(name)
+                    .version(version)
+                    .description(description)
+                    .tips(tips)
+                    .author(author)
+                    .homepage(homepage)
+                    .repository(repository)
+                    .icon(icon)
+                    .build();
         }
     }
 
@@ -135,7 +195,8 @@ public final class PluginArtifactLoader {
                     continue;
                 }
                 try {
-                    loaded.add(runtime.load(instance, artifact));
+                    loaded.add(runtime.load(instance, artifact,
+                            descriptorFor(metadata, pluginClass)));
                 } catch (Throwable t) {
                     // 必须捕获 Throwable：类加载失败抛的是 Error。
                     // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
@@ -148,6 +209,26 @@ public final class PluginArtifactLoader {
             log.error("加载插件 jar 失败: {}", jarFile.getName(), t);
         }
         return loaded;
+    }
+
+    /**
+     * 取某个插件在配置里的展示信息。
+     *
+     * <p>先按简单类名查，再按全限定名查；都没有时返回空描述。</p>
+     *
+     * @param metadata    jar 描述
+     * @param pluginClass 插件类
+     * @return 描述，永不为 {@code null}
+     */
+    private static PluginDescriptor descriptorFor(ArtifactMetadata metadata, Class<?> pluginClass) {
+        if (metadata.getPlugins() == null || metadata.getPlugins().isEmpty()) {
+            return PluginDescriptor.empty();
+        }
+        PluginDescriptorData data = metadata.getPlugins().get(pluginClass.getSimpleName());
+        if (data == null) {
+            data = metadata.getPlugins().get(pluginClass.getName());
+        }
+        return data == null ? PluginDescriptor.empty() : data.toDescriptor();
     }
 
     /**

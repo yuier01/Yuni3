@@ -62,7 +62,7 @@ public final class ServiceRegistry {
             "<builtin>",
             null,
             ctx -> { },
-            PluginMetadata.of("<builtin>").build(),
+            PluginMetadata.of("<builtin>"),
             null);
 
     /**

@@ -253,7 +253,7 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public PluginMetadata getSelf() {
-        return fiber == null ? PluginMetadata.of("unknown").build() : fiber.getMetadata();
+        return fiber == null ? PluginMetadata.of("unknown") : fiber.getMetadata();
     }
 
     // ==================== 事件注册 ====================

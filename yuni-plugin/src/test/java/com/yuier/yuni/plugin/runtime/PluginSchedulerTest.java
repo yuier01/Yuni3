@@ -1,6 +1,7 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.core.task.DynamicTaskManager;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
@@ -212,8 +213,8 @@ class PluginSchedulerTest {
 
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("无调度器").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("无调度器").build();
             }
 
             @Override

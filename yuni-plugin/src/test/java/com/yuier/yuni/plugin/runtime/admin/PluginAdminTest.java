@@ -2,9 +2,11 @@ package com.yuier.yuni.plugin.runtime.admin;
 
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginAdminException;
-import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
+import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.PluginArtifact;
@@ -73,17 +75,21 @@ class PluginAdminTest {
                              String pluginName,
                              boolean buildIn,
                              boolean defaultEnable) {
+        PluginDeclaration declaration = PluginDeclaration.of(pluginName)
+                .defaultEnable(defaultEnable)
+                .buildIn(buildIn)
+                .build();
+        PluginDescriptor descriptor = PluginDescriptor.builder()
+                .name(pluginName)
+                .description(pluginName + " 的描述")
+                .author("测试")
+                .version("1.2.3")
+                .tips(List.of("提示一"))
+                .build();
         YuniPlugin plugin = new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of(pluginName)
-                        .description(pluginName + " 的描述")
-                        .author("测试")
-                        .version("1.2.3")
-                        .tip("提示一")
-                        .buildIn(buildIn)
-                        .defaultEnable(defaultEnable)
-                        .build();
+            public PluginDeclaration getDeclaration() {
+                return declaration;
             }
 
             @Override
@@ -91,30 +97,30 @@ class PluginAdminTest {
                 // 无能力：本测试只关心管理视图
             }
         };
-        return runtime.load(plugin, artifact(artifactId));
+        return runtime.load(plugin, artifact(artifactId), descriptor);
     }
 
     /**
      * 加载一个 {@code apply} 会抛异常的插件，用于验证失败可观测性。
      *
      * @param artifactId 加载单元 ID
-     * @param pluginName 插件显示名
+     * @param pluginName 插件标识
      * @param message    异常消息
      */
     private void loadFailing(String artifactId, String pluginName, String message) {
+        PluginDeclaration declaration = PluginDeclaration.of(pluginName).build();
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of(pluginName).build();
+            public PluginDeclaration getDeclaration() {
+                return declaration;
             }
 
             @Override
             public void apply(YuniContext ctx) {
                 throw new IllegalStateException(message);
             }
-        }, artifact(artifactId));
+        }, artifact(artifactId), PluginDescriptor.empty());
     }
-
     private static PluginArtifact artifact(String id) {
         return new PluginArtifact(id, id, null, null, null);
     }
@@ -159,8 +165,8 @@ class PluginAdminTest {
     void pendingPluginReportsMissingService() {
         runtime.load(new YuniPlugin() {
             @Override
-            public PluginMetadata getMetadata() {
-                return PluginMetadata.of("Needs").build();
+ public PluginDeclaration getDeclaration() {
+                return PluginDeclaration.of("Needs").build();
             }
 
             @Override
@@ -172,7 +178,7 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new AssertionError("依赖未满足时不应调用 apply");
             }
-        }, artifact("pending"));
+        }, artifact("pending"), PluginDescriptor.empty());
 
         PluginView view = admin.plugin("pending/Needs").orElseThrow();
         assertEquals(PluginState.PENDING, view.getState());

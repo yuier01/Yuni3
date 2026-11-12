@@ -2,236 +2,202 @@ package com.yuier.yuni.plugin.api;
 
 import lombok.Getter;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
- * 插件元数据——插件的身份与展示信息。
+ * 插件元数据——{@link PluginDeclaration}（代码）与 {@link PluginDescriptor}
+ * （配置）组装后的只读视图。
  *
- * <h2>来源</h2>
- * <p>本对象由插件自己在 {@code YuniPlugin.getMetadata()} 中返回，<b>代码即唯一真相</b>。
- * 现行系统把插件级元数据放在 jar 同级的 {@code metadata.json} 里，于是同一份信息
- * 有两处来源（代码里的类名 + json 里的 id），必然漂移。</p>
+ * <h2>两个来源，各管各的</h2>
+ * <table border="1">
+ *   <caption>职责划分</caption>
+ *   <tr><th>来源</th><th>类型</th><th>字段</th></tr>
+ *   <tr><td>代码</td><td>{@link PluginDeclaration}</td>
+ *       <td>id、defaultEnable、buildIn</td></tr>
+ *   <tr><td>metadata.json</td><td>{@link PluginDescriptor}</td>
+ *       <td>name、version、description、tips、author、homepage、repository、icon</td></tr>
+ * </table>
  *
- * <p>新方案：{@code metadata.json} 只保留<b>jar 级</b>信息
- * （{@code id} / {@code name}），
- * 插件级的名称、版本、描述、作者等一律以本对象为准。</p>
+ * <p>配置缺失时 {@link PluginDescriptor} 为空：名称回落到插件 ID，其余字段为空串/空列表。
+ * 这不影响插件加载与启停——展示信息缺失不是功能故障。</p>
  *
- * <h2>不变性</h2>
- * <p>本类不可变。{@code Builder} 用于构造，{@link #build()} 后即冻结。</p>
+ * <h2>依赖展示</h2>
+ * <p>{@link #getRequiredServices()} 来自插件代码的
+ * {@link YuniPlugin#declareRequiredServices()}，是<b>真实的</b>服务依赖，
+ * 而非配置文件中手写的声明。</p>
  *
- * @see YuniPlugin#getMetadata()
+ * @see PluginDeclaration
+ * @see PluginDescriptor
  */
 @Getter
 public final class PluginMetadata {
 
-    /** 插件显示名，用于日志与管理端展示；不应为空。 */
-    private final String name;
+    /** 代码侧声明。 */
+    private final PluginDeclaration declaration;
 
-    /** 插件版本；未设置时为 {@code "0.0.1"}。 */
-    private final String version;
+    /** 配置侧描述。 */
+    private final PluginDescriptor descriptor;
 
-    /** 插件描述，会展示给用户；未设置时为空串。 */
-    private final String description;
+    /** 插件声明的必需服务类型。 */
+    private final List<Class<?>> requiredServices;
 
     /**
-     * 使用提示，每项一条。
+     * 组装元数据。
      *
-     * <p>此处保存的是调用方给出的原始列表；对外读取请用 {@link #getTips()}，
-     * 它在列表为空时会回退为「只含描述的单元素列表」。</p>
+     * @param declaration      代码侧声明
+     * @param descriptor       配置侧描述
+     * @param requiredServices 必需服务类型
      */
+    public PluginMetadata(PluginDeclaration declaration,
+                          PluginDescriptor descriptor,
+                          List<Class<?>> requiredServices) {
+        this.declaration = declaration;
+        this.descriptor = descriptor == null ? PluginDescriptor.empty() : descriptor;
+        this.requiredServices = requiredServices == null ? List.of() : List.copyOf(requiredServices);
+        this.tips = this.descriptor.getTips();
+    }
+
+    /** 配置里的提示列表（不代替描述）。 */
     private final List<String> tips;
 
-    /** 作者信息；未设置时为空串。 */
-    private final String author;
-
     /**
-     * 依赖的其他插件名。
+     * 按标识构造最小元数据——无配置展示信息、无依赖。
      *
-     * <p><b>注意</b>：现行系统的该字段是纯声明，从未被检查
-     * （{@code PluginMetadata} 的注释自承「实际上目前并没有实现依赖检查」）。
-     * 新系统中插件间依赖由 {@code declareRequiredServices()} 表达服务依赖，本字段仅作展示用途。</p>
-     */
-    private final List<String> dependencies;
-
-    /**
-     * 默认是否启用。
+     * <p>供测试与框架占位使用；正常加载路径由加载器提供
+     * {@link PluginDescriptor}。</p>
      *
-     * <p>决定插件首次加载时 {@code ScopeFilter} 的初始值。
-     * 对应现行 {@code metadata.json} 的 {@code default_enable}。</p>
+     * @param id 插件标识
+     * @return 元数据
      */
-    private final boolean defaultEnable;
-
-    /**
-     * 是否为系统内置插件。
-     *
-     * <p>内置插件在管理端与命令界面中受保护：只有 bot 拥有者可以启停，
-     * 对应现行 {@code PluginEnable} 里的 {@code isBuiltIn()} 判定。</p>
-     */
-    private final boolean buildIn;
-
-    private PluginMetadata(Builder b) {
-        this.name = b.name;
-        this.version = b.version;
-        this.description = b.description;
-        this.tips = List.copyOf(b.tips);
-        this.author = b.author;
-        this.dependencies = List.copyOf(b.dependencies);
-        this.defaultEnable = b.defaultEnable;
-        this.buildIn = b.buildIn;
+    public static PluginMetadata of(String id) {
+        return new PluginMetadata(
+                PluginDeclaration.of(id).build(),
+                PluginDescriptor.empty(),
+                List.of());
     }
 
     /**
-     * 创建元数据构建器。
+     * 插件稳定标识。
      *
-     * @param name 插件显示名，用于日志与管理端展示；不应为空
-     * @return 构建器
+     * @return 标识
      */
-    public static Builder of(String name) {
-        return new Builder(name);
+    public String getId() {
+        return declaration.getId();
     }
 
-    /*
-     * getName() / getVersion() / getDescription() / getAuthor() / dependencies() /
-     * isDefaultEnable() / isBuildIn() 由类上的 @Getter + @Accessors(fluent) 生成
-     * ——对外契约是 record 风格的方法名，fluent getter 正好与之匹配。
+    /**
+     * 插件显示名；配置未提供时回落到插件 ID。
+     *
+     * @return 显示名
      */
+    public String getName() {
+        String name = descriptor.getName();
+        return name == null || name.isBlank() ? declaration.getId() : name;
+    }
 
     /**
-     * 使用提示，每项一条。
+     * 版本号；未配置时为空串。
      *
-     * <p>为空时框架回退为「只含描述的单元素列表」，与现行
-     * {@code PluginLoadProcessor.pluginMetadataPreProcess} 的兜底行为一致。</p>
+     * @return 版本
+     */
+    public String getVersion() {
+        return descriptor.getVersion();
+    }
+
+    /**
+     * 描述；未配置时为空串。
      *
-     * @return 不可变的提示列表
+     * @return 描述
+     */
+    public String getDescription() {
+        return descriptor.getDescription();
+    }
+
+    /**
+     * 使用提示；未配置且描述非空时回退为「只含描述的单元素列表」。
+     *
+     * @return 提示列表
      */
     public List<String> getTips() {
-        return tips.isEmpty() && !description.isEmpty()
-                ? List.of(description)
-                : tips;
-    }
-
-    @Override
-    public String toString() {
-        return "PluginMetadata{name='" + name + "', version='" + version + "'}";
+        if (!tips.isEmpty()) {
+            return tips;
+        }
+        String description = getDescription();
+        return description == null || description.isBlank()
+                ? List.of()
+                : List.of(description);
     }
 
     /**
-     * {@link PluginMetadata} 的构建器。
+     * 作者 / 版权声明；未配置时为空串。
      *
-     * <p>全部 setter 风格方法返回 {@code this}，最后调 {@link #build()}。</p>
+     * @return 作者
      */
-    public static final class Builder {
+    public String getAuthor() {
+        return descriptor.getAuthor();
+    }
 
-        private final String name;
-        private String version = "0.0.1";
-        private String description = "";
-        private List<String> tips = new ArrayList<>();
-        private String author = "";
-        private List<String> dependencies = new ArrayList<>();
-        private boolean defaultEnable = true;
-        private boolean buildIn = false;
+    /**
+     * 项目主页；未配置时为空串。
+     *
+     * @return 主页
+     */
+    public String getHomepage() {
+        return descriptor.getHomepage();
+    }
 
-        private Builder(String name) {
-            this.name = Objects.requireNonNull(name, "插件名不能为 null");
-        }
+    /**
+     * 代码仓库；未配置时为空串。
+     *
+     * @return 仓库
+     */
+    public String getRepository() {
+        return descriptor.getRepository();
+    }
 
-        /**
-         * 设置版本。
-         *
-         * @param version 版本字符串
-         * @return {@code this}
-         */
-        public Builder version(String version) {
-            this.version = version == null ? "" : version;
-            return this;
-        }
+    /**
+     * 图标；未配置时为空串。
+     *
+     * @return 图标
+     */
+    public String getIcon() {
+        return descriptor.getIcon();
+    }
 
-        /**
-         * 设置描述。
-         *
-         * @param description 描述文本
-         * @return {@code this}
-         */
-        public Builder description(String description) {
-            this.description = description == null ? "" : description;
-            return this;
-        }
+    /**
+     * 无用户配置时默认是否生效。
+     *
+     * @return 默认生效返回 {@code true}
+     */
+    public boolean isDefaultEnable() {
+        return declaration.isDefaultEnable();
+    }
 
-        /**
-         * 设置使用提示。
-         *
-         * @param tips 提示项
-         * @return {@code this}
-         */
-        public Builder tips(List<String> tips) {
-            this.tips = tips == null ? new ArrayList<>() : new ArrayList<>(tips);
-            return this;
-        }
+    /**
+     * 是否内置插件。
+     *
+     * @return 内置返回 {@code true}
+     */
+    public boolean isBuildIn() {
+        return declaration.isBuildIn();
+    }
 
-        /**
-         * 追加一条使用提示。
-         *
-         * @param tip 提示文本
-         * @return {@code this}
-         */
-        public Builder tip(String tip) {
-            this.tips.add(tip);
-            return this;
-        }
+    /**
+     * 单行诊断描述。
+     *
+     * @return 形如 {@code PluginMetadata{id='steam/Steam', name='...'}}
+     */
+    @Override
+    public String toString() {
+        return "PluginMetadata{id='" + getKey() + "', name='" + getName() + "'}";
+    }
 
-        /**
-         * 设置作者。
-         *
-         * @param author 作者信息
-         * @return {@code this}
-         */
-        public Builder author(String author) {
-            this.author = author == null ? "" : author;
-            return this;
-        }
-
-        /**
-         * 设置依赖列表（仅展示用，参见 {@link PluginMetadata#dependencies()}）。
-         *
-         * @param dependencies 依赖的插件名
-         * @return {@code this}
-         */
-        public Builder dependencies(List<String> dependencies) {
-            this.dependencies = dependencies == null ? new ArrayList<>() : new ArrayList<>(dependencies);
-            return this;
-        }
-
-        /**
-         * 设置默认启用状态。
-         *
-         * @param defaultEnable 默认启用传 {@code true}
-         * @return {@code this}
-         */
-        public Builder defaultEnable(boolean defaultEnable) {
-            this.defaultEnable = defaultEnable;
-            return this;
-        }
-
-        /**
-         * 标记为内置插件。
-         *
-         * @param buildIn 内置传 {@code true}
-         * @return {@code this}
-         */
-        public Builder buildIn(boolean buildIn) {
-            this.buildIn = buildIn;
-            return this;
-        }
-
-        /**
-         * 构建不可变元数据。
-         *
-         * @return 元数据实例
-         */
-        public PluginMetadata build() {
-            return new PluginMetadata(this);
-        }
+    /**
+     * 不带加载单元前缀的标识。
+     *
+     * @return 插件 ID
+     */
+    public String getKey() {
+        return declaration.getId();
     }
 }

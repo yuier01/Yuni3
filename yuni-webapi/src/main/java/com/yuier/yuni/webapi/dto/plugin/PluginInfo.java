@@ -97,4 +97,16 @@ public class PluginInfo {
 
     /** 未满足的依赖服务类型名；仅 {@code type == PENDING} 时非空。 */
     private List<String> missingServices;
+
+    /** 依赖的服务类型名。 */
+    private List<String> requiredServices;
+
+    /** 项目主页；未配置时为空串。 */
+    private String homepage;
+
+    /** 代码仓库；未配置时为空串。 */
+    private String repository;
+
+    /** 图标；未配置时为空串。 */
+    private String icon;
 }
