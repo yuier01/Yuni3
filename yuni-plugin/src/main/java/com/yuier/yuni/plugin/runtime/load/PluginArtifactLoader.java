@@ -142,6 +142,12 @@ public final class PluginArtifactLoader {
      * @return jar 文件列表；目录不存在时为空列表
      */
     public List<File> collectJarFiles(String directory) {
+        if (directory == null || directory.isBlank()) {
+            // 空目录配置等于「扫描当前工作目录」，会意外加载无关 jar；
+            // 也避免 Files.walk 返回裸文件名（无父目录）
+            log.warn("插件目录为空，跳过扫描");
+            return List.of();
+        }
         Path rootPath = Paths.get(directory);
         if (!Files.isDirectory(rootPath)) {
             log.warn("插件目录不存在或不是目录: {}", directory);
@@ -170,9 +176,12 @@ public final class PluginArtifactLoader {
      */
     public List<PluginFiber> loadArtifact(File jarFile, Path artifactDir) {
         List<PluginFiber> loaded = new ArrayList<>();
+        // 从 metadata.json 中解析元数据
         ArtifactMetadata metadata = readArtifactMetadata(artifactDir, jarFile.getName());
         String artifactId = metadata.getId();
 
+        // 为每个插件 jar 包创建类加载器，其父加载器为 PluginClassLoaderFactory 自身的父加载器
+        // 确保能看见框架类，这样在重载插件的场景下，可以确保解析框架类，成功重载
         try (PluginClassLoader classLoader = PluginClassLoaderFactory.create(jarFile)) {
             PluginArtifact artifact = new PluginArtifact(
                     artifactId,

@@ -52,9 +52,9 @@ public final class PluginBootstrap {
 
         List<PluginFiber> all = new ArrayList<>();
         for (File jarFile : jarFiles) {
-            Path artifactDir = jarFile.getParentFile() == null
-                    ? null
-                    : jarFile.getParentFile().toPath();
+            // 绝对路径一定有父目录（jar 不可能是文件系统根）；用绝对路径避免
+            // 「目录配置为空 → Files.walk 返回裸文件名 → getParentFile() 为 null」这一死角
+            Path artifactDir = jarFile.toPath().toAbsolutePath().getParent();
             all.addAll(loader.loadArtifact(jarFile, artifactDir));
         }
 
