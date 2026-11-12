@@ -1,9 +1,13 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,7 +43,7 @@ class PluginFiberTest {
     private static PluginFiber newFiber() {
         YuniPlugin plugin = YuniPlugin.of("状态测试插件", ctx -> {
         });
-        return new PluginFiber(plugin, PluginMetadata.of("m/StateTest"), null);
+        return new PluginFiber(plugin, PluginMetadata.of("", PluginDeclaration.of("m/StateTest").build(), PluginDescriptor.empty(), List.of()), null);
     }
 
     // ==================== 抢占：只能有一个赢家 ====================

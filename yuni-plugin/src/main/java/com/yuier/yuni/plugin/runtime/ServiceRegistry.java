@@ -1,5 +1,7 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import java.util.ArrayList;
@@ -60,7 +62,11 @@ public final class ServiceRegistry {
      */
     private static final PluginFiber BUILTIN = new PluginFiber(
             ctx -> { },
-            PluginMetadata.of("<builtin>"),
+            PluginMetadata.of(
+                    "",
+                    PluginDeclaration.of("<builtin>").build(),
+                    PluginDescriptor.empty(),
+                    List.of()),
             null);
 
     /**

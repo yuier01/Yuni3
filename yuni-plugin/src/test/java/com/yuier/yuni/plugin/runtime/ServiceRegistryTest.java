@@ -1,8 +1,12 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import java.util.Optional;
 
@@ -24,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ServiceRegistryTest {
 
     private static PluginFiber fiber(String id) {
-        return new PluginFiber(ctx -> { }, PluginMetadata.of(id), null);
+        return new PluginFiber(ctx -> { }, PluginMetadata.of("", PluginDeclaration.of(id).build(), PluginDescriptor.empty(), List.of()), null);
     }
 
     @Test

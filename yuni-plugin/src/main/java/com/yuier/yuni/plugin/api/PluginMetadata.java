@@ -32,7 +32,7 @@ public final class PluginMetadata {
     private final String artifactId;
 
 
-    /** 插件显示名；配置未提供时回落到本地 ID。 */
+    /** 插件显示名；配置未提供时回落到声明键。 */
     private final String name;
 
     /** 版本号；未配置时为空串。 */
@@ -124,31 +124,6 @@ public final class PluginMetadata {
                 declaration.isDefaultEnable(),
                 declaration.isBuildIn(),
                 requiredServices);
-    }
-
-    /**
-     * 构造最小元数据——无加载单元、无配置描述。
-     *
-     * <p>供测试与框架占位使用；正常加载路径由加载器提供完整声明与描述。</p>
-     *
-     * @param key 声明键
-     * @return 元数据
-     */
-    public static PluginMetadata of(String key) {
-        return new PluginMetadata(
-                key,
-                "",
-                key,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                true,
-                false,
-                List.of());
     }
 
     /**

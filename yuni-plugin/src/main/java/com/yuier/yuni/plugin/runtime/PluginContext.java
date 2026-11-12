@@ -7,6 +7,8 @@ import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginEffect;
 import com.yuier.yuni.plugin.api.PluginAdmin;
+import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.ScopeQuery;
@@ -253,7 +255,13 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public PluginMetadata getSelf() {
-        return fiber == null ? PluginMetadata.of("unknown") : fiber.getMetadata();
+        return fiber == null
+                ? PluginMetadata.of(
+                        "",
+                        PluginDeclaration.of("unknown").build(),
+                        PluginDescriptor.empty(),
+                        List.of())
+                : fiber.getMetadata();
     }
 
     // ==================== 事件注册 ====================

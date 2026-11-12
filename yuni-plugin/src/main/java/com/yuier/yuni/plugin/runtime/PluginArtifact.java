@@ -1,5 +1,6 @@
 package com.yuier.yuni.plugin.runtime;
 
+import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
