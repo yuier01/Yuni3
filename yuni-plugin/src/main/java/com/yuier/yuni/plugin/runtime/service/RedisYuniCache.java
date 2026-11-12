@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
  * 而不是抛异常——缓存读取失败应降级，不应中断插件逻辑。</p>
  *
  * <h2>键名约定</h2>
- * <p>插件键名前缀统一为 {@code plugin:<模块名>:...}。现行代码里
+ * <p>插件键名前缀统一为 {@code plugin:<jar 名>:...}。现行代码里
  * {@code PigToday} 与 {@code Fortune} 恰好都定义了名为 {@code *_TODAY_CACHE_KEY}
  * 的常量，靠具体值区分——本约定把该做法显式化，避免不同插件的键碰撞。</p>
  *

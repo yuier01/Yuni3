@@ -563,8 +563,8 @@ public final class PluginContext implements YuniContext {
          * 而它返回的适配器本身不持有状态（全部状态在运行时里），
          * 构造一个的开销只是几次字段赋值。
          *
-         * 不缓存还有一个正确性收益：适配器持有一个 PluginModuleLoader 引用，
-         * 而该引用是在运行时装配完成后才绑定的（bindModuleLoader）。
+         * 不缓存还有一个正确性收益：适配器持有一个 PluginArtifactLoader 引用，
+         * 而该引用是在运行时装配完成后才绑定的（bindArtifactLoader）。
          * 缓存会导致「第一次访问时加载器还没绑上」的适配器被一直复用。
          */
         if (runtime == null) {

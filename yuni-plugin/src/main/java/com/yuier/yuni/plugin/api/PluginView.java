@@ -39,7 +39,7 @@ public interface PluginView {
     /**
      * 插件标识。
      *
-     * <p>格式由运行时决定，形如 {@code "moduleId/PluginSimpleName"}。这是
+     * <p>格式由运行时决定，形如 {@code "artifactId/PluginName"}。这是
      * 启停与重载操作使用的键——比「序号」稳定（序号会随加载顺序与热重载变化，
      * 现行系统的 index 偏移修正正是由此而来）。</p>
      *
@@ -48,13 +48,13 @@ public interface PluginView {
     String getId();
 
     /**
-     * 所属模块 ID。
+     * 所属加载单元标识。
      *
-     * <p>对应 jar 包。一个模块可包含多个插件；热重载以模块为单位。</p>
+     * <p>对应 jar 包。一个 jar 可包含多个插件；重载以 jar 为单位。</p>
      *
-     * @return 模块 ID；不属于任何模块时为空串
+     * @return 加载单元标识；不属于任何 jar 时为空串
      */
-    String getModuleId();
+    String getArtifactId();
 
     // ==================== 元数据 ====================
 

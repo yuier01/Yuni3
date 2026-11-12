@@ -16,7 +16,7 @@ import java.nio.file.Path;
  * </ul>
  *
  * <p>那些方法的签名都要额外传一个 {@code Class<? extends YuniPlugin>} 参数——
- * 因为静态方法无从得知「我是谁」，只能靠调用方传入自己的 Class 去反查模块。
+ * 因为静态方法无从得知「我是谁」，只能靠调用方传入自己的 Class 去反查 jar。
  * 有了 {@code ctx} 之后这个参数不需要了。</p>
  *
  * <h2>用法</h2>
@@ -34,7 +34,7 @@ import java.nio.file.Path;
  * }</pre>
  *
  * <h2>资源目录</h2>
- * <p>插件资源位于 jar 包<b>同级目录</b>（即 {@code plugins/<模块名>/}），
+ * <p>插件资源位于 jar 包<b>同级目录</b>（即 {@code plugins/<jar 名>/}），
  * 由构建脚本把 {@code src/main/resources} 下的文件复制过去
  * （见各插件 pom 的 maven-resources-plugin 配置）。因此插件读配置读的是
  * 磁盘文件而<b>不是</b> jar 内资源——这样运维可以直接改配置而无需重新打包。</p>

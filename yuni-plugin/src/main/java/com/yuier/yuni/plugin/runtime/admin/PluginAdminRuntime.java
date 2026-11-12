@@ -2,13 +2,11 @@ package com.yuier.yuni.plugin.runtime.admin;
 
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginAdminException;
-import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.FiberRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
-import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,29 +38,10 @@ public final class PluginAdminRuntime implements PluginAdmin {
     /** 运行时。 */
     private final PluginRuntime runtime;
 
-    /**
-     * 模块加载器。
-     *
-     * <p>本类不直接用它——重载逻辑在
-     * {@link PluginRuntime#reload(String)} 内。保留引用只是为了在
-     * {@link #reload} 里给出更准确的错误信息（区分「运行时没装配加载器」
-     * 与「模块不存在」）。</p>
-     */
-    @SuppressWarnings("unused")
-    private final PluginModuleLoader moduleLoader;
-
-    /* 构造器由 @RequiredArgsConstructor 生成：
-     * (PluginRuntime runtime, PluginModuleLoader moduleLoader)。 */
+    /* 构造器由 @RequiredArgsConstructor 生成：(PluginRuntime runtime)。 */
 
     // ==================== 查询 ====================
 
-    @Override
-    public List<PluginModuleView> getModules() {
-        FiberRegistry fibers = runtime.getFibers();
-        return fibers.getAllModules().stream()
-                .map(handle -> (PluginModuleView) new FiberModuleView(handle, fibers))
-                .toList();
-    }
 
     @Override
     public List<PluginView> getPlugins() {
@@ -76,21 +55,15 @@ public final class PluginAdminRuntime implements PluginAdmin {
         return runtime.getFibers().byId(pluginId).map(this::viewOf);
     }
 
-    @Override
-    public List<PluginView> pluginsOfModule(String moduleId) {
-        return runtime.getFibers().ofModule(moduleId).stream()
-                .map(this::viewOf)
-                .toList();
-    }
 
     /**
-     * 把 Fiber 投影为公共视图，并补上它的模块 ID。
+     * 把 Fiber 投影为公共视图。
      *
      * @param fiber 插件 Fiber
      * @return 视图
      */
     private PluginView viewOf(PluginFiber fiber) {
-        return new FiberPluginView(fiber, runtime.moduleIdOf(fiber.getId()).orElse(null));
+        return new FiberPluginView(fiber);
     }
 
     // ==================== 群粒度启停 ====================
@@ -186,12 +159,12 @@ public final class PluginAdminRuntime implements PluginAdmin {
     // ==================== 生命周期 ====================
 
     @Override
-    public void reload(String moduleId) {
-        if (runtime.getFibers().module(moduleId).isEmpty()) {
-            throw new PluginAdminException(null, "没有标识为 " + moduleId + " 的模块。");
+    public void reload(String pluginId) {
+        if (runtime.getFibers().byId(pluginId).isEmpty()) {
+            throw new PluginAdminException(pluginId, "没有标识为 " + pluginId + " 的插件。");
         }
         try {
-            runtime.reload(moduleId);
+            runtime.reload(pluginId);
         } catch (IllegalStateException e) {
             // 运行时的 IllegalStateException 描述的是「这次重载为什么做不了」
             // （jar 找不到 / 未装配加载器），属于用户可理解的失败
@@ -214,7 +187,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
              */
             throw new PluginAdminException(pluginId,
                     "插件「" + fiber.getMetadata().getName() + "」为内置插件，不能单独卸载。"
-                            + "如需更新请使用重载（它会卸载并重新加载整个模块）。");
+                            + "如需更新请使用重载（它会卸载并重新加载整个 jar）。");
         }
         runtime.unload(pluginId);
     }
@@ -223,8 +196,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
     public String getSummary() {
         FiberRegistry fibers = runtime.getFibers();
         var counts = fibers.countByState();
-        return "模块 " + fibers.getModuleCount()
-                + " / 插件 " + fibers.getPluginCount()
+        return "插件 " + fibers.getPluginCount()
                 + " / 运行中 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.ACTIVE, 0)
                 + " / 失败 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.FAILED, 0)
                 + " / 等待依赖 " + counts.getOrDefault(com.yuier.yuni.plugin.runtime.FiberState.PENDING, 0);
@@ -244,7 +216,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
             result.put(state, 0);
         }
         for (PluginFiber fiber : runtime.getFibers().getAll()) {
-            PluginState state = new FiberPluginView(fiber, null).getState();
+            PluginState state = new FiberPluginView(fiber).getState();
             result.merge(state, 1, Integer::sum);
         }
         return java.util.Collections.unmodifiableMap(result);

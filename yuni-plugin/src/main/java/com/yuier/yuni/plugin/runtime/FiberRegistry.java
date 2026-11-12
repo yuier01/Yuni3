@@ -1,9 +1,5 @@
 package com.yuier.yuni.plugin.runtime;
 
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -20,13 +16,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * 且每张 Map 都要在热重载时被手工增删（{@code PluginReloadProcessor} 与
  * {@code PluginService} 各实现了一遍同样的维护逻辑，是 bug 高发区）。</p>
  *
- * <p>本容器维护按 ID / 模块 / 类名的三张 Map。<b>没有 index 字段，没有类型分桶，
- * 没有偏移修正</b>——插件之间是平级关系，模块只用于分组展示与热重载定位。</p>
+ * <p>本容器维护按 ID / 类名 / 加载单元的三张 Map。<b>没有 index 字段，没有类型分桶，
+ * 没有偏移修正</b>——插件之间是平级关系。</p>
  *
- * <h2>模块与插件的关系</h2>
- * <p>一个 <b>模块</b>（module）对应一个 jar 包，可包含多个插件；每个插件是一个
- * Fiber。模块元数据（{@code module_id} / {@code module_name}）在
- * {@link FiberRegistry.ModuleHandle} 中保存，供管理端分组展示与热重载定位 jar 使用。</p>
+ * <h2>加载单元（Artifact）</h2>
+ * <p>一个 {@link PluginArtifact} 对应一个 jar，可包含多个插件。它只用于
+ * 定位 jar 与 ClassLoader（热重载边界），<b>不承担分组展示职责</b>。</p>
  *
  * <h2>线程安全</h2>
  * <p>加载 / 卸载 / 查询可能并发。所有索引用 {@link ConcurrentHashMap}。</p>
@@ -39,76 +34,11 @@ public final class FiberRegistry {
     /** 插件标识 → Fiber。 */
     private final Map<String, PluginFiber> fibersById = new ConcurrentHashMap<>();
 
-    /** 模块 ID → 模块句柄。 */
-    private final Map<String, ModuleHandle> modulesById = new ConcurrentHashMap<>();
+    /** 加载单元标识 → 加载单元。 */
+    private final Map<String, PluginArtifact> artifactsById = new ConcurrentHashMap<>();
 
     /** 插件实现类 → 插件标识；供「按类反查插件」使用（现行 {@code PluginUtils} 的用法）。 */
     private final Map<Class<?>, String> pluginIdByClass = new ConcurrentHashMap<>();
-
-    /**
-     * 模块句柄——一个 jar 包对应的元数据与 ClassLoader。
-     *
-     * @param moduleId      模块 ID（来自 metadata.json 的 {@code module_id}）
-     * @param moduleName    模块显示名
-     * @param jarFileName   jar 文件名，用于热重载时定位文件
-     * @param jarParentPath jar 所在目录，同时是插件资源目录
-     * @param classLoader   加载该模块插件类的类加载器
-     * @param pluginIds     该模块包含的插件标识列表（保持 jar 内声明顺序）
-     */
-    /**
-     * 一个模块的元数据与资源位置。
-     *
-     * <p>原本是 record；为统一 JavaBean 访问器（{@code getXxx()}）改为
-     * {@code @Getter} 类。字段语义与 record 组件一一对应。</p>
-     */
-    @Getter
-    @ToString
-    @EqualsAndHashCode
-    public static final class ModuleHandle {
-
-        /** 模块 ID（来自 {@code metadata.json} 的 {@code module_id}）。 */
-        private final String moduleId;
-
-        /** 模块显示名。 */
-        private final String moduleName;
-
-        /** jar 文件名；用于日志与热重载定位。 */
-        private final String jarFileName;
-
-        /** jar 所在目录。 */
-        private final String jarParentPath;
-
-        /** 加载该模块的类加载器。 */
-        private final ClassLoader classLoader;
-
-        /** 该模块下的插件标识（构造时冻结）。 */
-        private final List<String> pluginIds;
-
-        /**
-         * 构造模块句柄。
-         *
-         * @param moduleId      模块 ID
-         * @param moduleName    模块显示名
-         * @param jarFileName   jar 文件名
-         * @param jarParentPath jar 所在目录
-         * @param classLoader   类加载器
-         * @param pluginIds     插件标识列表（会被复制并冻结）
-         */
-        public ModuleHandle(String moduleId,
-                            String moduleName,
-                            String jarFileName,
-                            String jarParentPath,
-                            ClassLoader classLoader,
-                            List<String> pluginIds) {
-            this.moduleId = moduleId;
-            this.moduleName = moduleName;
-            this.jarFileName = jarFileName;
-            this.jarParentPath = jarParentPath;
-            this.classLoader = classLoader;
-            // 冻结可变的插件列表
-            this.pluginIds = List.copyOf(pluginIds);
-        }
-    }
 
     // ==================== 注册 ====================
 
@@ -126,13 +56,13 @@ public final class FiberRegistry {
     }
 
     /**
-     * 登记模块句柄。
+     * 登记一个加载单元。
      *
-     * @param handle 模块句柄
+     * @param artifact 加载单元
      */
-    public void addModule(ModuleHandle handle) {
-        if (handle != null && handle.getModuleId() != null) {
-            modulesById.put(handle.getModuleId(), handle);
+    public void addArtifact(PluginArtifact artifact) {
+        if (artifact != null && artifact.getId() != null) {
+            artifactsById.put(artifact.getId(), artifact);
         }
     }
 
@@ -163,13 +93,15 @@ public final class FiberRegistry {
     }
 
     /**
-     * 按模块 ID 取模块句柄。
+     * 按加载单元标识取加载单元。
      *
-     * @param moduleId 模块 ID
-     * @return 模块句柄；不存在时为空
+     * @param artifactId 加载单元标识
+     * @return 加载单元；不存在时为空
      */
-    public Optional<ModuleHandle> module(String moduleId) {
-        return moduleId == null ? Optional.empty() : Optional.ofNullable(modulesById.get(moduleId));
+    public Optional<PluginArtifact> artifact(String artifactId) {
+        return artifactId == null
+                ? Optional.empty()
+                : Optional.ofNullable(artifactsById.get(artifactId));
     }
 
     /**
@@ -182,20 +114,18 @@ public final class FiberRegistry {
     }
 
     /**
-     * 某模块包含的 Fiber。
+     * 某加载单元包含的 Fiber。
      *
-     * @param moduleId 模块 ID
-     * @return 该模块的插件列表；模块不存在时为空列表
+     * @param artifactId 加载单元标识
+     * @return 该单元的插件列表；单元不存在时为空列表
      */
-    public List<PluginFiber> ofModule(String moduleId) {
-        ModuleHandle handle = modulesById.get(moduleId);
-        if (handle == null) {
+    public List<PluginFiber> pluginsOfArtifact(String artifactId) {
+        if (artifactId == null) {
             return List.of();
         }
         List<PluginFiber> result = new ArrayList<>();
-        for (String pluginId : handle.getPluginIds()) {
-            PluginFiber fiber = fibersById.get(pluginId);
-            if (fiber != null) {
+        for (PluginFiber fiber : fibersById.values()) {
+            if (artifactId.equals(fiber.getArtifactId())) {
                 result.add(fiber);
             }
         }
@@ -212,23 +142,12 @@ public final class FiberRegistry {
     }
 
     /**
-     * 已加载的模块数量。
+     * 已登记的加载单元数量。
      *
      * @return 数量
      */
-    public int getModuleCount() {
-        return modulesById.size();
-    }
-
-    /**
-     * 全部已加载模块，按模块 ID 排序。
-     *
-     * @return 不可变快照
-     */
-    public List<ModuleHandle> getAllModules() {
-        List<ModuleHandle> result = new ArrayList<>(modulesById.values());
-        result.sort(java.util.Comparator.comparing(ModuleHandle::getModuleId));
-        return Collections.unmodifiableList(result);
+    public int getArtifactCount() {
+        return artifactsById.size();
     }
 
     /**
@@ -285,18 +204,14 @@ public final class FiberRegistry {
     }
 
     /**
-     * 移除某个模块的全部索引（不执行卸载）。
+     * 移除加载单元索引（不执行插件卸载）。
      *
-     * @param moduleId 模块 ID
-     * @return 被移除的 Fiber 列表
+     * @param artifactId 加载单元标识
      */
-    public List<PluginFiber> removeModule(String moduleId) {
-        List<PluginFiber> removed = ofModule(moduleId);
-        for (PluginFiber fiber : removed) {
-            remove(fiber);
+    public void removeArtifact(String artifactId) {
+        if (artifactId != null) {
+            artifactsById.remove(artifactId);
         }
-        modulesById.remove(moduleId);
-        return removed;
     }
 
     /**
@@ -306,12 +221,12 @@ public final class FiberRegistry {
      */
     public void clear() {
         fibersById.clear();
-        modulesById.clear();
+        artifactsById.clear();
         pluginIdByClass.clear();
     }
 
     /**
-     * 全部 Fiber 及其后代的 PluginEffect 总数。
+     * 全部 Fiber 的 PluginEffect 总数。
      *
      * <p>用于全局泄漏检测：全量卸载后本方法应返回 {@code 0}。</p>
      *
@@ -328,10 +243,10 @@ public final class FiberRegistry {
     /**
      * 单行诊断描述。
      *
-     * @return 形如 {@code "modules=13, plugins=23, effects=41, states={ACTIVE=21, ...}"}
+     * @return 形如 {@code "artifacts=13, plugins=23, effects=41, states={ACTIVE=21, ...}"}
      */
     public String describe() {
-        return "modules=" + getModuleCount()
+        return "artifacts=" + getArtifactCount()
                 + ", plugins=" + getPluginCount()
                 + ", effects=" + getTotalEffectCount()
                 + ", states=" + countByState();

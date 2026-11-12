@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <h2>泄漏检测</h2>
  * <p>{@link #size()} 用于验证「卸载后 PluginEffect 归零」这一不变式——
- * 热重载流程会断言它，见 {@code PluginRuntime#reloadModule}。
+ * 热重载流程会断言它，见 {@code PluginRuntime#reload}。
  * 这是 2026-08 P0 事故的直接产物：当时容器被清空而插件的注册未被撤销，
  * 且无任何指标可观测。</p>
  *

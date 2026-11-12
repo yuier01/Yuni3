@@ -9,13 +9,12 @@ import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
-import com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle;
 import com.yuier.yuni.plugin.runtime.UserScopeStore.UserScopeRecord;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
 import com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher;
 import com.yuier.yuni.plugin.runtime.dispatch.EventPipeline;
-import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -70,7 +69,7 @@ import lombok.extern.slf4j.Slf4j;
  * （插件重载静默失败），见 {@code Notes/技术报告-插件重载静默失败.md}。</p>
  *
  * <h2>能力范围</h2>
- * <p>本类已实现：模块加载（经 {@code PluginModuleLoader}）、依赖检查与推进、
+ * <p>本类已实现：加载单元加载（经 {@code PluginArtifactLoader}）、依赖检查与推进、
  * {@code apply} 调用、索引登记、卸载、热重载、事件分发（经 {@link #getPipeline()}）、
  * 作用域查询与写入、{@link com.yuier.yuni.plugin.api.PluginAdmin} 适配。
  * 重构 P1–P6 已全部完成，本类不再有「待接线」的方法。</p>
@@ -92,7 +91,7 @@ public final class PluginRuntime {
     @Getter
     private final ServiceRegistry services = new ServiceRegistry();
 
-    /** Fiber 容器：树形索引 + 模块索引。 */
+    /** Fiber 容器：插件与加载单元索引。 */
     @Getter
     private final FiberRegistry fibers = new FiberRegistry();
 
@@ -149,12 +148,12 @@ public final class PluginRuntime {
     private final JsonCodec jsonCodec;
 
     /**
-     * 模块加载器；用于热重载时重新读取 jar。
+     * 加载单元加载器；用于热重载时重新读取 jar。
      *
      * <p>为 {@code null} 时 {@link #reload} 会抛出可读的错误而不是 NPE——
      * 测试场景通常不装配它，因此这是常见情况而非异常情况。</p>
      */
-    private volatile PluginModuleLoader moduleLoader;
+    private volatile PluginArtifactLoader artifactLoader;
 
     /**
      * 构造运行时（不带 JSON 编解码器）。
@@ -219,6 +218,27 @@ public final class PluginRuntime {
     // ==================== 加载 ====================
 
     /**
+     * 加载一个插件（无文件系统位置，供测试与代码内直接安装）。
+     *
+     * @param plugin 插件实例
+     * @return 建好的 Fiber
+     */
+    public PluginFiber load(YuniPlugin plugin) {
+        return load(plugin, PluginArtifact.none());
+    }
+
+    /**
+     * 在指定加载单元命名空间下加载插件（无 jar 文件，供测试使用）。
+     *
+     * @param plugin     插件实例
+     * @param artifactId 加载单元标识；{@code null} 时退化为插件名
+     * @return 建好的 Fiber
+     */
+    public PluginFiber load(YuniPlugin plugin, String artifactId) {
+        return load(plugin, new PluginArtifact(artifactId, artifactId, null, null, null));
+    }
+
+    /**
      * 加载一个插件。
      *
      * <p>流程：解析元数据 → 建 Fiber → 检查依赖 → 调 {@code apply(ctx)} → 登记索引。
@@ -227,18 +247,17 @@ public final class PluginRuntime {
      * <p>作用域完全由「元数据 {@code defaultEnable} + 用户配置的群例外」决定，
      * 插件代码不参与——作者不可能预知用户会在哪些群使用。</p>
      *
-     * @param plugin      插件实例
-     * @param moduleId    所属模块 ID；{@code null} 表示不属于任何模块
-     * @param dataDir     插件资源目录；可为 {@code null}
-     * @param classLoader 加载该插件的类加载器；可为 {@code null}
+     * @param plugin   插件实例
+     * @param artifact 所属加载单元；可为 {@code null}（测试场景）
      * @return 建好的 Fiber（无论加载成功、失败还是停在 PENDING）
      */
-    public PluginFiber load(YuniPlugin plugin, String moduleId, Path dataDir, ClassLoader classLoader) {
+    public PluginFiber load(YuniPlugin plugin, PluginArtifact artifact) {
         if (plugin == null) {
             throw new IllegalArgumentException("插件实例不能为 null");
         }
         PluginMetadata metadata = safeMetadata(plugin);
-        String id = buildPluginId(moduleId, metadata, plugin);
+        String artifactId = artifact == null ? null : artifact.getId();
+        String id = buildPluginId(artifactId, metadata, plugin);
 
         if (fibers.byId(id).isPresent()) {
             // 同 ID 已存在：说明调用方没有先卸载旧实例。
@@ -247,9 +266,11 @@ public final class PluginRuntime {
                     "插件 " + id + " 已加载。请先 unload 再重新 load，或使用 reload。");
         }
 
-        PluginFiber fiber = new PluginFiber(id, plugin, metadata, classLoader);
+        registerArtifact(artifact);
+        ClassLoader classLoader = artifact == null ? null : artifact.getClassLoader();
+        PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
         fibers.add(fiber);
-        ensureModuleHandle(moduleId, classLoader);
+        Path dataDir = artifact == null ? null : artifact.getDataDir();
         if (dataDir != null) {
             // 记录资源目录：依赖未满足而停在 PENDING 的插件，后续推进时
             // 需要用同一个目录重建上下文
@@ -274,98 +295,18 @@ public final class PluginRuntime {
     }
 
     /**
-     * 保证某个模块在索引里存在。
+     * 登记一个加载单元。
      *
-     * <h2>为什么 {@code load} 也要管模块索引</h2>
-     * <p>模块句柄（{@code ModuleHandle}）本来只由
-     * {@code PluginModuleLoader.loadModule} 登记，因为它掌握 jar 文件名与资源目录。
-     * 但 {@link #load} 是一个公开入口——测试、集成场景、以及「用代码直接装一个插件」
-     * 都会走它。若此时不登记模块，就会出现两种不一致：</p>
-     * <ul>
-     *   <li>{@code PluginAdmin.moduleIdOf} 查不到插件所属模块，
-     *       于是管理视图里的 {@code moduleId} 是空的；</li>
-     *   <li>模块分组视图（{@code admin.getModules()}）看不到这些插件——
-     *       它们明明已加载，却在「按模块看」的视角下消失。</li>
-     * </ul>
-     * <p>因此这里补一个「最小可用」的模块句柄。之后若
-     * {@code PluginModuleLoader.loadModule} 用完整信息覆盖它，
-     * 那正是我们想要的结果（它知道 jar 名与目录）。</p>
+     * <p>加载器在实例化插件之前调用，保证「jar 里一个插件都没有」时
+     * Artifact 仍然可被管理端与重载流程看到。</p>
      *
-     * @param moduleId    模块 ID；{@code null} 或空白时不登记
-     * @param classLoader 类加载器；可为 {@code null}
+     * @param artifact 加载单元；{@code null} 时忽略
      */
-    private void ensureModuleHandle(String moduleId, ClassLoader classLoader) {
-        if (moduleId == null || moduleId.isBlank()) {
-            return;
-        }
-        synchronized (moduleHandles) {
-            ModuleHandle existing =
-                    fibers.module(moduleId).orElse(null);
-            if (existing != null && existing.getJarFileName() != null) {
-                // 已经有携带完整信息（jar 名）的句柄——它由 loadModule 建立，不要覆盖
-                return;
-            }
-
-            /*
-             * 收集本模块下的全部插件 ID。
-             *
-             * 句柄的 pluginIds 决定 admin.getModules() 能列出哪些插件
-             * （见 FiberRegistry.ofModule），因此必须带上，不能留空——
-             * 留空会让「按模块看」的视角漏掉该插件。
-             *
-             * 直接按模块 ID 过滤全部 Fiber：这一步不经过 moduleIdOf，
-             * 因为 moduleIdOf 本身依赖模块句柄，此时可能还没建好（会死循环）。
-             */
-            List<String> pluginIds = new ArrayList<>();
-            for (PluginFiber fiber : fibers.getAll()) {
-                if (moduleId.equals(moduleIdOfRaw(fiber.getId()))) {
-                    pluginIds.add(fiber.getId());
-                }
-            }
-
-            fibers.addModule(new ModuleHandle(
-                    moduleId,
-                    // 显示名暂用模块 ID：真正的名字在 metadata.json 里，
-                    // 由 loadModule 覆盖。这里不能瞎猜，只能如实填 ID
-                    moduleId,
-                    null,
-                    null,
-                    classLoader,
-                    pluginIds));
-            log.debug("为直接 load 的插件补建模块句柄: {}（{} 个插件）", moduleId, pluginIds.size());
+    public void registerArtifact(PluginArtifact artifact) {
+        if (artifact != null) {
+            fibers.addArtifact(artifact);
         }
     }
-
-    /**
-     * 取插件所属模块 ID（不依赖模块句柄的版本）。
-     *
-     * <p>与公开的 {@link #moduleIdOf} 的区别：本方法只查「插件标识里是否以
-     * {@code moduleId/} 开头」这一条路径，因此<b>可以在模块句柄尚未建立时使用</b>。
-     * {@code ensureModuleHandle} 需要它，否则会形成
-     * 「建句柄 → 查句柄 → 句柄还没有」的死循环。</p>
-     *
-     * @param pluginId 插件标识
-     * @return 模块 ID；无法判定时返回 {@code null}
-     */
-    private String moduleIdOfRaw(String pluginId) {
-        for (ModuleHandle handle : fibers.getAllModules()) {
-            if (handle.getPluginIds().contains(pluginId)) {
-                return handle.getModuleId();
-            }
-        }
-        // 退化为「标识前缀」判定：标识格式为 moduleId/name，因此前缀即模块
-        int slash = pluginId == null ? -1 : pluginId.indexOf('/');
-        return slash > 0 ? pluginId.substring(0, slash) : null;
-    }
-
-    /**
-     * 模块句柄补建用的锁对象。
-     *
-     * <p>只保护「检查是否存在 + 写入」这一段，不覆盖加载流程本身——
-     * 后者是低频的重操作，用一把粗锁会拖长启动时间。</p>
-     */
-    private final Object moduleHandles = new Object();
-
     /**
      * 执行 {@code apply(ctx)} 并处理成功 / 失败。
      *
@@ -635,107 +576,85 @@ public final class PluginRuntime {
     // ==================== 重载 ====================
 
     /**
-     * 重载一个模块。
+     * 重载一个插件所属的加载单元（jar）。
      *
-     * <p>设计目标（对比现行实现）：</p>
-     * <table border="1">
-     *   <caption>重载步骤对比</caption>
-     *   <tr><th>现行 {@code PluginReloadProcessor}</th><th>新实现</th></tr>
-     *   <tr><td>记录 index 与全量列表位置</td><td>记录挂载顺序（父上下文 + 序号）</td></tr>
-     *   <tr><td>手工从 4 个索引结构移除</td><td>{@code unload()} 一次完成</td></tr>
-     *   <tr><td>修正后续模块的 index 偏移</td><td><b>不存在</b>——树结构没有全局序号</td></tr>
-     * </table>
+     * <p>重载是<b>同步</b>的：调用返回时新插件已经装好。调用方因此能立即判断
+     * 「重载成功了吗」，而不是把结果交给一次无法观测的异步任务。</p>
      *
-     * <h2>执行的六步</h2>
-     * <ol>
-     *   <li>取模块句柄（拿到 jar 文件名与所在目录）；</li>
-     *   <li><b>先把作用域配置快照下来</b>——虽然
-     *       {@link #unload} 现在不再清除例外表，但重新 {@code load} 时
-     *       会按新实例的 {@code defaultEnable} 重算，因此仍以快照为准回填，
-     *       保证「换实现不换配置」；</li>
-     *   <li>逐个 {@link #unload} 该模块的插件（逆序撤销 PluginEffect、注销服务）；</li>
-     *   <li>移除模块索引，并关闭其 ClassLoader——这一步是 Windows 下能覆盖 jar
-     *       的前提；</li>
-     *   <li>交给 {@link com.yuier.yuni.plugin.runtime.load.PluginModuleLoader}
-     *       重新扫描并按新 ClassLoader 加载；</li>
-     *   <li>把第 2 步快照的作用域配置按插件名回填。</li>
-     * </ol>
+     * <h2>粒度是 jar，不是插件</h2>
+     * <p>Java 的 ClassLoader 以 jar 为单位，无法只重载其中一个类。因此本方法会
+     * 卸载并重新加载该 jar 内的<b>全部</b>插件。若 jar 内有多个插件，它们一起重启。</p>
      *
-     * <h2>调用时机约束（重要）</h2>
-     * <p>本方法是<b>同步</b>的，且会在调用线程上卸载并重新加载目标模块的类。
-     * 因此<b>不要从目标模块自己的处理器里调用它</b>——那会在一次命令处理尚未
-     * 返回时就卸载掉正在执行的类。正确做法是由另一个插件的处理器、
-     * 或由 webapi 的请求线程触发。</p>
+     * <h2>作用域配置</h2>
+     * <p>卸载前先快照用户配置，重新加载后按插件标识回填——保证「换实现不换配置」。</p>
      *
-     * <p>框架选择「不做延迟调度」而非「静默地异步卸载」，是因为后者会让
-     * 「重载成功了吗」变成一个无法回答的问题（调用返回时插件还没装好）。
-     * 把约束显式写在这里，让调用方自己选择在哪里触发。</p>
+     * <h2>调用时机约束</h2>
+     * <p>不要从目标 jar 自己的处理器里调用本方法：那会在一次命令处理尚未返回时
+     * 卸载掉正在执行的类。正确做法是由另一个插件的处理器或 webapi 请求线程触发。</p>
      *
-     * @param moduleId 模块 ID
-     * @return 重载后该模块的插件 Fiber 列表
-     * @throws IllegalStateException 模块不存在、jar 缺失，或运行时未装配模块加载器
+     * @param pluginId 插件标识
+     * @return 重载后的插件 Fiber 列表
+     * @throws IllegalStateException 插件不存在、不属于任何 jar、jar 缺失，或未装配加载器
      */
-    public List<PluginFiber> reload(String moduleId) {
-        if (moduleLoader == null) {
+    public List<PluginFiber> reload(String pluginId) {
+        if (artifactLoader == null) {
             throw new IllegalStateException(
-                    "热重载需要 PluginModuleLoader，但本运行时未装配它"
-                            + "（集成场景应调用 bindModuleLoader）。");
+                    "热重载需要 PluginArtifactLoader，但本运行时未装配它"
+                            + "（集成场景应调用 bindArtifactLoader）。");
         }
-        ModuleHandle handle = fibers.module(moduleId)
-                .orElseThrow(() -> new IllegalStateException("模块不存在: " + moduleId));
-
-        Path moduleDir = handle.getJarParentPath() == null ? null : Path.of(handle.getJarParentPath());
-        java.io.File jarFile = moduleDir == null ? null : moduleDir.resolve(handle.getJarFileName()).toFile();
+        PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
+                new IllegalStateException("插件不存在: " + pluginId));
+        String artifactId = fiber.getArtifactId();
+        if (artifactId == null) {
+            throw new IllegalStateException("插件不属于任何加载单元: " + pluginId);
+        }
+        PluginArtifact artifact = fibers.artifact(artifactId).orElseThrow(() ->
+                new IllegalStateException("加载单元不存在: " + artifactId));
+        Path jarPath = artifact.getJarPath();
+        java.io.File jarFile = jarPath == null ? null : jarPath.toFile();
         if (jarFile == null || !jarFile.isFile()) {
             throw new IllegalStateException(
-                    "找不到模块 " + moduleId + " 的 jar 文件"
+                    "找不到加载单元 " + artifactId + " 的 jar 文件"
                             + (jarFile == null ? "" : ": " + jarFile.getAbsolutePath()));
         }
 
-        // 第 2 步：快照作用域例外。重启加载时新实例的 defaultEnable 可能与旧实例
-        // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
+        // 快照作用域例外：重新加载后按插件标识回填，保证「换实现不换配置」
+        List<PluginFiber> siblings = fibers.pluginsOfArtifact(artifactId);
         Map<String, Map<Long, Boolean>> scopeSnapshot = new LinkedHashMap<>();
-        for (String pluginId : handle.getPluginIds()) {
-            Map<Long, Boolean> values = userScopeOverrides.all(pluginId);
+        for (PluginFiber sibling : siblings) {
+            Map<Long, Boolean> values = userScopeOverrides.all(sibling.getId());
             if (!values.isEmpty()) {
-                scopeSnapshot.put(pluginId, values);
+                scopeSnapshot.put(sibling.getId(), values);
             }
         }
 
-        // 第 3 步：逐个卸载。逆序，与 PluginEffect 的逆序撤销保持一致
-        List<String> pluginIds = new ArrayList<>(handle.getPluginIds());
-        for (int i = pluginIds.size() - 1; i >= 0; i--) {
-            unload(pluginIds.get(i));
+        // 逆序卸载，与 PluginEffect 的逆序撤销保持一致
+        for (int i = siblings.size() - 1; i >= 0; i--) {
+            unload(siblings.get(i).getId());
         }
 
-        // 第 4 步：移除模块索引并关闭类加载器。
-        // 关闭是必须的：Windows 下 jar 文件句柄不释放就无法覆盖同名文件，
-        // 而「换了 jar 再重载」正是热重载最常见的用法。
-        fibers.removeModule(moduleId);
-        closeQuietly(handle.getClassLoader());
+        // 关闭类加载器：Windows 下 jar 句柄不释放就无法覆盖同名文件
+        fibers.removeArtifact(artifactId);
+        closeQuietly(artifact.getClassLoader());
 
-        log.info("模块 {} 已卸载，开始重新加载 {}", moduleId, jarFile.getName());
+        log.info("加载单元 {} 已卸载，开始重新加载 {}", artifactId, jarFile.getName());
 
-        // 第 5 步：重新扫描加载
-        List<PluginFiber> loaded = moduleLoader.loadModule(jarFile, moduleDir);
+        List<PluginFiber> loaded =
+                artifactLoader.loadArtifact(jarFile, artifact.getDataDir());
 
-        // 第 6 步：回填作用域配置。
-        // 按插件标识匹配而不是按位置——插件标识由「模块 + 插件显示名」构成，
-        // 只要模块没有增删插件，标识就保持一致。
         int restored = 0;
-        for (PluginFiber fiber : loaded) {
-            Map<Long, Boolean> values = scopeSnapshot.get(fiber.getId());
+        for (PluginFiber reloaded : loaded) {
+            Map<Long, Boolean> values = scopeSnapshot.get(reloaded.getId());
             if (values != null) {
-                userScopeOverrides.putAll(fiber.getId(), values);
+                userScopeOverrides.putAll(reloaded.getId(), values);
                 restored++;
             }
         }
 
-        log.info("模块 {} 重载完成：{} 个插件，恢复 {} 项作用域配置",
-                moduleId, loaded.size(), restored);
+        log.info("加载单元 {} 重载完成：{} 个插件，恢复 {} 项作用域配置",
+                artifactId, loaded.size(), restored);
         return loaded;
     }
-
     /**
      * 安静地关闭一个类加载器。
      *
@@ -1100,7 +1019,7 @@ public final class PluginRuntime {
      * <p>恢复时需要用每个插件的 {@code defaultEnable} 判断「这条记录算不算例外」，
      * 而 {@code defaultEnable} 在代码里（{@code PluginMetadata}），
      * 只有插件实例化后才能读到。因此本方法由
-     * {@code PluginBootstrap.initialize()} 在全部模块加载完之后调用。</p>
+     * {@code PluginBootstrap.initialize()} 在全部插件加载完之后调用。</p>
      *
      * <h2>与插件自己声明的 {@code ScopeFilter} 的关系</h2>
      * <p>持久化配置<b>覆盖</b>运行期显式传入的过滤器。理由：持久化的是用户的
@@ -1201,21 +1120,18 @@ public final class PluginRuntime {
         }
     }
 
-    // ==================== 模块与插件的反向查询 ====================
+    // ==================== 加载单元与插件的反向查询 ====================
 
     /**
-     * 取某插件所属的模块 ID。
+     * 取某插件所属的加载单元标识。
      *
      * @param pluginId 插件标识
-     * @return 模块 ID；插件不属于任何模块或不存在时为空
+     * @return 加载单元标识；插件不属于任何加载单元或不存在时为空
      */
-    public Optional<String> moduleIdOf(String pluginId) {
-        for (ModuleHandle handle : fibers.getAllModules()) {
-            if (handle.getPluginIds().contains(pluginId)) {
-                return java.util.Optional.of(handle.getModuleId());
-            }
-        }
-        return java.util.Optional.empty();
+    public Optional<String> artifactIdOf(String pluginId) {
+        return fibers.byId(pluginId)
+                .map(PluginFiber::getArtifactId)
+                .filter(java.util.Objects::nonNull);
     }
 
     /**
@@ -1228,21 +1144,21 @@ public final class PluginRuntime {
      * @return 插件管理服务
      */
     public PluginAdmin getAdmin() {
-        return new PluginAdminRuntime(this, moduleLoader);
+        return new PluginAdminRuntime(this);
     }
 
     /**
-     * 绑定模块加载器。
+     * 绑定加载单元加载器。
      *
-     * <p>热重载需要重新读 jar，而读 jar 的逻辑在 {@code PluginModuleLoader} 里。
+     * <p>热重载需要重新读 jar，而读 jar 的逻辑在 {@code PluginArtifactLoader} 里。
      * 该对象由 Spring 装配，晚于运行时的构造时机，因此用后置绑定而非构造器注入。</p>
      *
-     * @param moduleLoader 模块加载器；可为 {@code null}（测试场景，则 reload 不可用）
+     * @param artifactLoader 加载单元加载器；可为 {@code null}（测试场景，则 reload 不可用）
      * @return {@code this}，便于链式配置
      */
-    public PluginRuntime bindModuleLoader(
-            PluginModuleLoader moduleLoader) {
-        this.moduleLoader = moduleLoader;
+    public PluginRuntime bindArtifactLoader(
+            PluginArtifactLoader artifactLoader) {
+        this.artifactLoader = artifactLoader;
         return this;
     }
 
@@ -1285,7 +1201,7 @@ public final class PluginRuntime {
     /**
      * 按插件标识取其资源目录。
      *
-     * <p>优先返回加载时记录的资源目录；未记录时回退到模块句柄的
+     * <p>优先返回加载时记录的资源目录；未记录时回退到加载单元的
      * {@code jarParentPath}。</p>
      *
      * @param pluginId 插件标识
@@ -1297,17 +1213,15 @@ public final class PluginRuntime {
             return Optional.of(recorded);
         }
         return fibers.byId(pluginId)
-                .flatMap(fiber -> fibers.getAllModules().stream()
-                        .filter(m -> m.getPluginIds().contains(pluginId))
-                        .findFirst())
-                .map(m -> m.getJarParentPath() == null ? null : Path.of(m.getJarParentPath()))
-                .filter(Objects::nonNull);
+                .map(PluginFiber::getArtifactId)
+                .flatMap(fibers::artifact)
+                .map(PluginArtifact::getDataDir);
     }
 
     /**
      * 运行时诊断描述。
      *
-     * @return 形如 {@code "modules=13, plugins=23, effects=41, states={...}"}
+     * @return 形如 {@code "artifacts=13, plugins=23, effects=41, states={...}"}
      */
     public String describe() {
         return fibers.describe() + ", registrations=" + registrations.getTotalSize();
@@ -1340,21 +1254,21 @@ public final class PluginRuntime {
     /**
      * 构造插件标识。
      *
-     * <p>格式为 {@code 模块ID/插件名}；无模块时退化为 {@code 插件名}。
-     * 与现行系统的 {@code 模块ID-插件类全限定名} 相比，不再把类名暴露给用户——
+     * <p>格式为 {@code 加载单元ID/插件名}；无加载单元时退化为 {@code 插件名}。
+     * 与现行系统的 {@code 模块ID-插件类全限定名} 相比，本实现改用「加载单元ID/插件名」，不再把类名暴露给用户——
      * 类名是内部实现，改包名不应该导致插件标识变化。</p>
      *
-     * @param moduleId 模块 ID；可为 {@code null}
+     * @param artifactId 加载单元标识；可为 {@code null}
      * @param metadata 元数据
      * @param plugin   插件实例（元数据名为空时用作兜底）
      * @return 插件标识
      */
-    private static String buildPluginId(String moduleId, PluginMetadata metadata, YuniPlugin plugin) {
+    private static String buildPluginId(String artifactId, PluginMetadata metadata, YuniPlugin plugin) {
         String name = metadata.getName();
         if (name == null || name.isBlank()) {
             name = plugin.getClass().getSimpleName();
         }
-        return (moduleId == null || moduleId.isBlank()) ? name : moduleId + "/" + name;
+        return (artifactId == null || artifactId.isBlank()) ? name : artifactId + "/" + name;
     }
 
     /**

@@ -189,7 +189,7 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        runtime.load(plugin, null, null, null);
+        runtime.load(plugin);
 
         runtime.setPluginGlobalEnabled("主动插件", filter.isEnabledByDefault());
         for (Long groupId : filter.getExceptionGroups()) {
@@ -266,7 +266,7 @@ class ScopeQueryTest {
                 captured[0] = ctx.getScope();
             }
         };
-        runtime.load(disabled, null, null, null);
+        runtime.load(disabled);
 
         // 无用户配置 → 回落 defaultEnable=false
         assertFalse(captured[0].isEnabledIn(100L));

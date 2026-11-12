@@ -12,7 +12,7 @@ import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.config.PluginBootstrap;
-import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
 import com.yuier.yuni.plugin.runtime.service.DefaultPermissionService;
 import com.yuier.yuni.plugin.runtime.service.MybatisUserScopeStore;
 import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
@@ -38,7 +38,7 @@ import java.util.Optional;
  * <p>现在改成：本类显式持有全部组件——</p>
  * <ul>
  *   <li><b>基础设施</b>：任务管理器、JSON 编解码器、缓存、HTTP、权限、作用域存储；</li>
- *   <li><b>核心组件</b>：{@link PluginRuntime}、{@link PluginModuleLoader}、
+ *   <li><b>核心组件</b>：{@link PluginRuntime}、{@link PluginArtifactLoader}、
  *       {@link PluginBootstrap}——在 {@link #initialize} 里创建并持有；</li>
  *   <li><b>生命周期</b>：{@link #isReady()} / {@link #getRuntime()} /
  *       {@link #getAdmin()}。</li>
@@ -65,7 +65,7 @@ public final class PluginSystem {
     /** JSON 编解码器（配置 / 缓存 / HTTP 能力）。 */
     private final JsonCodec jsonCodec;
 
-    /** 模块元数据解析用的映射器。 */
+    /** jar 描述解析用的映射器。 */
     private final ObjectMapper objectMapper;
 
     /** 机器人业务配置（提供命令前缀）。 */
@@ -101,8 +101,8 @@ public final class PluginSystem {
     /** 插件运行时；{@link #initialize} 之前为 {@code null}。 */
     private volatile PluginRuntime runtime;
 
-    /** 模块加载器；{@link #initialize} 之前为 {@code null}。 */
-    private volatile PluginModuleLoader moduleLoader;
+    /** 加载单元加载器；{@link #initialize} 之前为 {@code null}。 */
+    private volatile PluginArtifactLoader artifactLoader;
 
     /** 插件启动器；{@link #initialize} 之前为 {@code null}。 */
     private volatile PluginBootstrap bootstrap;
@@ -116,7 +116,7 @@ public final class PluginSystem {
      *
      * @param taskManager     定时任务管理器
      * @param jsonCodec       JSON 编解码器
-     * @param objectMapper    模块元数据解析
+     * @param objectMapper    jar 描述解析
      * @param botProvider     机器人实例提供者（延迟解析）
      * @param botConfig       机器人配置（权限服务的 masterId）
      * @param botApp          机器人业务配置
@@ -175,18 +175,18 @@ public final class PluginSystem {
         newRuntime.registerService(PermissionService.class, permissionService);
         newRuntime.registerService(JsonCodec.class, jsonCodec);
 
-        PluginModuleLoader newLoader = new PluginModuleLoader(objectMapper, newRuntime);
-        newRuntime.bindModuleLoader(newLoader);
+        PluginArtifactLoader newLoader = new PluginArtifactLoader(objectMapper, newRuntime);
+        newRuntime.bindArtifactLoader(newLoader);
         newRuntime.bindUserScopeStore(userScopeStore);
 
         PluginBootstrap newBootstrap = new PluginBootstrap(newLoader, newRuntime, pluginDirectory);
 
         // 先持有再加载：加载期间插件通过 ctx 反查运行时
         this.runtime = newRuntime;
-        this.moduleLoader = newLoader;
+        this.artifactLoader = newLoader;
         this.bootstrap = newBootstrap;
 
-        loadModules(newBootstrap);
+        loadArtifacts(newBootstrap);
         report(newRuntime);
     }
 
@@ -237,15 +237,15 @@ public final class PluginSystem {
     // ==================== 内部 ====================
 
     /**
-     * 扫描并加载插件目录下的全部模块。
+     * 扫描并加载插件目录下的全部 jar。
      *
      * <p>失败时不让启动流程崩掉：插件是可选组件，一个 jar 坏掉不应该让 bot
-     * 完全起不来。逐模块的异常已由 {@link PluginBootstrap} 内部捕获，
+     * 完全起不来。逐个 jar 的异常已由 {@link PluginBootstrap} 内部捕获，
      * 这里只兜住「插件目录本身不可读」这类更外层的问题。</p>
      *
      * @param pluginBootstrap 启动器
      */
-    private void loadModules(PluginBootstrap pluginBootstrap) {
+    private void loadArtifacts(PluginBootstrap pluginBootstrap) {
         try {
             List<PluginFiber> loaded = pluginBootstrap.initialize();
             log.info("插件加载完成，共 {} 个插件实例", loaded.size());
@@ -258,7 +258,7 @@ public final class PluginSystem {
     /**
      * 输出插件健康度诊断。
      *
-     * <p>此时全部模块已加载、依赖推进已跑到不动点，因此「还有谁停在 PENDING」
+     * <p>此时全部 jar 已加载、依赖推进已跑到不动点，因此「还有谁停在 PENDING」
      * 与「谁失败了」是确定的答案。用 warn 而非 error：单个插件失败不应让整个
      * 启动流程看起来失败，但它需要被人看到。</p>
      *

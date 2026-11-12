@@ -408,7 +408,7 @@ public interface YuniContext {
     /**
      * 插件管理服务——枚举、启停与重载插件。
      *
-     * <p>供<b>管理类插件</b>使用。Yuni 内置的 {@code plugin-manage} 模块本身就是
+     * <p>供<b>管理类插件</b>使用。Yuni 内置的 {@code plugin-manage} jar 本身就是
      * 一个插件，它需要在聊天里展示与操作插件列表；webapi 的管理接口同样需要。
      * 本方法取代的是现行插件直接依赖 {@code PluginContainer} /
      * {@code PluginEnableProcessor} / {@code PluginReloadProcessor} 这些框架内部类
@@ -420,8 +420,8 @@ public interface YuniContext {
      *
      * <pre>{@code
      * PluginAdmin admin = ctx.getPlugins();
-     * for (PluginModuleView module : admin.getModules()) {
-     *     for (PluginView plugin : module.getPlugins()) {
+     * for (PluginView plugin : admin.getPlugins()) {
+     *     {
      *         log.info("{} [{}] 在群 {} 生效={}",
      *                 plugin.getName(), plugin.getState().getDisplayName(),
      *                 groupId, admin.isEnabledIn(plugin.getId(), groupId));

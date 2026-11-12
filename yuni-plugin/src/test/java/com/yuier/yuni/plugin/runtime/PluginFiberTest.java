@@ -39,7 +39,7 @@ class PluginFiberTest {
     private static PluginFiber newFiber() {
         YuniPlugin plugin = YuniPlugin.of("状态测试插件", ctx -> {
         });
-        return new PluginFiber("m/StateTest", plugin,
+        return new PluginFiber("m/StateTest", null, plugin,
                 PluginMetadata.of("状态测试插件").build(), null);
     }
 

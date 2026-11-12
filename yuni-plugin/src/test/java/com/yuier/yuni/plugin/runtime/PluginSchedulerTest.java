@@ -90,7 +90,7 @@ class PluginSchedulerTest {
                     firstTick.countDown();
                 }));
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
         // 定时任务也是一个 PluginEffect，因此会被登记
@@ -120,7 +120,7 @@ class PluginSchedulerTest {
             ctx.schedule("0 0 12 * * ?", () -> { });
         });
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
         assertEquals(3, fiber.getEffectCount());
@@ -133,7 +133,7 @@ class PluginSchedulerTest {
         YuniPlugin plugin = YuniPlugin.of("周期插件", ctx ->
                 ctx.every(Duration.ofSeconds(30), () -> { }));
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
         assertEquals(FiberState.ACTIVE, fiber.getState());
         assertEquals(1, taskManager.taskCount());
 
@@ -141,7 +141,7 @@ class PluginSchedulerTest {
         YuniPlugin tooFast = YuniPlugin.of("过快插件", ctx ->
                 ctx.every(Duration.ofMillis(200), () -> { }));
 
-        PluginFiber fastFiber = runtime.load(tooFast, null, null, null);
+        PluginFiber fastFiber = runtime.load(tooFast);
         assertEquals(FiberState.FAILED, fastFiber.getState());
         assertTrue(fastFiber.getFailureCause().orElseThrow().getMessage().contains("至少为 1 秒"),
                 fastFiber.getFailureCause().orElseThrow().getMessage());
@@ -154,7 +154,7 @@ class PluginSchedulerTest {
             ctx.schedule("这不是 cron", () -> { });
         });
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
 
         assertEquals(FiberState.FAILED, fiber.getState());
         assertEquals(0, taskManager.taskCount(), "注册失败的任务不应残留");
@@ -173,7 +173,7 @@ class PluginSchedulerTest {
                     ran.countDown();
                 }));
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
         assertTrue(ran.await(5, TimeUnit.SECONDS), "runNow 任务应被执行");
@@ -198,7 +198,7 @@ class PluginSchedulerTest {
                     throw new NoClassDefFoundError("simulated");
                 }));
 
-        PluginFiber fiber = runtime.load(plugin, null, null, null);
+        PluginFiber fiber = runtime.load(plugin);
 
         assertTrue(attempted.await(5, TimeUnit.SECONDS));
         // 异步任务的异常不得影响插件本身的加载结果
@@ -222,7 +222,7 @@ class PluginSchedulerTest {
             }
         };
 
-        PluginFiber fiber = noScheduler.load(plugin, null, null, null);
+        PluginFiber fiber = noScheduler.load(plugin);
 
         assertEquals(FiberState.FAILED, fiber.getState());
         assertTrue(fiber.getFailureCause().orElseThrow().getMessage().contains("未注入"),
@@ -235,7 +235,7 @@ class PluginSchedulerTest {
         for (int i = 0; i < 4; i++) {
             final int n = i;
             runtime.load(YuniPlugin.of("定时插件" + n, ctx ->
-                    ctx.schedule("0 0 " + (n + 1) + " * * ?", () -> { })), "m" + n, null, null);
+                    ctx.schedule("0 0 " + (n + 1) + " * * ?", () -> { })), "m" + n);
         }
         assertEquals(4, taskManager.taskCount());
 

@@ -150,7 +150,7 @@ class EventPipelineTest {
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("你好"),
-                        (ev, reply) -> hits.incrementAndGet())), null, null, null);
+                        (ev, reply) -> hits.incrementAndGet())));
 
         // 条件不满足：不执行
         pipeline.onMessage(groupMessage("再见"));
@@ -173,7 +173,7 @@ class EventPipelineTest {
             ctx.onNotice("poke", (ev, reply) -> pokes.incrementAndGet());
             // 无子类型过滤：用恒真条件表达「所有通知都要」
             ctx.onNotice((ev) -> true, (ev, reply) -> others.incrementAndGet());
-        }), null, null, null);
+        }));
 
         YuniNoticeEvent notice = new YuniNoticeEvent();
         notice.setTime(1L);
@@ -210,9 +210,9 @@ class EventPipelineTest {
         // 因此需要绕过合成、直接给一个确定形态的过滤器。
         // 管理端的写入路径由 PluginAdminTest 覆盖。
         PluginFiber inScope = runtime.load(
-                YuniPlugin.of("限定群插件", ctx -> { }), null, null, null);
+                YuniPlugin.of("限定群插件", ctx -> { }));
         PluginFiber outOfScope = runtime.load(
-                YuniPlugin.of("排除群插件", ctx -> { }), null, null, null);
+                YuniPlugin.of("排除群插件", ctx -> { }));
 
         runtime.getRegistrations().add(new RegistrationTable.Entry(
                 RegistrationTable.Kind.NOTICE, inScope,
@@ -275,7 +275,7 @@ class EventPipelineTest {
             public void apply(YuniContext ctx) {
                 ctx.onNotice("group_ban", (ev, reply) -> hits.incrementAndGet());
             }
-        }, "mymod", null, null);
+        }, "mymod");
 
         String pluginId = fiber.getId();
         long groupId = 123L;
@@ -324,7 +324,7 @@ class EventPipelineTest {
             public void apply(YuniContext ctx) {
                 ctx.onNotice("group_ban", (ev, reply) -> hits.incrementAndGet());
             }
-        }, "mymod", null, null);
+        }, "mymod");
 
         runtime.getAdmin().setGlobalEnabled(fiber.getId(), false, true);
         assertFalse(runtime.getAdmin().isGloballyEnabled(fiber.getId()));
@@ -369,7 +369,7 @@ class EventPipelineTest {
                 ctx.onMessage((ev, reply) -> hits.incrementAndGet());
                 throw new IllegalStateException("加载失败");
             }
-        }, null, null, null);
+        });
 
         assertEquals(com.yuier.yuni.plugin.runtime.FiberState.FAILED, fiber.getState());
 
@@ -386,7 +386,7 @@ class EventPipelineTest {
         runtime.load(YuniPlugin.of("抛异常的插件", ctx ->
                 ctx.onMessage((ev, reply) -> {
                     throw new NoClassDefFoundError("simulated");
-                })), null, null, null);
+                })));
 
         pipeline.onMessage(groupMessage("触发"));
 
@@ -410,7 +410,7 @@ class EventPipelineTest {
             });
             // 同一插件的第二个处理器应不受影响
             ctx.onMessage((ev, reply) -> secondCalled.incrementAndGet());
-        }), null, null, null);
+        }));
 
         pipeline.onMessage(groupMessage("任意"));
 
@@ -426,7 +426,7 @@ class EventPipelineTest {
      * @param tree 命令树
      */
     private void registerCommandTree(CommandNode tree) {
-        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
+        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
     }
 
     /**
@@ -468,7 +468,7 @@ class EventPipelineTest {
         // 模式插件：匹配任意含「测试」的消息
         runtime.load(YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
-                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+                        (ev, reply) -> patternRuns.incrementAndGet())));
 
         CommandNode tree = CommandNode.builder("测试").build();
         registerCommandTree(tree);
@@ -490,7 +490,7 @@ class EventPipelineTest {
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
-                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+                        (ev, reply) -> patternRuns.incrementAndGet())));
 
         CommandNode tree = CommandNode.builder("测试").build();
         registerCommandTree(tree);
@@ -580,7 +580,7 @@ class EventPipelineTest {
 
         runtime.load(YuniPlugin.of("模式插件", ctx ->
                 ctx.onMessage(ev -> ev.getChain().containsText("测试"),
-                        (ev, reply) -> patternRuns.incrementAndGet())), null, null, null);
+                        (ev, reply) -> patternRuns.incrementAndGet())));
 
         // 只声明命令树，不绑定任何处理器
         CommandNode tree = CommandNode.builder("测试").build();
@@ -621,8 +621,7 @@ class EventPipelineTest {
         AtomicInteger hits = new AtomicInteger();
 
         runtime.load(YuniPlugin.of("转发插件", ctx ->
-                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
-                null, null, null);
+                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())));
 
         YuniMessageSentEvent sent =
                 new YuniMessageSentEvent();
@@ -647,8 +646,7 @@ class EventPipelineTest {
         AtomicInteger hits = new AtomicInteger();
 
         runtime.load(YuniPlugin.of("转发插件", ctx ->
-                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())),
-                null, null, null);
+                ctx.onMessageSent(ev -> ev.isGroup(), (ev, reply) -> hits.incrementAndGet())));
 
         YuniMessageSentEvent sent =
                 new YuniMessageSentEvent();
@@ -675,7 +673,7 @@ class EventPipelineTest {
         AtomicInteger hits = new AtomicInteger();
 
         PluginFiber fiber = runtime.load(YuniPlugin.of("临时插件", ctx ->
-                ctx.onMessage((ev, reply) -> hits.incrementAndGet())), null, null, null);
+                ctx.onMessage((ev, reply) -> hits.incrementAndGet())));
 
         runtime.unload(fiber.getId());
         assertEquals(0, runtime.getRegistrations().getTotalSize());
@@ -695,7 +693,7 @@ class EventPipelineTest {
                 runtime.getRegistrations(), bot, null, CommandDispatcher.permissiveResolver());
 
         CommandNode tree = CommandNode.builder("测试").build();
-        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)), null, null, null);
+        runtime.load(YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
         com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
 
         // 直接调用 detector 验证错误语义——CommandDispatcher 会把异常吞成日志，

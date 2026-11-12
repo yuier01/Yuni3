@@ -25,7 +25,7 @@ import java.util.Set;
  * }</pre>
  *
  * <h2>键名约定</h2>
- * <p>插件键名前缀统一为 {@code plugin:<模块名>:...}，避免与其他插件的键碰撞。
+ * <p>插件键名前缀统一为 {@code plugin:<jar 名>:...}，避免与其他插件的键碰撞。
  * 现行代码里 {@code PigToday} 与 {@code Fortune} 恰好都定义了名为
  * {@code *_TODAY_CACHE_KEY} 的常量，靠具体值区分——本约定是显式化该做法。</p>
  *

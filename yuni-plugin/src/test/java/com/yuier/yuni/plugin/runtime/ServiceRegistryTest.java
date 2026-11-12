@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ServiceRegistryTest {
 
     private static PluginFiber fiber(String id) {
-        return new PluginFiber(id, ctx -> { }, PluginMetadata.of(id).build(), null);
+        return new PluginFiber(id, null, ctx -> { }, PluginMetadata.of(id).build(), null);
     }
 
     @Test

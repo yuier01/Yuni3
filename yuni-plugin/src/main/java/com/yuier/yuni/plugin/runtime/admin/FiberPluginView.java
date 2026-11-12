@@ -42,8 +42,8 @@ public final class FiberPluginView implements PluginView {
     /** 插件标识。 */
     private final String id;
 
-    /** 所属模块 ID。 */
-    private final String moduleId;
+    /** 所属加载单元标识。 */
+    private final String artifactId;
 
     /** 平铺的元数据字段。 */
     private final String name;
@@ -66,12 +66,11 @@ public final class FiberPluginView implements PluginView {
     /**
      * 从 Fiber 构造视图。
      *
-     * @param fiber    插件 Fiber
-     * @param moduleId 所属模块 ID；不属于任何模块时传 {@code null}
+     * @param fiber 插件 Fiber
      */
-    public FiberPluginView(PluginFiber fiber, String moduleId) {
+    public FiberPluginView(PluginFiber fiber) {
         this.id = fiber.getId();
-        this.moduleId = moduleId == null ? "" : moduleId;
+        this.artifactId = fiber.getArtifactId() == null ? "" : fiber.getArtifactId();
 
         var metadata = fiber.getMetadata();
         this.name = metadata.getName();
@@ -114,7 +113,7 @@ public final class FiberPluginView implements PluginView {
     }
 
     /*
-     * 契约里的 id() / moduleId() / name() / version() / description() / tips() /
+     * 契约里的 id() / artifactId() / name() / version() / description() / tips() /
      * author() / buildIn() / defaultEnable() / state() / missingServices() 全部由
      * 类上的 @Getter + @Accessors(fluent) 生成：契约方法名是 record 风格，
      * 与 fluent getter 的命名完全一致。

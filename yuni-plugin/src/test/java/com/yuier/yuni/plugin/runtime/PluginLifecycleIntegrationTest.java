@@ -202,7 +202,7 @@ class PluginLifecycleIntegrationTest {
     @DisplayName("端到端：加载 → 多能力生效 → 卸载 → 全部清理归零")
     void fullLifecycleCleansEverything() {
         MultiAbilityPlugin plugin = new MultiAbilityPlugin();
-        PluginFiber fiber = runtime.load(plugin, "test-module", null, null);
+        PluginFiber fiber = runtime.load(plugin, "test-artifact");
 
         // 加载成功，贡献了 4 类能力
         assertEquals(FiberState.ACTIVE, fiber.getState());
@@ -240,7 +240,7 @@ class PluginLifecycleIntegrationTest {
     @Test
     @DisplayName("能力推导：能查出插件贡献了哪些能力（取代「插件类型」标签）")
     void abilitiesAreDerivableFromRegistrations() {
-        PluginFiber fiber = runtime.load(new MultiAbilityPlugin(), null, null, null);
+        PluginFiber fiber = runtime.load(new MultiAbilityPlugin());
 
         Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
 
@@ -252,17 +252,17 @@ class PluginLifecycleIntegrationTest {
     @Test
     @DisplayName("重复加载同一插件被拒绝，卸载后可重新加载")
     void reloadAfterUnloadIsAllowed() {
-        PluginFiber first = runtime.load(new MultiAbilityPlugin(), "m", null, null);
+        PluginFiber first = runtime.load(new MultiAbilityPlugin(), "m");
         assertTrue(runtime.getFibers().byId(first.getId()).isPresent());
 
         // 加载前未卸载 → 拒绝
         org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                () -> runtime.load(new MultiAbilityPlugin(), "m", null, null));
+                () -> runtime.load(new MultiAbilityPlugin(), "m"));
 
         runtime.unload(first.getId());
 
         // 卸载后可以重新加载（热重载的基础）
-        PluginFiber second = runtime.load(new MultiAbilityPlugin(), "m", null, null);
+        PluginFiber second = runtime.load(new MultiAbilityPlugin(), "m");
         assertEquals(FiberState.ACTIVE, second.getState());
         assertEquals(1, runtime.getFibers().getPluginCount());
     }
@@ -281,7 +281,7 @@ class PluginLifecycleIntegrationTest {
             public void apply(YuniContext ctx) {
                 throw new IllegalStateException("故意失败");
             }
-        }, null, null, null);
+        });
 
         // 一个缺依赖的插件
         runtime.load(new YuniPlugin() {
@@ -299,7 +299,7 @@ class PluginLifecycleIntegrationTest {
             public void apply(YuniContext ctx) {
                 // 不应执行
             }
-        }, null, null, null);
+        });
 
         List<String> failed = runtime.reportFailedPlugins();
         List<String> pending = runtime.reportPendingPlugins();

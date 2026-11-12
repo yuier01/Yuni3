@@ -29,8 +29,8 @@ import java.util.Set;
  *   <tr><th></th><th>格式</th><th>示例</th></tr>
  *   <tr><td>旧系统</td><td>{@code 模块ID-插件类全限定名}</td>
  *       <td>{@code steam-steamstatus.MemberSteamStatus}</td></tr>
- *   <tr><td>新系统</td><td>{@code 模块ID/插件显示名}</td>
- *       <td>{@code steam/群友 steam 游戏状态监控}</td></tr>
+ *   <tr><td>新系统</td><td>{@code 加载单元ID/插件显示名}</td>
+ *       <td>{@code steam/Steam 状态监控与绑定}</td></tr>
  * </table>
  * <p>因此<b>升级后旧表里的记录不会命中任何插件</b>，表现为「群配置回到默认值」。
  * 这是有意接受的代价——新标识不再暴露类名（改包名不应导致标识变化），

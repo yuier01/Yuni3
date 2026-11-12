@@ -2,7 +2,7 @@ package com.yuier.yuni.plugin.runtime.config;
 
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
-import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
+import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,10 +13,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 插件系统启动器——负责扫描插件目录并加载全部模块。
+ * 插件系统启动器——负责扫描插件目录并加载全部 jar。
  *
  * <h2>为什么与 {@link PluginRuntime} 分离</h2>
- * <p>运行时是长期存在的系统组件，而「扫描目录、加载全部模块」是
+ * <p>运行时是长期存在的系统组件，而「扫描目录、加载全部 jar」是
  * <b>一次性的启动动作</b>。分开后可以单独测试加载流程，
  * 也便于热重载时复用同一运行时。</p>
  *
@@ -29,8 +29,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public final class PluginBootstrap {
 
-    /** 模块加载器。 */
-    private final PluginModuleLoader loader;
+    /** 加载单元加载器。 */
+    private final PluginArtifactLoader loader;
 
     /** 插件运行时。 */
     private final PluginRuntime runtime;
@@ -39,10 +39,10 @@ public final class PluginBootstrap {
     private final String pluginDirectory;
 
     // 构造器由 @RequiredArgsConstructor 生成：
-    // (PluginModuleLoader, PluginRuntime, String pluginDirectory)。
+    // (PluginArtifactLoader, PluginRuntime, String pluginDirectory)。
 
     /**
-     * 扫描插件目录并加载全部模块。
+     * 扫描插件目录并加载全部 jar。
      *
      * @return 成功加载的插件 Fiber 列表
      */
@@ -52,10 +52,10 @@ public final class PluginBootstrap {
 
         List<PluginFiber> all = new ArrayList<>();
         for (File jarFile : jarFiles) {
-            Path moduleDir = jarFile.getParentFile() == null
+            Path artifactDir = jarFile.getParentFile() == null
                     ? null
                     : jarFile.getParentFile().toPath();
-            all.addAll(loader.loadModule(jarFile, moduleDir));
+            all.addAll(loader.loadArtifact(jarFile, artifactDir));
         }
 
         // 依赖驱动的推进：某个插件提供的服务可能让先前停在 PENDING 的插件就绪。
@@ -68,12 +68,8 @@ public final class PluginBootstrap {
         /*
          * 恢复持久化的群粒度启停配置。
          *
-         * 必须在全部模块加载之后：判断「数据库里的一条记录算不算例外」
+         * 必须在全部插件加载之后：判断「数据库里的一条记录算不算例外」
          * 需要该插件的 defaultEnable，而它只有插件实例化后才读得到。
-         *
-         * 恢复的配置会覆盖插件代码里声明的基线过滤器——持久化的是用户的
-         * 显式选择，而基线是插件作者写的默认建议，用户选择应当胜出
-         * （与旧系统一致：group_plugin_ability 优先于 metadata.defaultEnable）。
          */
         runtime.restoreScopes();
 

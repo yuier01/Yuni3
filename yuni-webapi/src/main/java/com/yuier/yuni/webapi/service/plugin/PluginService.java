@@ -2,11 +2,9 @@ package com.yuier.yuni.webapi.service.plugin;
 
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginAdminException;
-import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.runtime.PluginSystem;
 import com.yuier.yuni.webapi.dto.plugin.PluginInfo;
-import com.yuier.yuni.webapi.dto.plugin.PluginModuleInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,38 +16,19 @@ import java.util.List;
 /**
  * 插件管理服务（管理端 HTTP 接口）——插件列表查询、启用/禁用、重载。
  *
- * <h2>P6 迁移说明：本类是 webapi 侧「新系统接管」的开关</h2>
- * <p>旧实现直接依赖四个框架内部类：{@code PluginContainer}、
- * {@code PluginEnableProcessor}、{@code PluginManager}、{@code PluginLoadProcessor}，
- * 并且<b>把热重载逻辑又实现了一遍</b>（{@code reloadAllPlugins} /
- * {@code reloadSinglePlugin} / {@code registerActivePlugin} /
- * {@code registerScheduledPlugin} / {@code registerImmediatePlugin} /
- * {@code findJarFileForPlugin}，约 170 行）。</p>
- *
- * <p>那 170 行与内置插件 {@code plugin-manage} 的 {@code PluginReloadProcessor}
- * 是同一个能力的两个实现——必然漂移。迁移后两边都走
- * {@link PluginAdmin#reload}，本类缩到列表与启停三类操作。</p>
- *
- * <table border="1">
- *   <caption>旧 → 新</caption>
- *   <tr><th>旧实现</th><th>新实现</th></tr>
- *   <tr><td>{@code controller.listPlugins()} 遍历 {@code PluginContainer} 的八条类型列表</td>
- *       <td>{@code admin.getModules()}</td></tr>
- *   <tr><td>{@code pluginEnableProcessor.enablePlugin(...)}（且先调插件的 enable 回调）</td>
- *       <td>{@code admin.setGlobalEnabled(...)} / {@code admin.setEnabled(...)}</td></tr>
- *   <tr><td>170 行手工重载（清容器、取消定时任务、逐个重建索引）</td>
- *       <td>{@code admin.reload(moduleId)}</td></tr>
- * </table>
+ * <h2>职责边界</h2>
+ * <p>本类只把 {@link PluginAdmin} 的契约翻译成 HTTP 响应，不重复实现加载、
+ * 启停或重载逻辑。这些能力全部在插件运行时里，webapi 与内置的
+ * {@code plugin-manage} 共用同一份实现。</p>
  *
  * <h2>{@code groupId} 为空时的语义</h2>
- * <p>控制层允许 {@code groupId} 为空，旧语义是「全局操作」。新系统用
+ * <p>控制层允许 {@code groupId} 为空，表示「全局操作」。新系统用
  * {@link PluginAdmin#setGlobalEnabled} 承接，与「针对某个群」
  * （{@link PluginAdmin#setEnabled}）明确区分开。</p>
  *
  * <h2>权限</h2>
- * <p>{@code callerIsMaster} 传 {@code true}：管理端接口本身已有登录鉴权
- * （见 webapi 的鉴权层），能到达这里的调用者就是后台管理员，
- * 等价于「bot 拥有者」。因此内置插件的保护在这里不会误拦。</p>
+ * <p>{@code callerIsMaster} 传 {@code true}：管理端接口本身已有登录鉴权，
+ * 能到达这里的调用者就是后台管理员，等价于「bot 拥有者」。</p>
  *
  * @see PluginAdmin
  */
@@ -73,40 +52,30 @@ public class PluginService {
     // ==================== 查询 ====================
 
     /**
-     * 获取插件列表，以模块为单位分组。
+     * 获取插件列表（平铺）。
      *
-     * <p>响应结构保持与旧接口一致（{@code moduleId} / {@code moduleName} /
-     * {@code plugins}），以免破坏前端契约。其中两处字段语义有变：
-     * {@code fullId} 现在是新格式的插件标识，{@code type} 现在是运行状态
-     * （见 {@link PluginInfo} 的说明）。</p>
-     *
-     * @return 插件模块列表，顺序与加载顺序一致
+     * @return 插件列表，顺序与加载顺序一致
      */
-    public List<PluginModuleInfo> listPlugins() {
+    public List<PluginInfo> listPlugins() {
         PluginAdmin admin = pluginSystem.getAdmin();
-        List<PluginModuleInfo> result = new ArrayList<>();
-        for (PluginModuleView module : admin.getModules()) {
-            List<PluginInfo> plugins = new ArrayList<>();
-            for (PluginView plugin : module.getPlugins()) {
-                plugins.add(new PluginInfo(
-                        plugin.getId(),
-                        plugin.getName(),
-                        plugin.getDescription(),
-                        plugin.getTips(),
-                        plugin.getVersion(),
-                        plugin.getAuthor(),
-                        plugin.getModuleId(),
-                        plugin.isBuildIn(),
-                        plugin.getState().name(),
-                        // 全局默认值。注意它<b>不是</b>「对所有群都生效」——
-                        // 存在群例外时，个别群的结论由 enabledGroups 与按群接口给出。
-                        // 字段名用 defaultEnabled 就是为了避免这个误读。
-                        admin.isGloballyEnabled(plugin.getId()),
-                        new LinkedHashSet<>(admin.enabledGroups(plugin.getId())),
-                        plugin.getFailureSummary().orElse(null),
-                        plugin.getMissingServices()));
-            }
-            result.add(new PluginModuleInfo(module.getId(), module.getName(), plugins));
+        List<PluginInfo> result = new ArrayList<>();
+        for (PluginView plugin : admin.getPlugins()) {
+            result.add(new PluginInfo(
+                    plugin.getId(),
+                    plugin.getName(),
+                    plugin.getDescription(),
+                    plugin.getTips(),
+                    plugin.getVersion(),
+                    plugin.getAuthor(),
+                    plugin.getArtifactId(),
+                    plugin.isBuildIn(),
+                    plugin.getState().name(),
+                    // 全局默认值。注意它<b>不是</b>「对所有群都生效」——
+                    // 存在群例外时，个别群的结论由 enabledGroups 与按群接口给出。
+                    admin.isGloballyEnabled(plugin.getId()),
+                    new LinkedHashSet<>(admin.enabledGroups(plugin.getId())),
+                    plugin.getFailureSummary().orElse(null),
+                    plugin.getMissingServices()));
         }
         return result;
     }
@@ -169,38 +138,31 @@ public class PluginService {
     /**
      * 重载插件。
      *
-     * <p>{@code pluginId} 为空时重载<b>全部模块</b>；非空时重载该插件所在的模块
-     * （即一个 jar 包）。</p>
-     *
-     * <p>与旧实现的关键差别：旧实现「重载全部」是先销毁全部实例再重新扫描，
-     * 中途失败会让 bot 处于「零插件」状态。新实现的 {@code reload} 逐个模块
-     * 处理，单个模块失败不影响其他模块，且失败原因会回给调用方。</p>
+     * <p>{@code pluginId} 为空时重载<b>全部 jar</b>；非空时重载该插件所属的 jar
+     * （同 jar 的其它插件会一起重启）。</p>
      *
      * @param pluginId 目标插件标识；为空时重载全部
-     * @throws IllegalArgumentException 插件不存在或找不到对应模块
-     * @throws RuntimeException         重载过程中发生异常
+     * @throws IllegalArgumentException 插件不存在或找不到对应 jar
      */
     public void reloadPlugin(String pluginId) {
         PluginAdmin admin = pluginSystem.getAdmin();
-        if (pluginId == null || pluginId.isBlank()) {
-            reloadAll(admin);
-            return;
+        try {
+            if (pluginId == null || pluginId.isBlank()) {
+                reloadAll(admin);
+            } else {
+                admin.reload(pluginId);
+                log.info("已重载插件: {}", pluginId);
+            }
+        } catch (PluginAdminException e) {
+            // 与 applyEnabled 一样，把插件侧异常翻译为控制层已处理的类型
+            throw new IllegalArgumentException(e.getMessage(), e);
         }
-
-        PluginView plugin = admin.plugin(pluginId).orElseThrow(() ->
-                new IllegalArgumentException("未找到插件: " + pluginId));
-        String moduleId = plugin.getModuleId();
-        if (moduleId == null || moduleId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "插件 " + pluginId + " 不属于任何模块，无法重载（它可能是通过代码直接加载的）");
-        }
-        reloadModule(admin, moduleId);
     }
 
     /**
-     * 重载全部模块。
+     * 重载全部 jar。
      *
-     * <p>收集全部失败而不是在第一个失败处中断——「重载 12 个模块，其中 1 个失败」
+     * <p>收集全部失败而不是在第一个失败处中断——「重载 12 个 jar，其中 1 个失败」
      * 比「重载到第 7 个就停了，不知道后面怎么样」有用得多。</p>
      *
      * @param admin 插件管理服务
@@ -208,35 +170,18 @@ public class PluginService {
     private void reloadAll(PluginAdmin admin) {
         List<String> failed = new ArrayList<>();
         int succeeded = 0;
-        for (PluginModuleView module : admin.getModules()) {
+        for (PluginView plugin : admin.getPlugins()) {
             try {
-                admin.reload(module.getId());
+                admin.reload(plugin.getId());
                 succeeded++;
             } catch (PluginAdminException e) {
-                log.error("重载模块 {} 失败: {}", module.getId(), e.getMessage());
-                failed.add(module.getId() + ": " + e.getMessage());
+                log.error("重载插件 {} 失败: {}", plugin.getId(), e.getMessage());
+                failed.add(plugin.getId() + ": " + e.getMessage());
             }
         }
-        log.info("已重载 {} 个插件模块", succeeded);
+        log.info("已重载 {} 个插件", succeeded);
         if (!failed.isEmpty()) {
-            throw new RuntimeException("有 " + failed.size() + " 个模块重载失败: " + String.join("; ", failed));
-        }
-    }
-
-    /**
-     * 重载单个模块。
-     *
-     * @param admin    插件管理服务
-     * @param moduleId 模块 ID
-     * @throws IllegalArgumentException 模块不存在或 jar 缺失
-     */
-    private void reloadModule(PluginAdmin admin, String moduleId) {
-        try {
-            admin.reload(moduleId);
-            log.info("已重载插件模块: {}", moduleId);
-        } catch (PluginAdminException e) {
-            // 与 applyEnabled 一样，把插件侧异常翻译为控制层已处理的类型
-            throw new IllegalArgumentException(e.getMessage(), e);
+            throw new RuntimeException("有 " + failed.size() + " 个插件重载失败: " + String.join("; ", failed));
         }
     }
 }

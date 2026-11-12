@@ -60,6 +60,7 @@ public final class ServiceRegistry {
      */
     private static final PluginFiber BUILTIN = new PluginFiber(
             "<builtin>",
+            null,
             ctx -> { },
             PluginMetadata.of("<builtin>").build(),
             null);

@@ -3,11 +3,11 @@ package com.yuier.yuni.plugin.runtime.admin;
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginAdminException;
 import com.yuier.yuni.plugin.api.PluginMetadata;
-import com.yuier.yuni.plugin.api.PluginModuleView;
 import com.yuier.yuni.plugin.api.PluginState;
 import com.yuier.yuni.plugin.api.PluginView;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import com.yuier.yuni.plugin.runtime.PluginArtifact;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,18 +59,17 @@ class PluginAdminTest {
     /**
      * 加载一个测试插件。
      *
-     * <p>注意插件标识的格式是 {@code 模块ID/插件显示名}（见
-     * {@code PluginRuntime#buildPluginId}），因此本方法的两个参数都要与
-     * 期望的标识对上——这本身就是一条值得固化下来的约定：
+     * <p>插件标识格式是 {@code 加载单元ID/插件显示名}，因此本方法的两个参数
+     * 都要与期望的标识对上——这本身就是一条值得固化下来的约定：
      * <b>标识来自元数据的名字，不是类名</b>。</p>
      *
-     * @param moduleId      模块 ID
+     * @param artifactId    加载单元 ID
      * @param pluginName    插件显示名
      * @param buildIn       是否内置
      * @param defaultEnable 元数据默认启用值
      * @return 建好的 Fiber
      */
-    private PluginFiber load(String moduleId,
+    private PluginFiber load(String artifactId,
                              String pluginName,
                              boolean buildIn,
                              boolean defaultEnable) {
@@ -92,17 +91,17 @@ class PluginAdminTest {
                 // 无能力：本测试只关心管理视图
             }
         };
-        return runtime.load(plugin, moduleId, null, null);
+        return runtime.load(plugin, artifact(artifactId));
     }
 
     /**
      * 加载一个 {@code apply} 会抛异常的插件，用于验证失败可观测性。
      *
-     * @param moduleId   模块 ID
+     * @param artifactId 加载单元 ID
      * @param pluginName 插件显示名
      * @param message    异常消息
      */
-    private void loadFailing(String moduleId, String pluginName, String message) {
+    private void loadFailing(String artifactId, String pluginName, String message) {
         runtime.load(new YuniPlugin() {
             @Override
             public PluginMetadata getMetadata() {
@@ -113,25 +112,25 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new IllegalStateException(message);
             }
-        }, moduleId, null, null);
+        }, artifact(artifactId));
+    }
+
+    private static PluginArtifact artifact(String id) {
+        return new PluginArtifact(id, id, null, null, null);
     }
 
     // ==================== 查询 ====================
 
     @Test
-    @DisplayName("modules/plugins 把 Fiber 投影为公共视图，元数据字段平铺且完整")
+    @DisplayName("插件列表把 Fiber 投影为公共视图，元数据字段平铺且完整")
     void projectsMetadataIntoViews() {
         load("fortune", "Fortune", false, true);
-
-        List<PluginModuleView> modules = admin.getModules();
-        assertEquals(1, modules.size());
-        assertEquals("fortune", modules.get(0).getId());
 
         List<PluginView> plugins = admin.getPlugins();
         assertEquals(1, plugins.size());
         PluginView view = plugins.get(0);
         assertEquals("fortune/Fortune", view.getId());
-        assertEquals("fortune", view.getModuleId());
+        assertEquals("fortune", view.getArtifactId());
         assertEquals("Fortune 的描述", view.getDescription());
         assertEquals("测试", view.getAuthor());
         assertEquals("1.2.3", view.getVersion());
@@ -173,7 +172,7 @@ class PluginAdminTest {
             public void apply(YuniContext ctx) {
                 throw new AssertionError("依赖未满足时不应调用 apply");
             }
-        }, "pending", null, null);
+        }, artifact("pending"));
 
         PluginView view = admin.plugin("pending/Needs").orElseThrow();
         assertEquals(PluginState.PENDING, view.getState());
@@ -343,20 +342,20 @@ class PluginAdminTest {
     }
 
     @Test
-    @DisplayName("重载不存在的模块抛 PluginAdminException，消息可读")
-    void reloadUnknownModuleFails() {
+    @DisplayName("重载不存在的插件抛 PluginAdminException，消息可读")
+    void reloadUnknownPluginFails() {
         PluginAdminException e = assertThrows(PluginAdminException.class,
                 () -> admin.reload("nope"));
-        assertTrue(e.getMessage().contains("nope"), "消息应含模块 ID: " + e.getMessage());
+        assertTrue(e.getMessage().contains("nope"), "消息应含插件标识: " + e.getMessage());
     }
 
     @Test
-    @DisplayName("重载已存在的模块但缺少 jar 时抛可读错误，而不是 NPE")
-    void reloadModuleWithoutJarFailsReadably() {
+    @DisplayName("重载已存在的插件但缺少 jar 时抛可读错误，而不是 NPE")
+    void reloadPluginWithoutJarFailsReadably() {
         load("p", "P", false, true);
 
         PluginAdminException e = assertThrows(PluginAdminException.class,
-                () -> admin.reload("p"));
+                () -> admin.reload("p/P"));
         // 要么报「未装配加载器」，要么报「找不到 jar」——都不应是一个裸 NPE
         assertNotNull(e.getMessage());
         assertFalse(e.getMessage().isBlank());
@@ -372,10 +371,10 @@ class PluginAdminTest {
         loadFailing("c", "C", "boom");
 
         String summary = admin.getSummary();
-        assertTrue(summary.contains("模块 3"), summary);
         assertTrue(summary.contains("插件 3"), summary);
         assertTrue(summary.contains("运行中 2"), summary);
         assertTrue(summary.contains("失败 1"), summary);
+        assertFalse(summary.contains("模块"), "模块概念已移除: " + summary);
 
         var counts = ((PluginAdminRuntime) admin).countByState();
         assertEquals(2, counts.get(PluginState.ACTIVE));
@@ -402,23 +401,11 @@ class PluginAdminTest {
     }
 
     @Test
-    @DisplayName("插件可按模块分组取出")
-    void pluginsOfModule() {
-        load("m1", "A", false, true);
-        load("m2", "B", false, true);
-        load("m2", "C", false, true);
-
-        assertEquals(1, admin.pluginsOfModule("m1").size());
-        assertEquals(2, admin.pluginsOfModule("m2").size());
-        assertTrue(admin.pluginsOfModule("nope").isEmpty());
-    }
-
-    @Test
-    @DisplayName("moduleIdOf 能反查插件所属模块，供视图补全 moduleId")
-    void moduleIdOfPlugin() {
+    @DisplayName("artifactIdOf 能反查插件所属 jar，供重载使用")
+    void artifactIdOfPlugin() {
         load("steam", "MemberSteamStatus", false, true);
-        Optional<String> moduleId = runtime.moduleIdOf("steam/MemberSteamStatus");
-        assertTrue(moduleId.isPresent());
-        assertEquals("steam", moduleId.get());
+        Optional<String> artifactId = runtime.artifactIdOf("steam/MemberSteamStatus");
+        assertTrue(artifactId.isPresent());
+        assertEquals("steam", artifactId.get());
     }
 }

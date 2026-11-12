@@ -32,7 +32,7 @@ import lombok.Getter;
  * </ul>
  * <p>本类显式持有引用。它同时承担一个安全职责：{@link #dispose()} 会断言
  * 该 Fiber 的 PluginEffect 已归零，只有确认无残留后才允许调用方关闭 ClassLoader
- * （见 {@code PluginRuntime#reloadModule}）。</p>
+ * （见 {@code PluginRuntime#reload}）。</p>
  *
  * <h2>线程安全</h2>
  * <p>状态迁移全部走 {@link AtomicReference} 的 <b>CAS</b>，因此「迁移」这件事
@@ -57,8 +57,11 @@ import lombok.Getter;
 @Getter
 public final class PluginFiber {
 
-    /** 插件的稳定标识（模块名 + 插件名），用于日志与管理端展示。 */
+    /** 插件的稳定标识（加载单元 + 插件名），用于日志与管理端展示。 */
     private final String id;
+
+    /** 所属加载单元标识；测试场景为 {@code null}。 */
+    private final String artifactId;
 
     /** 插件实现实例。热重载后由新 Fiber 持有新实例，旧 Fiber 保留旧实例引用直至回收。 */
     private final YuniPlugin plugin;
@@ -117,8 +120,13 @@ public final class PluginFiber {
      * @param metadata    元数据
      * @param classLoader 加载该插件的类加载器；可为 {@code null}（测试场景）
      */
-    public PluginFiber(String id, YuniPlugin plugin, PluginMetadata metadata, ClassLoader classLoader) {
+    public PluginFiber(String id,
+                       String artifactId,
+                       YuniPlugin plugin,
+                       PluginMetadata metadata,
+                       ClassLoader classLoader) {
         this.id = Objects.requireNonNull(id, "插件标识不能为 null");
+        this.artifactId = artifactId;
         this.plugin = Objects.requireNonNull(plugin, "插件实例不能为 null");
         this.metadata = Objects.requireNonNull(metadata, "插件元数据不能为 null");
         this.classLoader = classLoader;

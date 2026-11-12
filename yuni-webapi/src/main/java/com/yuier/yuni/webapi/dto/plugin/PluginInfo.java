@@ -14,8 +14,8 @@ import java.util.Set;
  *   <caption>字段语义变化</caption>
  *   <tr><th>字段</th><th>旧含义</th><th>新含义</th></tr>
  *   <tr><td>{@code fullId}</td>
- *       <td>{@code 模块ID-插件类全限定名}<br>如 {@code steam-steamstatus.MemberSteamStatus}</td>
- *       <td>{@code 模块ID/插件显示名}<br>如 {@code steam/群友 steam 游戏状态监控}</td></tr>
+ *       <td>{@code 旧插件标识}<br>如 {@code steam-steamstatus.MemberSteamStatus}</td>
+ *       <td>{@code 加载单元ID/插件显示名}<br>如 {@code steam/Steam 状态监控与绑定}</td></tr>
  *   <tr><td>{@code type}</td>
  *       <td>旧的八种插件类型之一：{@code COMMAND} / {@code PATTERN} / …</td>
  *       <td>运行状态：{@code ACTIVE} / {@code FAILED} / {@code PENDING} / …</td></tr>
@@ -52,8 +52,8 @@ public class PluginInfo {
     /** 作者。 */
     private String author;
 
-    /** 所属模块 ID。 */
-    private String moduleId;
+    /** 所属加载单元（jar）标识。 */
+    private String artifactId;
 
     /** 是否内置插件（内置插件只有 bot 拥有者可启停）。 */
     private boolean builtIn;

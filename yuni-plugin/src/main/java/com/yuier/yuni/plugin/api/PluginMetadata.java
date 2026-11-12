@@ -14,8 +14,8 @@ import java.util.Objects;
  * 现行系统把插件级元数据放在 jar 同级的 {@code metadata.json} 里，于是同一份信息
  * 有两处来源（代码里的类名 + json 里的 id），必然漂移。</p>
  *
- * <p>新方案：{@code metadata.json} 只保留<b>模块级</b>信息
- * （{@code module_id} / {@code module_name} / 插件类全限定名清单），
+ * <p>新方案：{@code metadata.json} 只保留<b>jar 级</b>信息
+ * （{@code id} / {@code name}），
  * 插件级的名称、版本、描述、作者等一律以本对象为准。</p>
  *
  * <h2>不变性</h2>

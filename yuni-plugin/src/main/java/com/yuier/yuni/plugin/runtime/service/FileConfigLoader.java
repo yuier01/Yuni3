@@ -22,7 +22,7 @@ import java.nio.file.Path;
  *   <li>{@code getPluginRootPath(pluginClass)}</li>
  * </ul>
  * <p>它们的签名都要额外传一个 {@code Class<? extends YuniPlugin>}——因为静态方法
- * 无从得知「我是谁」，只能靠调用方传入自己的 Class 去反查模块与 jar 位置。
+ * 无从得知「我是谁」，只能靠调用方传入自己的 Class 去反查 jar 位置。
  * 有了 {@code ctx} 之后，资源目录在创建上下文时就已经确定，这个参数消失了。</p>
  *
  * <h2>每插件一个实例</h2>
@@ -32,7 +32,7 @@ import java.nio.file.Path;
  * {@code ctx.getConfigLoader().load("x.json", C.class)} 时不需要传自己的 Class。</p>
  *
  * <h2>为什么读磁盘而不是读 jar 内资源</h2>
- * <p>插件资源位于 jar <b>同级目录</b>（{@code plugins/<模块名>/}），由各插件
+ * <p>插件资源位于 jar <b>同级目录</b>（{@code plugins/<jar 名>/}），由各插件
  * pom 的 maven-resources-plugin 在构建时复制过去。这样运维可以直接改配置而
  * 无需重新打包——这是现行系统刻意保留的性质，新实现保持一致。</p>
  *

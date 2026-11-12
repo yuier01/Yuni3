@@ -7,7 +7,7 @@ import java.util.Optional;
  * 插件管理服务——由 {@link YuniContext#getPlugins()} 提供。
  *
  * <h2>为什么插件 API 里要有「管理插件」的能力</h2>
- * <p>Yuni 自身有一个内置的 {@code plugin-manage} 模块，它的职责就是在聊天里
+ * <p>Yuni 自身有一个内置的 {@code plugin-manage} jar，它的职责就是在聊天里
  * 管理插件（{@code /插件 查看}、{@code /插件 开启 3}、{@code /插件 重载}）。
  * 既然它是<b>用插件系统写的插件</b>，它就需要一个插件侧的稳定契约去操作插件系统。</p>
  *
@@ -64,18 +64,7 @@ public interface PluginAdmin {
     // ==================== 查询 ====================
 
     /**
-     * 全部插件模块，按模块 ID 排序。
-     *
-     * <p>返回的是<b>已加载的模块</b>（jar 已被扫描并尝试加载）。jar 存在但
-     * 加载失败的模块仍会在列表里出现——它的插件状态为
-     * {@link PluginState#FAILED}，这正是管理端需要展示的情况。</p>
-     *
-     * @return 不可变列表；无模块时为空列表
-     */
-    List<PluginModuleView> getModules();
-
-    /**
-     * 全部插件（跨模块），按模块 ID、再按加载顺序。
+     * 全部插件，按加载顺序。
      *
      * @return 不可变列表；无插件时为空列表
      */
@@ -88,14 +77,6 @@ public interface PluginAdmin {
      * @return 视图；不存在时为空
      */
     Optional<PluginView> plugin(String pluginId);
-
-    /**
-     * 某模块下的插件。
-     *
-     * @param moduleId 模块 ID
-     * @return 不可变列表；模块不存在时为空列表
-     */
-    List<PluginView> pluginsOfModule(String moduleId);
 
     // ==================== 群粒度启停 ====================
 
@@ -238,11 +219,14 @@ public interface PluginAdmin {
     // ==================== 生命周期 ====================
 
     /**
-     * 重载某插件所在的模块。
+     * 重载某插件所属的 jar。
      *
-     * <p>语义：卸载该模块的全部插件 → 关闭其 ClassLoader → 重新读取 jar →
-     * 以新的 ClassLoader 原位重挂。执行期间该模块的插件对外不可服务
+     * <p>语义：卸载该 jar 的全部插件 → 关闭其 ClassLoader → 重新读取 jar →
+     * 以新的 ClassLoader 原位重挂。执行期间这些插件对外不可服务
      * （状态为 {@link PluginState#UNLOADING}，分发器不会向它们投递事件）。</p>
+     *
+     * <p><b>重载粒度是 jar，不是插件。</b>同 jar 的其它插件会一起重启——
+     * Java 无法只替换 jar 中的一个类。</p>
      *
      * <h3>作用域配置保留</h3>
      * <p><b>重载不重置群粒度启停配置。</b>一次重载不应该让运维丢掉全部群例外——
@@ -250,20 +234,20 @@ public interface PluginAdmin {
      * {@link #setEnabled}。</p>
      *
      * <h3>重载自身</h3>
-     * <p>{@code plugin-manage} 重载自己所在的模块时，其调用栈上的类即将被新
+     * <p>{@code plugin-manage} 重载自己所在的 jar 时，其调用栈上的类即将被新
      * ClassLoader 替换。实现必须保证<b>调用方返回后再执行卸载</b>，否则会在
      * 执行途中卸载掉正在运行的代码。见实现说明。</p>
      *
-     * @param moduleId 模块 ID
-     * @throws PluginAdminException 模块不存在，或其 jar 文件/资源目录缺失
+     * @param pluginId 插件标识
+     * @throws PluginAdminException 插件不存在，或其 jar 文件/资源目录缺失
      */
-    void reload(String moduleId);
+    void reload(String pluginId);
 
     /**
      * 卸载某插件（不重新加载）。
      *
      * <p>用于「插件写坏了、暂时摘掉」的场景。与 {@link #reload} 的区别是
-     * 它不重新读 jar。模块的全部插件都卸载后，模块从列表中消失。</p>
+     * 它不重新读 jar。</p>
      *
      * @param pluginId 插件标识
      * @throws PluginAdminException 插件不存在
@@ -273,7 +257,7 @@ public interface PluginAdmin {
     /**
      * 插件运行统计摘要，用于管理端看板。
      *
-     * @return 形如 {@code "模块 13 / 插件 23 / 生效 21 / 失败 1 / 等待依赖 1"}
+     * @return 形如 {@code "插件 23 / 生效 21 / 失败 1 / 等待依赖 1"}
      */
     String getSummary();
 }
