@@ -125,7 +125,7 @@ public final class PluginAdminRuntime implements PluginAdmin {
     @Override
     public List<Long> enabledGroups(String pluginId) {
         /*
-         * 语义选择：只返回「被显式**开启**的群」。
+         * 语义选择：只返回「被显式<b>开启</b>的群」。
          *
          * 为什么不返回「全部生效群」：那需要向机器人查询群列表（一次网络调用），
          * 而本方法在管理端列表渲染时会被每个插件调用一次——N 个插件就是 N 次

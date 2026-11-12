@@ -1067,9 +1067,9 @@ public final class PluginRuntime {
         /*
          * 契约（见 PluginAdmin.isGloballyEnabled）：返回「有效全局默认值是否生效」。
          *
-         * ## 为什么是「默认值」而不是「是否每个群都生效」
+         * <h2>为什么是「默认值」而不是「是否每个群都生效」</h2>
          *
-         * 本方法与 setPluginGlobalEnabled 是一对读写操作，**必须对偶**：
+         * 本方法与 setPluginGlobalEnabled 是一对读写操作，<b>必须对偶</b>：
          *
          *     setPluginGlobalEnabled(p, V);  isGloballyEnabled(p) == V
          *
@@ -1079,14 +1079,14 @@ public final class PluginRuntime {
          * 无法被幂等地表达（关掉一个已经有群例外的插件时，无法区分
          * 「本来就是关的」与「刚被关掉」）。
          *
-         * ## 与 isPluginEnabledIn 的关系
+         * <h2>与 isPluginEnabledIn 的关系</h2>
          *
          *     isPluginEnabledIn(p, g)  ==  (该群有例外 ? 例外的值 : isGloballyEnabled(p))
          *
          * 也就是说：本方法是「群例外之外的那个底座」，
          * 而 isPluginEnabledIn 是「底座 + 该群的覆盖」。
          *
-         * ## 群例外不影响本方法
+         * <h2>群例外不影响本方法</h2>
          *
          * 「默认开 + 个别群关」应返回 true——它整体是开的，只是有几个例外。
          * 管理端应当把它展示为「全局开 + 3 个群例外」，

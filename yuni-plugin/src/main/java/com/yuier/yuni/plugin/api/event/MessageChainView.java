@@ -127,7 +127,7 @@ public interface MessageChainView {
     List<String> getSegmentTypes();
 
     /**
-     * 取指定位置消息段的**JSON 表示**。
+     * 取指定位置消息段的<b>JSON 表示</b>。
      *
      * <p>返回的是该段的 JSON 字符串（形如
      * {@code {"type":"image","data":{"file":"..."}}}），而不是框架内部对象。

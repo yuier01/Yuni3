@@ -201,7 +201,7 @@ public final class ServiceRegistry {
             return removed;
         }
         /*
-         * 遍历的是 entrySet 的**副本**（new ArrayList<>(...)），不是 entries 本身：
+         * 遍历的是 entrySet 的<b>副本</b>（new ArrayList<>(...)），不是 entries 本身：
          * 循环体里 remove 作用于 entries，而迭代器属于这个副本，两者是不同的对象。
          * 这样既不会边遍历边改同一个集合，也保证「快照时刻的每个注册项恰好被
          * 考虑一次」——不受遍历期间新增/删除的影响。
