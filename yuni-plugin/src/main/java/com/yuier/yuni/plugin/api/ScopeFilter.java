@@ -28,13 +28,6 @@ import java.util.stream.Collectors;
  * <p>持久化、管理端展示、数据库表（{@code group_plugin_ability}）都直接使用
  * 这两个字段，不再需要单独的「持久化类型」或反向解析。</p>
  *
- * <h2>为什么不用「每群一份插件实例」</h2>
- * <p>初版设计把群建模为 Context 子节点（{@code GroupScope(g).plugin(p)}），
- * 每个启用了该插件的群挂一份实例。经实证否决：本仓库 23 个插件里只有 1 个
- * 真正持有群内实例状态，其余状态全部外置在 Redis / SQLite 并按
- * {@code groupId}/{@code userId} 分键；每群每插件的内存开销约 180 B，
- * 1000 群 × 20 插件约 3.6 MB，而这份内存买到的隔离等于零。</p>
- *
  * <p>因此插件<b>全局只有一个实例</b>，群粒度启停通过注册项上的本过滤器表达，
  * 内存开销降为 O(1)。群内状态由 {@code ctx.state(Class)} 按作用域分键提供。</p>
  *

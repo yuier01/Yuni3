@@ -109,9 +109,6 @@ public final class PluginRuntime {
      *   用户覆盖（本表）  &gt;  元数据 defaultEnable
      * </pre>
      *
-     * <p>插件作者不参与群级配置——作者不可能预知用户会在哪些群使用，
-     * 因此没有「作者基线」这一层。</p>
-     *
      * <p>最终值由 {@link #effectiveScopeOf} / {@link #isPluginEnabledIn}
      * 每次现算。把合并结果缓存下来会成为一份随时可能过期的快照。</p>
      */
@@ -855,8 +852,9 @@ public final class PluginRuntime {
      * @return 过滤器；插件不存在或从未注册时为空
      */
     public Optional<ScopeFilter> effectiveScopeOf(String pluginId) {
-        return fibers.byId(pluginId).map(fiber ->
-                userScopeOverrides.toFilter(pluginId, effectiveDefaultEnabled(pluginId)));
+        String owner = scopeOwnerOf(pluginId);
+        return fibers.byId(owner).map(fiber ->
+                userScopeOverrides.toFilter(owner, effectiveDefaultEnabled(owner)));
     }
 
     /**
@@ -866,7 +864,7 @@ public final class PluginRuntime {
      * @return 显式开启的群号；无则为空集
      */
     public Set<Long> explicitlyEnabledGroups(String pluginId) {
-        return userScopeOverrides.explicitlyEnabledGroups(pluginId);
+        return userScopeOverrides.explicitlyEnabledGroups(scopeOwnerOf(pluginId));
     }
 
     /**
@@ -880,15 +878,17 @@ public final class PluginRuntime {
      * @return 生效返回 {@code true}；<b>插件不存在时返回 {@code null}</b>
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
+        // 子插件没有独立作用域：解析到根祖先，与父插件共用同一份用户配置
+        String owner = scopeOwnerOf(pluginId);
         // 用户显式配置的群例外优先级最高
-        Optional<Boolean> explicit = userScopeOverrides.explicitValue(pluginId, groupId);
+        Optional<Boolean> explicit = userScopeOverrides.explicitValue(owner, groupId);
         if (explicit.isPresent()) {
             return explicit.get();
         }
-        if (!fiberExists(pluginId)) {
+        if (!fiberExists(owner)) {
             return null;
         }
-        return effectiveDefaultEnabled(pluginId);
+        return effectiveDefaultEnabled(owner);
     }
 
     /**
@@ -902,20 +902,48 @@ public final class PluginRuntime {
     }
 
     /**
+     * 解析插件的作用域归属者——沿父子链上溯到根祖先。
+     *
+     * <p>子插件在语义上是父插件的一部分（生命周期已经绑定：父卸载则子卸载），
+     * 因此作用域也跟随根祖先。这条规则同时解决了「管理端看不到子插件、
+     * 用户无法单独配置它」的问题——子插件不再需要自己的群级配置。</p>
+     *
+     * @param pluginId 插件标识
+     * @return 根祖先的标识；插件未加载时原样返回
+     */
+    private String scopeOwnerOf(String pluginId) {
+        if (pluginId == null) {
+            return null;
+        }
+        PluginFiber fiber = fibers.byId(pluginId).orElse(null);
+        if (fiber == null) {
+            return pluginId;
+        }
+        PluginFiber owner = fiber;
+        while (owner.getParent() != null && owner.getParent() != owner) {
+            owner = owner.getParent();
+        }
+        return owner.getId();
+    }
+
+    /**
      * 取插件的有效默认启用值——用户显式全局开关优先，否则看元数据。
+     *
+     * <p>子插件解析到根祖先，因此这里取的是父插件的默认值。</p>
      *
      * @param pluginId 插件标识
      * @return 默认启用返回 {@code true}
      */
     private boolean effectiveDefaultEnabled(String pluginId) {
+        String owner = scopeOwnerOf(pluginId);
         // 用户显式设置过全局开关 → 以它为准
-        Optional<Boolean> userGlobal = userScopeOverrides.explicitGlobalDefault(pluginId);
+        Optional<Boolean> userGlobal = userScopeOverrides.explicitGlobalDefault(owner);
         if (userGlobal.isPresent()) {
             return userGlobal.get();
         }
         // 否则回落到元数据。插件不存在时保守返回 false：
         // 配置损坏时「不放行」比「误放行」安全
-        return fibers.byId(pluginId)
+        return fibers.byId(owner)
                 .map(fiber -> fiber.getMetadata().isDefaultEnable())
                 .orElse(false);
     }
@@ -1003,9 +1031,10 @@ public final class PluginRuntime {
      * @return 过滤器描述；未记录时返回 {@code "(未记录)"}
      */
     public String describeScope(String pluginId) {
-        // 用户配置的群例外 + 有效默认值
+        // 子插件解析到根祖先；描述的就是它实际生效的那份配置
+        String owner = scopeOwnerOf(pluginId);
         ScopeFilter persisted =
-                userScopeOverrides.toFilter(pluginId, effectiveDefaultEnabled(pluginId));
+                userScopeOverrides.toFilter(owner, effectiveDefaultEnabled(owner));
         if (persisted.getExceptionGroups().isEmpty()) {
             return persisted.isEnabledByDefault() ? "全部群" : "未记录";
         }
@@ -1043,16 +1072,18 @@ public final class PluginRuntime {
      * @throws IllegalArgumentException 插件不存在
      */
     public void setPluginEnabledIn(String pluginId, long groupId, boolean enabled) {
+        // 子插件的配置写到根祖先：它没有独立作用域
+        String owner = scopeOwnerOf(pluginId);
         // 存在性校验；后续比较用「有效默认值」而不是元数据默认值——
         // 否则「全局关 + 单独开启某群」在 metadata.defaultEnable = true 时
         // 会被误判为「与默认值一致」而丢掉该群的显式值。
-        fibers.byId(pluginId).orElseThrow(() ->
+        fibers.byId(owner).orElseThrow(() ->
                 new IllegalArgumentException("插件不存在: " + pluginId));
 
-        userScopeOverrides.set(pluginId, groupId, enabled, effectiveDefaultEnabled(pluginId));
+        userScopeOverrides.set(owner, groupId, enabled, effectiveDefaultEnabled(owner));
         log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
-                pluginId, groupId, enabled, describeScope(pluginId));
-        persistScope(pluginId);
+                pluginId, groupId, enabled, describeScope(owner));
+        persistScope(owner);
     }
 
     /**
@@ -1071,12 +1102,13 @@ public final class PluginRuntime {
      * @throws IllegalArgumentException 插件不存在
      */
     public void setPluginGlobalEnabled(String pluginId, boolean enabled) {
-        if (!fiberExists(pluginId)) {
+        String owner = scopeOwnerOf(pluginId);
+        if (!fiberExists(owner)) {
             throw new IllegalArgumentException("插件不存在: " + pluginId);
         }
-        userScopeOverrides.setGlobalDefault(pluginId, enabled);
-        log.info("插件 {} 的全局启停改为 {}（当前: {}）", pluginId, enabled, describeScope(pluginId));
-        persistScope(pluginId);
+        userScopeOverrides.setGlobalDefault(owner, enabled);
+        log.info("插件 {} 的全局启停改为 {}（当前: {}）", pluginId, enabled, describeScope(owner));
+        persistScope(owner);
     }
 
     /**
@@ -1086,10 +1118,11 @@ public final class PluginRuntime {
      * @return 本来是否有配置可清
      */
     public boolean resetPluginScope(String pluginId) {
-        boolean hadExceptions = userScopeOverrides.clear(pluginId).isPresent();
-        boolean hadGlobal = userScopeOverrides.clearGlobalDefault(pluginId);
+        String owner = scopeOwnerOf(pluginId);
+        boolean hadExceptions = userScopeOverrides.clear(owner).isPresent();
+        boolean hadGlobal = userScopeOverrides.clearGlobalDefault(owner);
         if (hadExceptions || hadGlobal) {
-            persistScope(pluginId);
+            persistScope(owner);
             log.info("插件 {} 的群例外与全局开关已重置为插件默认值", pluginId);
         }
         return hadExceptions || hadGlobal;
@@ -1193,25 +1226,27 @@ public final class PluginRuntime {
         if (store == null) {
             return;
         }
+        // 子插件不落自己的记录：它共用根祖先的配置
+        String owner = scopeOwnerOf(pluginId);
         try {
-            boolean pluginDefault = fibers.byId(pluginId)
+            boolean pluginDefault = fibers.byId(owner)
                     .map(fiber -> fiber.getMetadata().isDefaultEnable())
                     .orElse(false);
             // 只持久化「用户显式设置过」的全局开关；
             // 未设置时存 null，让下次启动重新回落到插件元数据
-            Boolean global = userScopeOverrides.explicitGlobalDefault(pluginId).orElse(null);
+            Boolean global = userScopeOverrides.explicitGlobalDefault(owner).orElse(null);
             boolean effectiveGlobal = global != null ? global : pluginDefault;
             // 例外群 = 与有效全局值相反的那些群
             Set<Long> exceptionGroups =
-                    userScopeOverrides.oppositeGroups(pluginId, effectiveGlobal);
-            store.save(pluginId,
+                    userScopeOverrides.oppositeGroups(owner, effectiveGlobal);
+            store.save(owner,
                     new UserScopeRecord(
                             global, exceptionGroups));
         } catch (Exception e) {
             // 不回滚内存：用户已经看到操作成功，回滚只会让内存与实际反馈不一致。
             // 下一次成功写入会覆盖这次失败的记录。
             log.error("保存插件 {} 的作用域配置失败（当前进程内配置已生效，重启后会丢失）",
-                    pluginId, e);
+                    owner, e);
         }
     }
 

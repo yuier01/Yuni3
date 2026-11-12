@@ -611,12 +611,12 @@ public final class PluginContext implements YuniContext {
                 // 未绑定运行时（测试场景）：保守地放行，避免插件在测试里静默失效
                 return true;
             }
-            // ①+② 由运行时合并判定；「无任何例外信息」时返回 null
+            // 运行时统一判定；子插件在运行时内部解析到根祖先（跟随父插件）
             Boolean enabled = runtime.isPluginEnabledIn(fiber.getId(), groupId);
             if (enabled != null) {
                 return enabled;
             }
-            // ③ 回落到元数据默认值
+            // 插件不存在等异常情况：保守回落到元数据默认值
             return fiber.getMetadata().isDefaultEnable();
         }
 

@@ -293,4 +293,43 @@ class ScopeQueryTest {
         // 未知插件（无 Fiber、无配置）按默认值处理，因此描述里不带群例外
         assertTrue(runtime.describeScope("不存在的插件").contains("未记录"));
     }
+
+    @Test
+    @DisplayName("子插件继承父插件的作用域")
+    void childInheritsParentScope() {
+        ScopeQuery[] childScope = new ScopeQuery[1];
+        YuniPlugin child = new YuniPlugin() {
+            @Override
+            public PluginMetadata getMetadata() {
+                return PluginMetadata.of("子插件").defaultEnable(true).build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                childScope[0] = ctx.getScope();
+            }
+        };
+        YuniPlugin parent = new YuniPlugin() {
+            @Override
+            public PluginMetadata getMetadata() {
+                return PluginMetadata.of("父插件").defaultEnable(true).build();
+            }
+
+            @Override
+            public void apply(YuniContext ctx) {
+                // 子插件没有独立作用域：它在语义上是父插件的一部分
+                ctx.plugin(child);
+            }
+        };
+        runtime.load(parent, null, null, null);
+
+        // 用户关闭父插件的全局开关，只开启 200 群
+        runtime.setPluginGlobalEnabled("父插件", false);
+        runtime.setPluginEnabledIn("父插件", 200L, true);
+
+        assertTrue(childScope[0].isEnabledIn(200L),
+                "子插件应跟随父插件在 200 群生效");
+        assertFalse(childScope[0].isEnabledIn(300L),
+                "父插件在 300 群关闭时，子插件也必须关闭");
+    }
 }
