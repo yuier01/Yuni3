@@ -27,17 +27,17 @@ import lombok.extern.slf4j.Slf4j;
  *   <tr><td>{@code getYuniBot()} / {@code getBotId()} / {@code getBotNickName()}</td>
  *       <td>{@code ctx.getBot()}</td></tr>
  *   <tr><td>{@code getBean(Class)} / {@code getBean(String)}</td>
- *       <td>{@code ctx.requireService(Class)} / {@code ctx.findService(Class)}</td></tr>
+ *       <td>{@code ctx.findService(Class)} / {@code ctx.tryFindService(Class)}</td></tr>
  *   <tr><td>{@code getBotAppCommandFlag()}</td>
  *       <td>框架侧已处理，插件无需读取命令前缀</td></tr>
  *   <tr><td>{@code loadJsonConfigFromPlugin(f, C, cls)}</td>
- *       <td>{@code ctx.getConfig().load(f, C)}</td></tr>
+ *       <td>{@code ctx.getConfigLoader().load(f, C)}</td></tr>
  *   <tr><td>{@code loadTextFromPluginFolder(f, cls)}</td>
- *       <td>{@code ctx.getConfig().loadText(f)}</td></tr>
+ *       <td>{@code ctx.getConfigLoader().loadText(f)}</td></tr>
  *   <tr><td>{@code loadFontFromPlugin(f, size, cls)}</td>
- *       <td>{@code ctx.getConfig().open(f)} + {@code Font.createFont(...)}</td></tr>
+ *       <td>{@code ctx.getConfigLoader().open(f)} + {@code Font.createFont(...)}</td></tr>
  *   <tr><td>{@code getPluginRootPath(cls)}</td>
- *       <td>{@code ctx.getDataDir()} / {@code ctx.getConfig().getDataDir()}</td></tr>
+ *       <td>{@code ctx.getDataDir()} / {@code ctx.getConfigLoader().getDataDir()}</td></tr>
  *   <tr><td>{@code sendGroupMessage(g, chain)} / {@code sendPrivateMessage(u, chain)}</td>
  *       <td>{@code ctx.getSender().group(g).chain(view).send()}</td></tr>
  *   <tr><td>{@code simpleGet(url, C)} / {@code simplePost(url, params, C)}</td>

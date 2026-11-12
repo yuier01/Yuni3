@@ -164,7 +164,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return List.of(CharSequence.class);
             }
 
@@ -200,7 +200,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return List.of(CharSequence.class);
             }
 
@@ -236,14 +236,14 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return List.of(Runnable.class);
             }
 
             @Override
             public void apply(YuniContext ctx) {
                 // 依赖由 inject 保证就绪
-                assertNotNull(ctx.requireService(Runnable.class));
+                assertNotNull(ctx.findService(Runnable.class));
             }
         };
 
@@ -282,7 +282,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return List.of(Comparable.class);
             }
 
@@ -298,7 +298,7 @@ class PluginRuntimeTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return List.of(Cloneable.class);
             }
 

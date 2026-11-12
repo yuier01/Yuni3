@@ -25,9 +25,9 @@ import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
 import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
-import com.yuier.yuni.plugin.api.service.Sender;
+import com.yuier.yuni.plugin.api.service.MessageSender;
 import com.yuier.yuni.plugin.data.PluginDataService;
-import com.yuier.yuni.plugin.runtime.service.CoreSender;
+import com.yuier.yuni.plugin.runtime.service.CoreMessageSender;
 import com.yuier.yuni.plugin.runtime.service.FileConfigLoader;
 import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
 import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
@@ -64,7 +64,7 @@ import org.slf4j.Logger;
  * <p>本实现持有对 {@link ServiceRegistry} 的引用。所有插件上下文共享同一个
  * 注册表——这是「服务全局可见」的实现方式。
  * 插件提供的服务通过 {@code registerService(...)} 注册进同一个表，因此插件之间
- * 可以直接通过 {@code ctx.requireService(...)} 互相调用，无需静态查 Spring Bean。</p>
+ * 可以直接通过 {@code ctx.findService(...)} 互相调用，无需静态查 Spring Bean。</p>
  *
  * <h2>作用域状态</h2>
  * <p>{@link #state(Class)} 是按 {@code (状态类型, scopeId)} 分键的懒创建表。
@@ -84,7 +84,7 @@ import org.slf4j.Logger;
  *   <li>{@link #getBot()} / {@link #getSender()} —— 需要运行时持有 bot 供应函数；</li>
  *   <li>{@link #schedule} / {@link #every} / {@link #runNow} —— 需要
  *       {@code DynamicTaskManager}；</li>
- *   <li>{@link #getHttp()} / {@link #getCache()} / {@link #getConfig()} —— 需要
+ *   <li>{@link #getHttp()} / {@link #getCache()} / {@link #getConfigLoader()} —— 需要
  *       {@code JsonCodec}（未注册共享实例时按需构造）。</li>
  * </ul>
  * <p>生产环境下这些依赖由 {@code PluginSystem}（super Bean）在启动时装配。</p>
@@ -136,7 +136,7 @@ public final class PluginContext implements YuniContext {
     /**
      * JSON 编解码器。
      *
-     * <p>供 {@code getConfig()} / {@code getCache()} / {@code getHttp()} 以及原始消息段
+     * <p>供 {@code getConfigLoader()} / {@code getCache()} / {@code getHttp()} 以及原始消息段
      * 构造使用。为 {@code null} 时相关能力会给出明确错误（测试场景）。</p>
      */
     private final JsonCodec jsonCodec;
@@ -492,15 +492,15 @@ public final class PluginContext implements YuniContext {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> T requireService(Class<T> type) {
+    public <T> T findService(Class<T> type) {
         return (T) services.resolve(type).orElseThrow(() -> new IllegalStateException(
                 "服务未注册: " + type.getName()
-                        + "。若这是插件提供的服务，请在本插件的 requiredServices() 中声明依赖，"
+                        + "。若这是插件提供的服务，请在本插件的 declareRequiredServices() 中声明依赖，"
                         + "否则插件可能在服务就绪前就开始 apply。"));
     }
 
     @Override
-    public <T> Optional<T> findService(Class<T> type) {
+    public <T> Optional<T> tryFindService(Class<T> type) {
         return services.resolve(type);
     }
 
@@ -684,22 +684,22 @@ public final class PluginContext implements YuniContext {
                 return resolved;
             }
         }
-        return requireService(YuniBot.class);
+        return findService(YuniBot.class);
     }
 
     @Override
-    public Sender getSender() {
+    public MessageSender getSender() {
         /*
-         * 按需构造而非预注册：Sender 绑定到具体的 YuniBot 实例，而 bot 由
+         * 按需构造而非预注册：MessageSender 绑定到具体的 YuniBot 实例，而 bot 由
          * BotManager 在启动流程中动态创建并注册为单例，时机晚于 PluginContext
          * 的构造。因此这里在首次访问时从服务表取 bot 并即时包装。
          */
-        return new CoreSender(getBot(), jsonCodec());
+        return new CoreMessageSender(getBot(), jsonCodec());
     }
 
     @Override
     public PluginDataService getDb() {
-        return requireService(com.yuier.yuni.plugin.data.PluginDataService.class);
+        return findService(com.yuier.yuni.plugin.data.PluginDataService.class);
     }
 
     @Override
@@ -714,12 +714,12 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public ConfigLoader getConfig() {
+    public ConfigLoader getConfigLoader() {
         // 按插件构造：每个插件的资源目录不同，这是 ConfigLoader 的关键语义
         if (dataDir == null) {
             throw new IllegalStateException(
                     "插件资源目录未注入，无法读取配置文件。"
-                            + "若插件不需要读取资源，请勿调用 ctx.getConfig()。" + MISSING_DEPENDENCY_NOTE);
+                            + "若插件不需要读取资源，请勿调用 ctx.getConfigLoader()。" + MISSING_DEPENDENCY_NOTE);
         }
         return new FileConfigLoader(dataDir, jsonCodec());
     }
@@ -737,7 +737,7 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public PermissionService getPermission() {
-        return requireService(PermissionService.class);
+        return findService(PermissionService.class);
     }
 
     @Override
@@ -752,7 +752,7 @@ public final class PluginContext implements YuniContext {
      * 取 JSON 编解码器。
      *
      * <p>由运行时注入；测试场景可能为 {@code null}，此时依赖它的能力
-     * （{@code getConfig()} / {@code getCache()} / {@code getHttp()} / 原始段构造）
+     * （{@code getConfigLoader()} / {@code getCache()} / {@code getHttp()} / 原始段构造）
      * 会给出明确的错误而不是 NPE。</p>
      *
      * @return 编解码器

@@ -27,9 +27,9 @@ import java.nio.file.Path;
  *
  * <h2>每插件一个实例</h2>
  * <p>本类的实例绑定到<b>单个插件</b>的资源目录。因此它不作为「框架内置服务」
- * 预注册到 {@code ServiceRegistry}，而是由 {@code PluginContext.getConfig()}
+ * 预注册到 {@code ServiceRegistry}，而是由 {@code PluginContext.getConfigLoader()}
  * 按需构造（见 {@code PluginContext} 的实现）。这样插件调用
- * {@code ctx.getConfig().load("x.json", C.class)} 时不需要传自己的 Class。</p>
+ * {@code ctx.getConfigLoader().load("x.json", C.class)} 时不需要传自己的 Class。</p>
  *
  * <h2>为什么读磁盘而不是读 jar 内资源</h2>
  * <p>插件资源位于 jar <b>同级目录</b>（{@code plugins/<模块名>/}），由各插件

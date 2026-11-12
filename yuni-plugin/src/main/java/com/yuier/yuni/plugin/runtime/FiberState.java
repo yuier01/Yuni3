@@ -38,7 +38,7 @@ public enum FiberState {
     /**
      * 已声明但尚未加载——依赖的服务未就绪。
      *
-     * <p>插件通过 {@code YuniPlugin.requiredServices()} 声明依赖；框架在本状态等待。
+     * <p>插件通过 {@code YuniPlugin.declareRequiredServices()} 声明依赖；框架在本状态等待。
      * 启动流程结束后若仍有插件停在本状态，框架会<b>显式报错</b>并列出
      * 未满足的依赖（含循环依赖），不会静默。</p>
      */

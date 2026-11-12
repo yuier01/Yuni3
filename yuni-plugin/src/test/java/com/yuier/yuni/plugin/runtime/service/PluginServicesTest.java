@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link FileConfigLoader} 与 {@link CoreSender} 的单元测试。
+ * {@link FileConfigLoader} 与 {@link CoreMessageSender} 的单元测试。
  *
  * <p>这两个实现覆盖了插件最常用的两类基础设施：读自身资源文件、主动发送消息。
  * 尤其是 {@link FileConfigLoader#resolve(String)} 的路径越界防护——
@@ -177,13 +177,13 @@ class PluginServicesTest {
         assertEquals(pluginDir, loader.getDataDir());
     }
 
-    // ==================== CoreSender ====================
+    // ==================== CoreMessageSender ====================
 
     @Test
     @DisplayName("group / privateChat 构造正确的发送目标")
     void senderBuildsCorrectTargets() {
         RecordingYuniBot bot = new RecordingYuniBot();
-        CoreSender sender = new CoreSender(bot, jsonCodec);
+        CoreMessageSender sender = new CoreMessageSender(bot, jsonCodec);
 
         sender.group(123L).text("群消息").send();
         sender.privateChat(456L).text("私聊消息").send();
@@ -200,7 +200,7 @@ class PluginServicesTest {
     @DisplayName("sendToGroup 直接转发已有消息链（消息中转场景）")
     void sendToGroupForwardsChain() {
         RecordingYuniBot bot = new RecordingYuniBot();
-        CoreSender sender = new CoreSender(bot, jsonCodec);
+        CoreMessageSender sender = new CoreMessageSender(bot, jsonCodec);
 
         MessageChain chain =
                 new MessageChain();
@@ -218,7 +218,7 @@ class PluginServicesTest {
     @DisplayName("recall 失败时返回 false 而不抛异常（撤回超时是正常业务失败）")
     void recallFailureReturnsFalse() {
         RecordingYuniBot bot = new RecordingYuniBot();
-        CoreSender sender = new CoreSender(bot, jsonCodec);
+        CoreMessageSender sender = new CoreMessageSender(bot, jsonCodec);
 
         // RecordingYuniBot 的 recallMessage 不抛异常，因此这里为 true
         assertTrue(sender.recall(1L));
@@ -228,7 +228,7 @@ class PluginServicesTest {
     @DisplayName("wrap 把核心消息链包装为插件侧视图")
     void wrapsChainIntoView() {
         RecordingYuniBot bot = new RecordingYuniBot();
-        CoreSender sender = new CoreSender(bot, jsonCodec);
+        CoreMessageSender sender = new CoreMessageSender(bot, jsonCodec);
 
         MessageChain chain =
                 new MessageChain();

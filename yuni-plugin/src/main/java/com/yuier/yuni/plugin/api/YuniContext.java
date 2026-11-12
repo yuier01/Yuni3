@@ -38,7 +38,7 @@ import org.slf4j.Logger;
  *       里的定时任务）框架不知道归属，卸载时无法自动清理。</li>
  * </ol>
  * <p>本接口取代它，并附带三个性质：<b>可打桩</b>（是接口）、<b>依赖显式</b>
- * （通过 {@link #requireService(Class)} 与 {@code YuniPlugin.requiredServices()}）、
+ * （通过 {@link #findService(Class)} 与 {@code YuniPlugin.declareRequiredServices()}）、
  * <b>可撤销</b>（全部注册方法返回 {@link Disposable}）。</p>
  *
  * <h2>核心不变式</h2>
@@ -53,7 +53,7 @@ import org.slf4j.Logger;
  * public void apply(YuniContext ctx) {
  *     // 1. 基础设施
  *     ctx.getDb().register(UserSteamId.class);
- *     SteamApiKey key = ctx.getConfig().load("api_key.json", SteamApiKey.class);
+ *     SteamApiKey key = ctx.getConfigLoader().load("api_key.json", SteamApiKey.class);
  *
  *     // 2. 定时任务
  *     ctx.schedule("0 0/5 * * * ?", () -> pollSteam(key));
@@ -322,7 +322,7 @@ public interface YuniContext {
      * @return 服务实例
      * @throws IllegalStateException 服务未注册时抛出
      */
-    <T> T requireService(Class<T> type);
+    <T> T findService(Class<T> type);
 
     /**
      * 解析一个可选的服务实例（不存在时返回空）。
@@ -333,7 +333,7 @@ public interface YuniContext {
      * @param <T>  服务类型
      * @return 服务实例；未注册时为空
      */
-    <T> Optional<T> findService(Class<T> type);
+    <T> Optional<T> tryFindService(Class<T> type);
 
     /**
      * 注册一个服务实例供其他插件使用。
@@ -414,7 +414,7 @@ public interface YuniContext {
      * {@code PluginEnableProcessor} / {@code PluginReloadProcessor} 这些框架内部类
      * 的做法。</p>
      *
-     * <p>普通插件<b>不应</b>使用本服务——它与 {@link #requireService(Class)} 的区别是：
+     * <p>普通插件<b>不应</b>使用本服务——它与 {@link #findService(Class)} 的区别是：
      * 服务用于「我需要某个能力」，而本方法用于「我要管理别的插件」。
      * 后者是管理端职责，不是插件间协作。</p>
      *
@@ -473,7 +473,7 @@ public interface YuniContext {
     /**
      * 机器人通信服务。
      *
-     * <p>等价 {@code requireService(YuniBot.class)}，因使用频率极高而提供快捷方法。</p>
+     * <p>等价 {@code findService(YuniBot.class)}，因使用频率极高而提供快捷方法。</p>
      *
      * @return 机器人实例
      */
@@ -492,7 +492,7 @@ public interface YuniContext {
      *
      * @return 发送门面，永不为 {@code null}
      */
-    Sender getSender();
+    MessageSender getSender();
 
     /**
      * 插件数据访问入口（JDBI + SQLite）。
@@ -522,7 +522,7 @@ public interface YuniContext {
      *
      * @return 配置加载器，永不为 {@code null}
      */
-    ConfigLoader getConfig();
+    ConfigLoader getConfigLoader();
 
     /**
      * HTTP 客户端。

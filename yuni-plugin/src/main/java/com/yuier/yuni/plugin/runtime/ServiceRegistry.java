@@ -46,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>插件加载与卸载可能并发发生，使用 {@link ConcurrentHashMap}；
  * 注册项的替换与移除都以单条 map 操作为准。</p>
  *
- * @see com.yuier.yuni.plugin.api.YuniContext#requireService(Class)
+ * @see com.yuier.yuni.plugin.api.YuniContext#findService(Class)
  */
 public final class ServiceRegistry {
 

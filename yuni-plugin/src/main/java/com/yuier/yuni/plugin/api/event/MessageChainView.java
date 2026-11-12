@@ -133,7 +133,7 @@ public interface MessageChainView {
      * {@code {"type":"image","data":{"file":"..."}}}），而不是框架内部对象。
      * 这样插件既能读取字段（自行解析 JSON），又不会绑定到框架的消息段类型上。
      * 需要访问某个段的具体字段时，推荐使用本方法配合一个轻量 JSON 解析
-     * （或 {@code ctx.requireService(JsonCodec.class)}）。</p>
+     * （或 {@code ctx.findService(JsonCodec.class)}）。</p>
      *
      * @param index 从 0 开始的段下标
      * @return 该段的 JSON 字符串

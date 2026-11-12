@@ -291,7 +291,7 @@ class PluginLifecycleIntegrationTest {
             }
 
             @Override
-            public List<Class<?>> requiredServices() {
+            public List<Class<?>> declareRequiredServices() {
                 return java.util.List.of(Comparable.class);
             }
 

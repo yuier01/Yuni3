@@ -21,7 +21,7 @@ import java.util.Optional;
  *       ClassLoader 无法回收（设计文档 §9.4 的 P0 事故正是这类问题）；</li>
  *   <li><b>不需要</b>：消费方要的是「叫什么、是什么状态、在哪些群生效」，
  *       而不是「拿到实例去调用它」。需要跨插件调用时走服务
- *       （{@link YuniContext#requireService(Class)}），而不是拿到插件实例直接调。</li>
+ *       （{@link YuniContext#findService(Class)}），而不是拿到插件实例直接调。</li>
  * </ol>
  *
  * <h2>与 {@link PluginMetadata} 的关系</h2>

@@ -6,14 +6,14 @@ import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.MessageChainView;
-import com.yuier.yuni.plugin.api.service.Sender;
+import com.yuier.yuni.plugin.api.service.MessageSender;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.CoreReply;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * {@link Sender} 的默认实现——把主动发送请求转成 {@link CoreReply} 并交给
+ * {@link MessageSender} 的默认实现——把主动发送请求转成 {@link CoreReply} 并交给
  * {@link YuniBot} 执行。
  *
  * <h2>取代了什么</h2>
@@ -24,15 +24,15 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <h2>与 {@code Reply} 的分工</h2>
  * <p>{@link Reply} 来自事件处理器参数，已绑定好目标会话；
- * {@code Sender} 用于「没有触发会话」的场景（定时任务、服务回调），
+ * {@code MessageSender} 用于「没有触发会话」的场景（定时任务、服务回调），
  * 需要显式指定目标。两者最终都走 {@link CoreReply#send()}。</p>
  *
- * @see Sender
+ * @see MessageSender
  * @see CoreReply
  */
 @Slf4j
 @RequiredArgsConstructor
-public final class CoreSender implements Sender {
+public final class CoreMessageSender implements MessageSender {
 
     /** 机器人实例，发送的实际执行者。 */
     private final YuniBot bot;

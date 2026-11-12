@@ -22,13 +22,13 @@ import java.nio.file.Path;
  * <h2>用法</h2>
  * <pre>{@code
  * // 读 JSON 配置（自动反序列化）
- * MaimaiConfig cfg = ctx.getConfig().load("maimai_config.json", MaimaiConfig.class);
+ * MaimaiConfig cfg = ctx.getConfigLoader().load("maimai_config.json", MaimaiConfig.class);
  *
  * // 读纯文本
- * String help = ctx.getConfig().loadText("help-info.txt");
+ * String help = ctx.getConfigLoader().loadText("help-info.txt");
  *
  * // 按需读取二进制资源（字体、图片）
- * try (InputStream in = ctx.getConfig().open("font/Mamelon.otf")) {
+ * try (InputStream in = ctx.getConfigLoader().open("font/Mamelon.otf")) {
  *     Font font = Font.createFont(Font.TRUETYPE_FONT, in).deriveFont(45f);
  * }
  * }</pre>

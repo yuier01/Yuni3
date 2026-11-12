@@ -33,7 +33,7 @@ import com.yuier.yuni.plugin.api.event.MessageChainView;
  *
  * @see Reply
  */
-public interface Sender {
+public interface MessageSender {
 
     /**
      * 构造发往群聊的消息。

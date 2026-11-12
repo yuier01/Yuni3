@@ -8,7 +8,7 @@ import java.util.Optional;
  * <p>对应 OneBot {@code post_type = "request"}，涵盖加好友请求、加群请求、
  * 被邀请入群请求。处理这类事件通常需要调用 OneBot 的
  * {@code set_friend_add_request} / {@code set_group_add_request} 接口来批准或拒绝，
- * 该能力由 {@code Sender}/{@code YuniBot} 服务提供。</p>
+ * 该能力由 {@code MessageSender}/{@code YuniBot} 服务提供。</p>
  *
  * <h2>子类型判定</h2>
  * <pre>{@code
