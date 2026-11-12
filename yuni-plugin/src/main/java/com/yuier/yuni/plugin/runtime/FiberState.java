@@ -60,7 +60,7 @@ public enum FiberState {
     /**
      * {@code apply(ctx)} 抛出异常，插件不可用。
      *
-     * <p>框架会：记录完整堆栈（含 {@code Error}）、回滚已建立的 Effect、
+     * <p>框架会：记录完整堆栈（含 {@code Error}）、回滚已建立的 PluginEffect、
      * 在管理端标记为失败。其他插件不受影响。</p>
      *
      * <p><b>为什么必须回滚</b>：若 {@code apply} 在前半段注册了监听器、
@@ -70,14 +70,14 @@ public enum FiberState {
     FAILED("加载失败"),
 
     /**
-     * 正在卸载——Effect 的 Disposer 正在逆序执行。
+     * 正在卸载——PluginEffect 的 Disposer 正在逆序执行。
      *
      * <p>本状态是瞬态。此期间框架不再向该插件分发事件。</p>
      */
     UNLOADING("卸载中"),
 
     /**
-     * 已完全卸载，全部 Effect 已撤销，ClassLoader 可被回收。
+     * 已完全卸载，全部 PluginEffect 已撤销，ClassLoader 可被回收。
      */
     DISPOSED("已卸载");
 

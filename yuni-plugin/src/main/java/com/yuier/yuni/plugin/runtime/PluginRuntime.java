@@ -42,7 +42,7 @@ import lombok.extern.slf4j.Slf4j;
  * 而是外置在 {@code plugin-manage} 内置插件的 {@code PluginReloadProcessor}
  * 与 webapi 的 {@code PluginService} 中各写了一遍。</p>
  *
- * <p>本类把「加载 → 依赖检查 → apply → 注册索引」与「卸载 → 撤销 Effect → 清索引」
+ * <p>本类把「加载 → 依赖检查 → apply → 注册索引」与「卸载 → 撤销 PluginEffect → 清索引」
  * 两条链路收拢到一处，热重载因此变成「记录位置 → 卸载 → 换 ClassLoader → 原位重挂」，
  * 不再需要维护八条类型列表与修正 index 偏移。</p>
  *
@@ -60,12 +60,12 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <h2>失败处理</h2>
  * <p>{@code apply(ctx)} 抛出的任何 {@code Throwable}（含 {@code Error}）都会被捕获：
- * 记录完整堆栈、把 Fiber 置为 {@link FiberState#FAILED}、<b>并回滚已建立的 Effect</b>。
+ * 记录完整堆栈、把 Fiber 置为 {@link FiberState#FAILED}、<b>并回滚已建立的 PluginEffect</b>。
  * 回滚是必要的——否则会出现「插件标记为失败但监听器仍在工作」的半初始化状态。</p>
  *
  * <h2>与 ClassLoader 的关系</h2>
  * <p>每个 {@link PluginFiber} 持有加载它的 ClassLoader。{@link #unload} 会撤销
- * 该插件的全部 Effect 并把 Effect 计数归零，之后调用方才可以关闭 ClassLoader
+ * 该插件的全部 PluginEffect 并把 PluginEffect 计数归零，之后调用方才可以关闭 ClassLoader
  * （{@link #reload} 就是这么做的）。这条约束来自 2026-08 的 P0 事故
  * （插件重载静默失败），见 {@code Notes/技术报告-插件重载静默失败.md}。</p>
  *
@@ -425,7 +425,7 @@ public final class PluginRuntime {
 
             /*
              * apply 期间 Fiber 被卸载：状态已不在 LOADING，CAS 拒绝把它回写成 ACTIVE。
-             * 必须回滚已建立的 Effect，否则会留下「插件已卸载但监听器还在」的悬挂引用。
+             * 必须回滚已建立的 PluginEffect，否则会留下「插件已卸载但监听器还在」的悬挂引用。
              * dispose() 可能已经撤过一遍，rollbackEffects 是幂等的（封存 CAS 兜底）。
              */
             List<String> rollbackFailures = fiber.rollbackEffects();
@@ -437,12 +437,12 @@ public final class PluginRuntime {
             // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
             boolean marked = fiber.tryMarkFailed(t);
             if (marked) {
-                log.error("插件 {} 加载失败，已回滚其 Effect", fiber.getId(), t);
+                log.error("插件 {} 加载失败，已回滚其 PluginEffect", fiber.getId(), t);
             } else {
                 log.warn("插件 {} 加载失败，但期间已被卸载，状态不再改为 FAILED", fiber.getId(), t);
             }
 
-            // 回滚：撤销已建立的 Effect，避免「标记为失败但监听器仍在工作」。
+            // 回滚：撤销已建立的 PluginEffect，避免「标记为失败但监听器仍在工作」。
             // 用 rollbackEffects 而非 dispose——后者会把状态改成 DISPOSED，
             // 使这次失败在管理端与 reportFailedPlugins() 中消失。
             List<String> failures = fiber.rollbackEffects();
@@ -575,7 +575,7 @@ public final class PluginRuntime {
     /**
      * 卸载一个插件。
      *
-     * <p>流程：注销其提供的服务 → 递归卸载子 Fiber → 撤销全部 Effect → 清索引。
+     * <p>流程：注销其提供的服务 → 递归卸载子 Fiber → 撤销全部 PluginEffect → 清索引。
      * 返回清理失败的描述，供调用方记录——卸载本身永不因单个 Disposer 失败而中断。</p>
      *
      * @param pluginId 插件标识
@@ -619,7 +619,7 @@ public final class PluginRuntime {
     /**
      * 卸载全部插件。
      *
-     * <p>按加载顺序的逆序卸载，与 Effect 的逆序撤销保持一致。</p>
+     * <p>按加载顺序的逆序卸载，与 PluginEffect 的逆序撤销保持一致。</p>
      *
      * @return 清理失败的描述列表
      */
@@ -653,7 +653,7 @@ public final class PluginRuntime {
      *       {@link #unload} 现在不再清除例外表，但重新 {@code load} 时
      *       会按新实例的 {@code defaultEnable} 重算，因此仍以快照为准回填，
      *       保证「换实现不换配置」；</li>
-     *   <li>逐个 {@link #unload} 该模块的插件（逆序撤销 Effect、注销服务）；</li>
+     *   <li>逐个 {@link #unload} 该模块的插件（逆序撤销 PluginEffect、注销服务）；</li>
      *   <li>移除模块索引，并关闭其 ClassLoader——这一步是 Windows 下能覆盖 jar
      *       的前提；</li>
      *   <li>交给 {@link com.yuier.yuni.plugin.runtime.load.PluginModuleLoader}
@@ -702,7 +702,7 @@ public final class PluginRuntime {
             }
         }
 
-        // 第 3 步：逐个卸载。逆序，与 Effect 的逆序撤销保持一致
+        // 第 3 步：逐个卸载。逆序，与 PluginEffect 的逆序撤销保持一致
         List<String> pluginIds = new ArrayList<>(handle.getPluginIds());
         for (int i = pluginIds.size() - 1; i >= 0; i--) {
             unload(pluginIds.get(i));

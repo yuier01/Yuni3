@@ -55,7 +55,7 @@ import java.util.function.Predicate;
  * <ol>
  *   <li>{@link #apply(YuniContext)} —— 插件被加载时调用一次，用于注册全部能力。</li>
  *   <li>插件卸载 —— <b>无需插件参与</b>。框架自动逆序撤销 {@code apply} 期间
- *       建立的全部 Effect（监听器、命令、定时任务、服务、自定义资源）。
+ *       建立的全部 PluginEffect（监听器、命令、定时任务、服务、自定义资源）。
  *       框架不认识的资源用 {@code ctx.effect(...)} 声明。</li>
  * </ol>
  *
@@ -86,7 +86,7 @@ public interface YuniPlugin {
      * 注册本插件的全部能力。
      *
      * <p>本方法在插件加载时被调用<b>一次</b>。期间通过 {@code ctx} 建立的一切注册
-     * 都是 Effect，会在插件卸载时自动逆序撤销。</p>
+     * 都是 PluginEffect，会在插件卸载时自动逆序撤销。</p>
      *
      * <h3>实现约束</h3>
      * <ul>
@@ -100,7 +100,7 @@ public interface YuniPlugin {
      *
      * <h3>异常</h3>
      * <p>抛出异常会使该插件进入 {@code FAILED} 状态：框架记录完整堆栈、
-     * 在管理端标记为失败、并跳过该插件（不影响其他插件）。已建立的 Effect
+     * 在管理端标记为失败、并跳过该插件（不影响其他插件）。已建立的 PluginEffect
      * 会被回滚，避免半初始化状态。</p>
      *
      * @param ctx 该插件专属的上下文；不可为 {@code null}

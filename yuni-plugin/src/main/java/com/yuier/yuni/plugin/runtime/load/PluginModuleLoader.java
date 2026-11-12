@@ -150,9 +150,12 @@ public final class PluginModuleLoader {
      */
     public List<PluginFiber> loadModule(File jarFile, Path moduleDir) {
         List<PluginFiber> loaded = new ArrayList<>();
+        // 解析模块元数据
         ModuleMetadata metadata = readModuleMetadata(moduleDir, jarFile.getName());
         String moduleId = metadata.getModuleId();
 
+        // 为每个 jar 创建独立类加载器，其父加载器为 PluginClassLoaderFactory 自身的加载器，确保能看到框架类
+        // 故在重载插件的场景下，加载插件类时可以稳定解析框架类，不会抛出 error
         try (PluginClassLoader classLoader = PluginClassLoaderFactory.create(jarFile)) {
             List<Class<?>> pluginClasses = discoverPluginClasses(jarFile, classLoader, metadata);
             if (pluginClasses.isEmpty()) {
@@ -287,6 +290,7 @@ public final class PluginModuleLoader {
      * @return 模块元数据，永不为 {@code null}
      */
     private ModuleMetadata readModuleMetadata(Path moduleDir, String jarFileName) {
+        // 默认以 jarFileName 作为模块元数据的模块 ID 与模块名称
         ModuleMetadata fallback = new ModuleMetadata();
         fallback.setModuleId(stripExtension(jarFileName));
         fallback.setModuleName(stripExtension(jarFileName));
@@ -300,10 +304,12 @@ public final class PluginModuleLoader {
             return fallback;
         }
         try {
+            // 解析 metadata.json 为实体类
             ModuleMetadata metadata = objectMapper.readValue(metadataFile.toFile(), ModuleMetadata.class);
             if (metadata == null) {
                 return fallback;
             }
+            // 防空设计
             if (metadata.getModuleId() == null || metadata.getModuleId().isBlank()) {
                 metadata.setModuleId(fallback.getModuleId());
             }

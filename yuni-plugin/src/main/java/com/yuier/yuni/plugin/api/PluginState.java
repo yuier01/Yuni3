@@ -8,7 +8,7 @@ import lombok.Getter;
  * <h2>为什么不在 API 层直接用 {@code FiberState}</h2>
  * <p>运行时内部的 {@code FiberState} 有六个值，其中 {@code LOADING} 与
  * {@code UNLOADING} 是<b>瞬态</b>——它们存在的时间只有一次 {@code apply} 调用
- * 或一次 Effect 撤销的时长，管理端无论如何轮询都几乎观察不到。
+ * 或一次 PluginEffect 撤销的时长，管理端无论如何轮询都几乎观察不到。
  * 把它们放进公共契约，等于让所有消费方（管理端、webapi、插件）
  * 都为一个永远不出现的分支写代码。</p>
  *
@@ -52,7 +52,7 @@ public enum PluginState {
     /**
      * {@code apply(ctx)} 抛出异常，插件不可用。
      *
-     * <p>已建立的 Effect 已被回滚，因此不会出现「标记为失败但监听器仍在工作」
+     * <p>已建立的 PluginEffect 已被回滚，因此不会出现「标记为失败但监听器仍在工作」
      * 的半初始化状态。失败原因见 {@link PluginView#getFailureSummary()}。</p>
      */
     FAILED("加载失败"),
@@ -63,7 +63,7 @@ public enum PluginState {
     UNLOADING("卸载中"),
 
     /**
-     * 已完全卸载，全部 Effect 已撤销。
+     * 已完全卸载，全部 PluginEffect 已撤销。
      */
     DISPOSED("已卸载");
 

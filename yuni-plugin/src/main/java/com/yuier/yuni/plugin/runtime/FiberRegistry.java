@@ -311,7 +311,7 @@ public final class FiberRegistry {
     }
 
     /**
-     * 全部 Fiber 及其后代的 Effect 总数。
+     * 全部 Fiber 及其后代的 PluginEffect 总数。
      *
      * <p>用于全局泄漏检测：全量卸载后本方法应返回 {@code 0}。</p>
      *

@@ -39,11 +39,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       卸载 Fiber 后监听器、定时任务、提供的服务全部消失（§3.3）；</li>
  *   <li><b>能力即注册</b>：一个插件同时贡献多种能力（命令 + 定时 + 事件 + 服务），
  *       不需要选择「插件类型」（§1.1）；</li>
- *   <li><b>可观测</b>：加载后能查到它贡献了哪些能力、有多少 Effect（§15.1 的
+ *   <li><b>可观测</b>：加载后能查到它贡献了哪些能力、有多少 PluginEffect（§15.1 的
  *       「类型从声明变推导」）。</li>
  * </ol>
  *
- * <p>本测试的插件刻意设计成「什么都做一点」，以覆盖多种 Effect 的注册与撤销。</p>
+ * <p>本测试的插件刻意设计成「什么都做一点」，以覆盖多种 PluginEffect 的注册与撤销。</p>
  */
 class PluginLifecycleIntegrationTest {
 
@@ -152,7 +152,7 @@ class PluginLifecycleIntegrationTest {
     }
 
     /**
-     * 一个「什么都做一点」的插件——用于覆盖多种 Effect 的注册与撤销。
+     * 一个「什么都做一点」的插件——用于覆盖多种 PluginEffect 的注册与撤销。
      */
     public static final class MultiAbilityPlugin implements YuniPlugin {
 
@@ -206,7 +206,7 @@ class PluginLifecycleIntegrationTest {
 
         // 加载成功，贡献了 4 类能力
         assertEquals(FiberState.ACTIVE, fiber.getState());
-        assertEquals(4, fiber.getEffectCount(), "应有 4 个 Effect：消息 + 定时 + 服务 + 自定义");
+        assertEquals(4, fiber.getEffectCount(), "应有 4 个 PluginEffect：消息 + 定时 + 服务 + 自定义");
         // 注册表：消息 1 条；服务不进注册表（在 ServiceRegistry 里）
         assertEquals(1, runtime.getRegistrations().getTotalSize());
         assertTrue(runtime.getServices().contains(MultiAbilityPlugin.Greeter.class));
@@ -229,7 +229,7 @@ class PluginLifecycleIntegrationTest {
         List<String> failures = runtime.unload(fiber.getId());
 
         assertTrue(failures.isEmpty(), "清理不应失败: " + failures);
-        assertEquals(0, fiber.getEffectCount(), "Effect 必须归零");
+        assertEquals(0, fiber.getEffectCount(), "PluginEffect 必须归零");
         assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
         assertTrue(!runtime.getServices().contains(MultiAbilityPlugin.Greeter.class),
                 "提供的服务必须注销");

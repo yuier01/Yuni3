@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 调度类 Effect 的单元测试——覆盖 {@code ctx.schedule} / {@code ctx.every} /
+ * 调度类 PluginEffect 的单元测试——覆盖 {@code ctx.schedule} / {@code ctx.every} /
  * {@code ctx.runNow} 的注册与<b>卸载时自动取消</b>。
  *
  * <p>这里使用真实的 {@link ThreadPoolTaskScheduler} 与真实的
@@ -93,7 +93,7 @@ class PluginSchedulerTest {
         PluginFiber fiber = runtime.load(plugin, null, null, null);
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
-        // 定时任务也是一个 Effect，因此会被登记
+        // 定时任务也是一个 PluginEffect，因此会被登记
         assertEquals(1, fiber.getEffectCount());
         assertEquals(1, taskManager.taskCount());
 

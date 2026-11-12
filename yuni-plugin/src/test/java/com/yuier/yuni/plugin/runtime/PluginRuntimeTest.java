@@ -24,8 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>这些测试是设计文档 §9「生命周期」与 §14.7「测试策略」中
  * <b>集成层</b>要求的核心断言：</p>
  * <ul>
- *   <li>加载后 Effect 被登记，卸载后<b>归零</b>；</li>
- *   <li>{@code apply} 抛异常时插件进入 FAILED 且已建立的 Effect 被回滚；</li>
+ *   <li>加载后 PluginEffect 被登记，卸载后<b>归零</b>；</li>
+ *   <li>{@code apply} 抛异常时插件进入 FAILED 且已建立的 PluginEffect 被回滚；</li>
  *   <li>依赖未满足时停在 PENDING 且 {@code apply} <b>不被调用</b>；</li>
  *   <li>重复加载同 ID 插件被拒绝（不静默覆盖）。</li>
  * </ul>
@@ -35,7 +35,7 @@ class PluginRuntimeTest {
     /**
      * 构造一个不注入定时任务管理器的运行时。
      *
-     * <p>本测试只覆盖生命周期与 Effect 语义，因此不装配调度能力——
+     * <p>本测试只覆盖生命周期与 PluginEffect 语义，因此不装配调度能力——
      * 那会让每个用例都要拉起 Spring 的 {@code TaskScheduler}。
      * 调度能力的覆盖在 {@code PluginSchedulerTest}（8 个用例）里，
      * 那里装配了真实的 {@code DynamicTaskManager}。</p>
@@ -47,7 +47,7 @@ class PluginRuntimeTest {
     }
 
     @Test
-    @DisplayName("加载一个注册了能力的插件后处于 ACTIVE，且 Effect 数正确")
+    @DisplayName("加载一个注册了能力的插件后处于 ACTIVE，且 PluginEffect 数正确")
     void loadsPluginAndRegistersEffects() {
         PluginRuntime runtime = runtime();
 
@@ -68,15 +68,15 @@ class PluginRuntimeTest {
         PluginFiber fiber = runtime.load(plugin, "test-module", null, null);
 
         assertEquals(FiberState.ACTIVE, fiber.getState());
-        // 两个事件注册 + 一个自定义 Effect
+        // 两个事件注册 + 一个自定义 PluginEffect
         assertEquals(3, fiber.getEffectCount());
-        // 注册表也应看到这三条（自定义 Effect 不进注册表，故为 2）
+        // 注册表也应看到这三条（自定义 PluginEffect 不进注册表，故为 2）
         assertEquals(2, runtime.getRegistrations().getTotalSize());
         assertEquals(1, runtime.getFibers().getPluginCount());
     }
 
     @Test
-    @DisplayName("卸载后 Effect 归零，注册表清空——这是热重载允许关 ClassLoader 的前提")
+    @DisplayName("卸载后 PluginEffect 归零，注册表清空——这是热重载允许关 ClassLoader 的前提")
     void unloadZeroesEffectsAndRegistrations() {
         PluginRuntime runtime = runtime();
 
@@ -93,7 +93,7 @@ class PluginRuntimeTest {
         List<String> failures = runtime.unload(fiber.getId());
 
         assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
-        assertEquals(0, fiber.getEffectCount(), "Effect 必须归零");
+        assertEquals(0, fiber.getEffectCount(), "PluginEffect 必须归零");
         assertEquals(FiberState.DISPOSED, fiber.getState());
         assertEquals(0, runtime.getFibers().getPluginCount());
         assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
@@ -101,7 +101,7 @@ class PluginRuntimeTest {
     }
 
     @Test
-    @DisplayName("apply 抛异常：插件进入 FAILED，且已建立的 Effect 被回滚")
+    @DisplayName("apply 抛异常：插件进入 FAILED，且已建立的 PluginEffect 被回滚")
     void failedApplyRollsBackEffects() {
         PluginRuntime runtime = runtime();
         AtomicInteger disposed = new AtomicInteger();
@@ -114,7 +114,7 @@ class PluginRuntimeTest {
 
             @Override
             public void apply(YuniContext ctx) {
-                // 先注册两个 Effect，再抛异常——模拟「注册到一半失败」
+                // 先注册两个 PluginEffect，再抛异常——模拟「注册到一半失败」
                 ctx.onMessage((ev, reply) -> { });
                 ctx.effect(() -> disposed::incrementAndGet);
                 throw new IllegalStateException("apply 中途失败");
@@ -128,8 +128,8 @@ class PluginRuntimeTest {
         assertTrue(fiber.getFailureCause().get().getMessage().contains("apply 中途失败"));
 
         // 回滚是关键：不回滚会出现「标记为失败但监听器仍在工作」的半初始化状态
-        assertEquals(0, fiber.getEffectCount(), "失败后 Effect 必须回滚");
-        assertEquals(1, disposed.get(), "自定义 Effect 的 Disposer 应被调用");
+        assertEquals(0, fiber.getEffectCount(), "失败后 PluginEffect 必须回滚");
+        assertEquals(1, disposed.get(), "自定义 PluginEffect 的 Disposer 应被调用");
         assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表不应残留半初始化条目");
     }
 
@@ -396,7 +396,7 @@ class PluginRuntimeTest {
     }
 
     @Test
-    @DisplayName("全量卸载后全局 Effect 归零")
+    @DisplayName("全量卸载后全局 PluginEffect 归零")
     void unloadAllLeavesNoResidue() {
         PluginRuntime runtime = runtime();
 

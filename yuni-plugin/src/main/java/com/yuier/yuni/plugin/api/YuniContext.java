@@ -43,10 +43,10 @@ import org.slf4j.Logger;
  *
  * <h2>核心不变式</h2>
  * <blockquote>
- *   <b>{@code ctx} 上的一切注册都是 Effect——在插件卸载时自动撤销。</b>
+ *   <b>{@code ctx} 上的一切注册都是 PluginEffect——在插件卸载时自动撤销。</b>
  * </blockquote>
  * <p>唯一的例外是框架不认识的资源（自建连接、线程池、文件句柄），
- * 它们必须通过 {@link #effect(Effect)} 声明清理方式。</p>
+ * 它们必须通过 {@link #effect(PluginEffect)} 声明清理方式。</p>
  *
  * <h2>一个典型插件的完整写法</h2>
  * <pre>{@code
@@ -72,7 +72,7 @@ import org.slf4j.Logger;
  *
  * @see YuniPlugin
  * @see Disposable
- * @see Effect
+ * @see PluginEffect
  */
 public interface YuniContext {
 
@@ -306,7 +306,7 @@ public interface YuniContext {
      * @param effect 资源获取与释放声明
      * @return 撤销句柄
      */
-    Disposable effect(Effect effect);
+    Disposable effect(PluginEffect effect);
 
     // ==================== 服务 ====================
 
@@ -338,7 +338,7 @@ public interface YuniContext {
     /**
      * 注册一个服务供其他插件使用。
      *
-     * <p>是 Effect——插件卸载时服务自动注销，依赖它的插件会转为
+     * <p>是 PluginEffect——插件卸载时服务自动注销，依赖它的插件会转为
      * {@code PENDING} 或失败（取决于依赖是必需还是可选）。</p>
      *
      * <pre>{@code

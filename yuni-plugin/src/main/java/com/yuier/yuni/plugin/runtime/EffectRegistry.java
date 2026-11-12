@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Effect 登记表——一个插件实例持有的全部可撤销注册。
+ * PluginEffect 登记表——一个插件实例持有的全部可撤销注册。
  *
  * <h2>职责</h2>
  * <p>{@code ctx} 上的每一次注册（监听器、命令、定时任务、服务、自定义资源）
@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code synchronized} 保护列表操作。登记表本身不是热点，锁竞争可忽略。</p>
  *
  * <h2>泄漏检测</h2>
- * <p>{@link #size()} 用于验证「卸载后 Effect 归零」这一不变式——
+ * <p>{@link #size()} 用于验证「卸载后 PluginEffect 归零」这一不变式——
  * 热重载流程会断言它，见 {@code PluginRuntime#reloadModule}。
  * 这是 2026-08 P0 事故的直接产物：当时容器被清空而插件的注册未被撤销，
  * 且无任何指标可观测。</p>
@@ -48,7 +48,7 @@ public final class EffectRegistry {
     private final AtomicBoolean sealed = new AtomicBoolean(false);
 
     /**
-     * 登记一个 Effect。
+     * 登记一个 PluginEffect。
      *
      * <p>若登记表已封存（插件正在卸载或已卸载），传入的句柄会被<b>立即撤销</b>
      * 并返回 {@code false}。这防止「卸载过程中有异步回调又注册了东西」
@@ -73,11 +73,11 @@ public final class EffectRegistry {
     }
 
     /**
-     * 当前登记的 Effect 数量。
+     * 当前登记的 PluginEffect 数量。
      *
      * <p>用于泄漏检测：插件卸载完成后本方法应返回 {@code 0}。</p>
      *
-     * @return Effect 数量
+     * @return PluginEffect 数量
      */
     public synchronized int size() {
         return effects.size();
@@ -93,7 +93,7 @@ public final class EffectRegistry {
     }
 
     /**
-     * 封存登记表并撤销全部 Effect。
+     * 封存登记表并撤销全部 PluginEffect。
      *
      * <p>本方法幂等：重复调用直接返回空列表。执行流程：</p>
      * <ol>

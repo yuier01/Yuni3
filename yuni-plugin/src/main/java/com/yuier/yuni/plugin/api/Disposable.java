@@ -3,7 +3,7 @@ package com.yuier.yuni.plugin.api;
 /**
  * 可撤销句柄。
  *
- * <p>本接口是新插件系统中「副作用（Effect）」的通用返回类型。凡是插件通过
+ * <p>本接口是新插件系统中「副作用（PluginEffect）」的通用返回类型。凡是插件通过
  * {@link YuniContext} 注册到框架里的东西（事件监听器、命令树、定时任务、服务、
  * 自定义资源），框架都会返回一个 {@code Disposable}。调用 {@link #dispose()}
  * 即可撤销该注册。</p>
@@ -16,7 +16,7 @@ package com.yuier.yuni.plugin.api;
  *   <li>热重载时无法判断旧实例是否清理干净。</li>
  * </ul>
  * 把「注册」与「撤销」配对成同一个对象后，框架可以在插件卸载时自动逆序撤销
- * 全部 Effect，插件作者不再需要写清理代码。</p>
+ * 全部 PluginEffect，插件作者不再需要写清理代码。</p>
  *
  * <h2>约定</h2>
  * <ul>
@@ -26,7 +26,7 @@ package com.yuier.yuni.plugin.api;
  *   <li><b>线程安全</b>：可能在异步卸载流程中被调用，实现需保证并发安全。</li>
  * </ul>
  *
- * @see Effect 成对声明「获取资源」与「释放资源」的函数式入口
+ * @see PluginEffect 成对声明「获取资源」与「释放资源」的函数式入口
  * @see YuniContext 全部注册型 API 的宿主
  */
 @FunctionalInterface
@@ -39,7 +39,7 @@ public interface Disposable {
      * <ul>
      *   <li>幂等——第二次及以后的调用是空操作。</li>
      *   <li>不抛出受检异常；清理失败时应记录日志而非向上传播，
-     *       否则一个失败的清理会阻断后续 Effect 的撤销。</li>
+     *       否则一个失败的清理会阻断后续 PluginEffect 的撤销。</li>
      * </ul>
      */
     void dispose();
@@ -57,7 +57,7 @@ public interface Disposable {
      * 把多个 {@code Disposable} 合并成一个。
      *
      * <p>撤销时按传入顺序<b>逆序</b>执行（后注册的先撤销），这与
-     * {@link YuniContext} 内部维护 Effect 列表的顺序语义一致。</p>
+     * {@link YuniContext} 内部维护 PluginEffect 列表的顺序语义一致。</p>
      *
      * @param disposables 待合并的句柄；{@code null} 元素会被忽略
      * @return 合并后的句柄，撤销时逆序调用各元素

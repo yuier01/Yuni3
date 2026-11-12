@@ -1,7 +1,7 @@
 package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.Disposable;
-import com.yuier.yuni.plugin.api.Effect;
+import com.yuier.yuni.plugin.api.PluginEffect;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -28,10 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li><b>归零</b>：disposeAll 后登记表为空（泄漏检测的依据）。</li>
  * </ul>
  */
-class EffectRegistryTest {
+class PluginEffectRegistryTest {
 
     @Test
-    @DisplayName("逆序撤销：后注册的 Effect 先被释放")
+    @DisplayName("逆序撤销：后注册的 PluginEffect 先被释放")
     void disposesInReverseOrder() {
         EffectRegistry registry = new EffectRegistry();
         List<Integer> order = new ArrayList<>();
@@ -59,7 +59,7 @@ class EffectRegistryTest {
 
         registry.disposeAll();
 
-        // 归零是热重载断言的基础：Effect 不为零就不允许关闭 ClassLoader
+        // 归零是热重载断言的基础：PluginEffect 不为零就不允许关闭 ClassLoader
         assertEquals(0, registry.size());
         assertTrue(registry.isEmpty());
     }
@@ -145,7 +145,7 @@ class EffectRegistryTest {
         CountDownLatch releaseCleanup = new CountDownLatch(1);
         AtomicInteger lateDisposeCount = new AtomicInteger();
 
-        // 第一个 Effect 的清理会阻塞，制造「卸载进行中」的窗口
+        // 第一个 PluginEffect 的清理会阻塞，制造「卸载进行中」的窗口
         registry.register(() -> {
             cleanupStarted.countDown();
             try {
@@ -182,17 +182,17 @@ class EffectRegistryTest {
     }
 
     @Test
-    @DisplayName("Effect 接口可声明资源获取与释放（ctx.effect 的底层形态）")
+    @DisplayName("PluginEffect 接口可声明资源获取与释放（ctx.effect 的底层形态）")
     void effectDeclaresAcquireAndRelease() throws Exception {
         EffectRegistry registry = new EffectRegistry();
         StringBuilder log = new StringBuilder();
 
-        Effect effect = () -> {
+        PluginEffect effect = () -> {
             log.append("acquire;");
             return () -> log.append("release;");
         };
 
-        // Effect.apply() 声明了 throws Exception（资源获取可能失败），
+        // PluginEffect.apply() 声明了 throws Exception（资源获取可能失败），
         // 因此测试方法需要声明抛出；运行时由 PluginContext.effect 统一处理
         Disposable disposer = effect.apply();
         assertNotNull(disposer);

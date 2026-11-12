@@ -15,7 +15,7 @@ import lombok.Getter;
  * 插件实例运行时句柄（Fiber）。
  *
  * <p>「Fiber」一词借自 Cordis：一个已加载插件实例的运行时句柄。它承载
- * 状态机、Effect 登记表、子 Fiber、以及该插件的 ClassLoader 引用。</p>
+ * 状态机、PluginEffect 登记表、子 Fiber、以及该插件的 ClassLoader 引用。</p>
  *
  * <h2>取代了什么</h2>
  * <p>现行系统用三个类表达运行时实例：{@code PluginInstance}（抽象基类）、
@@ -31,7 +31,7 @@ import lombok.Getter;
  *   <li>正确性隐式依赖「扫描阶段已加载 jar 内全部类」这一实现细节，无测试保护。</li>
  * </ul>
  * <p>本类显式持有引用。它同时承担一个安全职责：{@link #dispose()} 会断言
- * 该 Fiber 的 Effect 已归零，只有确认无残留后才允许调用方关闭 ClassLoader
+ * 该 Fiber 的 PluginEffect 已归零，只有确认无残留后才允许调用方关闭 ClassLoader
  * （见 {@code PluginRuntime#reloadModule}）。</p>
  *
  * <h2>线程安全</h2>
@@ -44,7 +44,7 @@ import lombok.Getter;
  *       因此 apply 期间被卸载的 Fiber 不会被回写成 ACTIVE（防僵尸）。</li>
  * </ul>
  * <p>子 Fiber 列表用 {@link CopyOnWriteArrayList}（读多写少）。
- * Effect 的线程安全由 {@link EffectRegistry} 负责。</p>
+ * PluginEffect 的线程安全由 {@link EffectRegistry} 负责。</p>
  *
  * <p>{@link #disposed} 是独立的 volatile 标志，先于状态迁移置位，
  * 供幂等判定与插件侧 {@code ctx.isDisposed()} 使用。并发调用
@@ -79,7 +79,7 @@ public final class PluginFiber {
      */
     private final ClassLoader classLoader;
 
-    /** Effect 登记表。 */
+    /** PluginEffect 登记表。 */
     private final EffectRegistry effects = new EffectRegistry();
 
     /** 当前状态。 */
@@ -179,7 +179,7 @@ public final class PluginFiber {
      * 就会得到一个「状态是运行中、却已被移除出索引」的僵尸 Fiber。</p>
      *
      * @return 迁移成功返回 {@code true}；Fiber 已被卸载（状态不再是 LOADING）时返回 {@code false}，
-     *         调用方必须回滚已建立的 Effect 并按失败处理
+     *         调用方必须回滚已建立的 PluginEffect 并按失败处理
      */
     boolean tryMarkActive() {
         return state.compareAndSet(FiberState.LOADING, FiberState.ACTIVE);
@@ -242,12 +242,12 @@ public final class PluginFiber {
         return Collections.unmodifiableList(new ArrayList<>(pendingDependencies));
     }
 
-    // ==================== Effect ====================
+    // ==================== PluginEffect ====================
 
     /* getEffects() 由 @Getter 生成；下面是带计算的效应数量。 */
 
     /**
-     * 当前登记的 Effect 数量。
+     * 当前登记的 PluginEffect 数量。
      *
      * <p>用于泄漏检测。</p>
      *
@@ -265,7 +265,7 @@ public final class PluginFiber {
      * <p>执行顺序：</p>
      * <ol>
      *   <li>状态置为 {@link FiberState#UNLOADING}；</li>
-     *   <li>封存并撤销本 Fiber 的全部 Effect（逆序）；</li>
+     *   <li>封存并撤销本 Fiber 的全部 PluginEffect（逆序）；</li>
      *   <li>状态置为 {@link FiberState#DISPOSED}。</li>
      * </ol>
      *
@@ -283,7 +283,7 @@ public final class PluginFiber {
 
         List<String> failures = new ArrayList<>();
 
-        // 撤销本 Fiber 的 Effect（逆序），并带上插件名便于定位
+        // 撤销本 Fiber 的 PluginEffect（逆序），并带上插件名便于定位
         for (String failure : effects.disposeAll()) {
             failures.add("[" + id + "] " + failure);
         }
@@ -293,7 +293,7 @@ public final class PluginFiber {
     }
 
     /**
-     * 回滚本 Fiber 已建立的 Effect，但<b>不改变状态</b>。
+     * 回滚本 Fiber 已建立的 PluginEffect，但<b>不改变状态</b>。
      *
      * <p>专供 {@code apply} 失败后的清理使用。与 {@link #dispose()} 的区别至关重要：
      * {@code dispose()} 会把状态置为 {@link FiberState#DISPOSED}，于是「因为加载失败
@@ -301,7 +301,7 @@ public final class PluginFiber {
      * 就再也看不到这次失败了。本方法保留 {@link FiberState#FAILED} 状态，
      * 使失败可观测。</p>
      *
-     * <p>注意本方法只处理本 Fiber 的 Effect：
+     * <p>注意本方法只处理本 Fiber 的 PluginEffect：
      * 尚未挂载，也可能已挂载了一部分。已挂载的子 Fiber 随本 Fiber 一起被
      * {@link #dispose()} 处理（调用方在合适时机执行）。</p>
      *

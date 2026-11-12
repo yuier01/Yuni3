@@ -3,7 +3,7 @@ package com.yuier.yuni.plugin.api;
 /**
  * 副作用声明——把「获取资源」与「释放资源」写在同一个表达式里。
  *
- * <p>本接口是 {@link YuniContext#effect(Effect)} 的参数类型。它解决的问题是：
+ * <p>本接口是 {@link YuniContext#effect(PluginEffect)} 的参数类型。它解决的问题是：
  * 插件可能持有框架不认识的资源（网络连接、线程池、文件句柄、原生内存、
  * 第三方库的客户端……）。这类资源不会被自动撤销，必须显式声明清理方式。</p>
  *
@@ -17,9 +17,9 @@ package com.yuier.yuni.plugin.api;
  * });
  * }</pre>
  *
- * <h2>与「框架内置 Effect」的区别</h2>
+ * <h2>与「框架内置 PluginEffect」的区别</h2>
  * <p>{@code ctx.onMessage(...)}、{@code ctx.schedule(...)}、{@code ctx.provide(...)}
- * 这类 API 本身已是 Effect——框架知道怎么撤销它们，插件无需写清理代码。
+ * 这类 API 本身已是 PluginEffect——框架知道怎么撤销它们，插件无需写清理代码。
  * 只有框架<b>不认识</b>的资源才需要 {@code ctx.effect(...)}。</p>
  *
  * <h2>执行时机</h2>
@@ -35,10 +35,10 @@ package com.yuier.yuni.plugin.api;
  * 但清理句柄丢失」的泄漏。</p>
  *
  * @see Disposable
- * @see YuniContext#effect(Effect)
+ * @see YuniContext#effect(PluginEffect)
  */
 @FunctionalInterface
-public interface Effect {
+public interface PluginEffect {
 
     /**
      * 获取资源并返回其释放函数。

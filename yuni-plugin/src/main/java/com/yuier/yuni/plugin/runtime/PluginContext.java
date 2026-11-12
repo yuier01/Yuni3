@@ -5,7 +5,7 @@ import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.Disposable;
-import com.yuier.yuni.plugin.api.Effect;
+import com.yuier.yuni.plugin.api.PluginEffect;
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
@@ -317,7 +317,7 @@ public final class PluginContext implements YuniContext {
      * 事件注册的公共实现。
      *
      * <p>一次调用产生两个效果，且必须<b>原子地</b>一起成功或一起失败：
-     * 往注册表放入条目，往 Fiber 的 Effect 登记表放入移除句柄。
+     * 往注册表放入条目，往 Fiber 的 PluginEffect 登记表放入移除句柄。
      * 若登记失败（插件正在卸载），注册表条目也会被立即撤销——
      * 否则会出现「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
      *
@@ -335,7 +335,7 @@ public final class PluginContext implements YuniContext {
                 kind, fiber, ScopeFilter.ALL, predicate, subType, handler);
         Disposable removeEntry = registrations.add(entry);
 
-        // 把「移除注册表条目」交给 Effect 登记表管理，使卸载时自动摘除
+        // 把「移除注册表条目」交给 PluginEffect 登记表管理，使卸载时自动摘除
         if (fiber == null) {
             // 无 Fiber（测试或框架内部用法）：直接返回移除句柄
             return removeEntry;
@@ -437,9 +437,9 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public Disposable effect(Effect effect) {
+    public Disposable effect(PluginEffect effect) {
         if (effect == null) {
-            throw new IllegalArgumentException("Effect 不能为 null");
+            throw new IllegalArgumentException("PluginEffect 不能为 null");
         }
         Disposable disposer;
         try {
@@ -447,7 +447,7 @@ public final class PluginContext implements YuniContext {
         } catch (Exception e) {
             // 资源获取失败：不登记任何 Disposer，异常上抛使插件进入 FAILED。
             // 这样避免「资源已创建但清理句柄丢失」的泄漏。
-            throw new IllegalStateException("Effect 执行失败，插件将进入 FAILED 状态", e);
+            throw new IllegalStateException("PluginEffect 执行失败，插件将进入 FAILED 状态", e);
         }
         return registerDisposable(disposer == null ? Disposable.NOOP : disposer);
     }
@@ -472,7 +472,7 @@ public final class PluginContext implements YuniContext {
     }
 
     /**
-     * 把一个 Disposable 交给所属 Fiber 的 Effect 登记表。
+     * 把一个 Disposable 交给所属 Fiber 的 PluginEffect 登记表。
      *
      * @param disposable 撤销句柄
      * @return 原句柄，便于调用方继续使用
