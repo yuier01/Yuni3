@@ -236,6 +236,11 @@ public final class PluginRuntime {
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(artifact, "artifact");
         Objects.requireNonNull(descriptor, "descriptor");
+        if (artifact.getId() == null || fibers.artifact(artifact.getId()).isEmpty()) {
+            // Artifact 由加载器登记；直接调用 load 时也必须先登记，避免出现
+            // 「插件已加载但管理端/重载流程找不到它所属的加载单元」
+            throw new IllegalStateException("加载单元未登记: " + artifact);
+        }
         PluginDeclaration declaration = safeDeclaration(plugin);
         List<Class<?>> requiredServices = safeRequiredServices(plugin);
         PluginMetadata metadata = new PluginMetadata(declaration, descriptor, requiredServices);
@@ -247,7 +252,6 @@ public final class PluginRuntime {
                     "插件 " + id + " 已加载。请先 unload 再重新 load，或使用 reload。");
         }
 
-        registerArtifact(artifact);
         ClassLoader classLoader = artifact.getClassLoader();
         PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
         fibers.add(fiber);

@@ -22,7 +22,9 @@ public final class TestPlugins {
      * @return Fiber
      */
     public static PluginFiber load(PluginRuntime runtime, YuniPlugin plugin) {
-        return runtime.load(plugin, TestArtifacts.none(), PluginDescriptor.empty());
+        PluginArtifact artifact = TestArtifacts.none();
+        runtime.registerArtifact(artifact);
+        return runtime.load(plugin, artifact, PluginDescriptor.empty());
     }
 
     /**
@@ -34,7 +36,9 @@ public final class TestPlugins {
      * @return Fiber
      */
     public static PluginFiber load(PluginRuntime runtime, YuniPlugin plugin, String artifactId) {
-        return runtime.load(plugin, TestArtifacts.namespace(artifactId), PluginDescriptor.empty());
+        PluginArtifact artifact = TestArtifacts.namespace(artifactId);
+        runtime.registerArtifact(artifact);
+        return runtime.load(plugin, artifact, PluginDescriptor.empty());
     }
 
     /**
@@ -50,6 +54,7 @@ public final class TestPlugins {
                                    YuniPlugin plugin,
                                    PluginArtifact artifact,
                                    PluginDescriptor descriptor) {
+        runtime.registerArtifact(artifact);
         return runtime.load(plugin, artifact, descriptor);
     }
 }

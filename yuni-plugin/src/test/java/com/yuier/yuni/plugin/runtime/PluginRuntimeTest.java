@@ -2,6 +2,7 @@ package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginDeclaration;
+import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
@@ -469,5 +470,17 @@ class PluginRuntimeTest {
         public NoDefaultCtor(String required) {
             // 故意要求参数
         }
+    }
+    @Test
+    @DisplayName("load 要求加载单元已登记，避免孤立插件")
+    void loadRequiresRegisteredArtifact() {
+        PluginRuntime runtime = new PluginRuntime(null, null);
+        PluginArtifact artifact = PluginArtifact.jar(
+                "ghost", "Ghost", "ghost.jar", System.getProperty("java.io.tmpdir"),
+                getClass().getClassLoader());
+
+        assertThrows(IllegalStateException.class,
+                () -> runtime.load(YuniPlugin.of("ghost-plugin", ctx -> { }),
+                        artifact, PluginDescriptor.empty()));
     }
 }
