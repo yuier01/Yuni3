@@ -10,12 +10,9 @@ import java.util.Objects;
 /**
  * 插件加载单元——一个 jar 的文件与类加载信息。
  *
- * <p>正常业务中 Artifact 一定来自真实 jar，因此所有字段非空。测试场景由
- * 测试源码里的构造工具直接调用包内构造器，不经过本类的公开 API——业务代码
- * 不提供「没有 jar 的 Artifact」这种形态。</p>
- *
- * <p>Artifact 不表达插件分组——插件之间平级。它只回答两个问题：这些类从哪来、
- * 重载时换哪个 ClassLoader。</p>
+ * <p>所有字段非空：加载单元必然对应一个 jar 文件（测试可以指向一个不存在的
+ * 文件，但仍然是结构完整的 Artifact）。Artifact 不表达插件分组——插件之间
+ * 平级。</p>
  *
  * @see PluginRuntime#reload(String)
  * @see PluginArtifactLoader
@@ -25,32 +22,35 @@ import java.util.Objects;
 @EqualsAndHashCode
 public final class PluginArtifact {
 
-
-    /** 加载单元标识；无命名空间时为 {@code null}。 */
+    /** 加载单元标识；来自 metadata.json 的 {@code id}，缺省时为 jar 文件名。 */
     private final String id;
 
-    /** 展示名；无命名空间时为 {@code null}。 */
+    /** 展示名；来自 metadata.json 的 {@code name}。 */
     private final String name;
 
-    /** jar 文件名；无 jar 时为 {@code null}。 */
+    /** jar 文件名。 */
     private final String jarFileName;
 
-    /** jar 所在目录，同时是插件资源目录；无 jar 时为 {@code null}。 */
+    /** jar 所在目录，同时是插件资源目录。 */
     private final String jarParentPath;
 
-    /** 加载本单元插件类的 ClassLoader；无 jar 时为 {@code null}。 */
+    /** 加载本单元插件类的 ClassLoader。 */
     private final ClassLoader classLoader;
 
+    /*
+     * 包内可见：仅供测试源码构造「指向不存在 jar」的 Artifact。
+     * 生产代码请使用 jar(...) 工厂。
+     */
     PluginArtifact(String id,
-                           String name,
-                           String jarFileName,
-                           String jarParentPath,
-                           ClassLoader classLoader) {
+                   String name,
+                   String jarFileName,
+                   String jarParentPath,
+                   ClassLoader classLoader) {
         this.id = id;
         this.name = name;
-        this.jarFileName = jarFileName;
-        this.jarParentPath = jarParentPath;
-        this.classLoader = classLoader;
+        this.jarFileName = Objects.requireNonNull(jarFileName, "jarFileName");
+        this.jarParentPath = Objects.requireNonNull(jarParentPath, "jarParentPath");
+        this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     }
 
     /**
@@ -71,9 +71,6 @@ public final class PluginArtifact {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("加载单元标识不能为空");
         }
-        Objects.requireNonNull(jarFileName, "jarFileName");
-        Objects.requireNonNull(jarParentPath, "jarParentPath");
-        Objects.requireNonNull(classLoader, "classLoader");
         return new PluginArtifact(
                 id,
                 name == null || name.isBlank() ? id : name,
@@ -85,21 +82,18 @@ public final class PluginArtifact {
     /**
      * 资源目录。
      *
-     * @return 目录；没有文件系统位置时返回 {@code null}
+     * @return 目录
      */
     public Path getDataDir() {
-        return jarParentPath == null ? null : Path.of(jarParentPath);
+        return Path.of(jarParentPath);
     }
 
     /**
      * jar 文件位置。
      *
-     * @return 文件；没有文件系统位置时返回 {@code null}
+     * @return 文件
      */
     public Path getJarPath() {
-        if (jarParentPath == null || jarFileName == null) {
-            return null;
-        }
         return Path.of(jarParentPath, jarFileName);
     }
 }

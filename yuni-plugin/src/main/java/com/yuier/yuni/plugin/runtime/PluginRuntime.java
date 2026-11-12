@@ -252,9 +252,7 @@ public final class PluginRuntime {
         PluginFiber fiber = new PluginFiber(id, artifactId, plugin, metadata, classLoader);
         fibers.add(fiber);
         Path dataDir = artifact.getDataDir();
-        if (dataDir != null) {
-            pluginDataDirs.put(id, dataDir);
-        }
+        pluginDataDirs.put(id, dataDir);
 
         List<Class<?>> missing = missingDependencies(requiredServices);
         if (!missing.isEmpty()) {
@@ -584,12 +582,11 @@ public final class PluginRuntime {
         }
         PluginArtifact artifact = fibers.artifact(artifactId).orElseThrow(() ->
                 new IllegalStateException("加载单元不存在: " + artifactId));
-        Path jarPath = artifact.getJarPath();
-        java.io.File jarFile = jarPath == null ? null : jarPath.toFile();
-        if (jarFile == null || !jarFile.isFile()) {
+        java.io.File jarFile = artifact.getJarPath().toFile();
+        if (!jarFile.isFile()) {
             throw new IllegalStateException(
-                    "找不到加载单元 " + artifactId + " 的 jar 文件"
-                            + (jarFile == null ? "" : ": " + jarFile.getAbsolutePath()));
+                    "找不到加载单元 " + artifactId + " 的 jar 文件: "
+                            + jarFile.getAbsolutePath());
         }
 
         // 快照作用域例外：重新加载后按插件标识回填，保证「换实现不换配置」
