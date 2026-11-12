@@ -14,7 +14,7 @@ import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.config.PluginBootstrap;
 import com.yuier.yuni.plugin.runtime.load.PluginModuleLoader;
 import com.yuier.yuni.plugin.runtime.service.DefaultPermissionService;
-import com.yuier.yuni.plugin.runtime.service.MybatisPluginScopeStore;
+import com.yuier.yuni.plugin.runtime.service.MybatisUserScopeStore;
 import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
 import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
 import com.yuier.yuni.plugin.service.GroupPluginAbilityService;
@@ -94,7 +94,7 @@ public final class PluginSystem {
     private final PermissionService permissionService;
 
     /** 作用域持久化端口。 */
-    private final PluginScopeStore scopeStore;
+    private final UserScopeStore userScopeStore;
 
     // ==================== 核心组件（initialize 后持有） ====================
 
@@ -147,7 +147,7 @@ public final class PluginSystem {
                 permissionStore,
                 botConfig.getIfAvailable(),
                 botProvider::getIfAvailable);
-        this.scopeStore = new MybatisPluginScopeStore(abilityService);
+        this.userScopeStore = new MybatisUserScopeStore(abilityService);
     }
 
     /**
@@ -177,7 +177,7 @@ public final class PluginSystem {
 
         PluginModuleLoader newLoader = new PluginModuleLoader(objectMapper, newRuntime);
         newRuntime.bindModuleLoader(newLoader);
-        newRuntime.bindScopeStore(scopeStore);
+        newRuntime.bindUserScopeStore(userScopeStore);
 
         PluginBootstrap newBootstrap = new PluginBootstrap(newLoader, newRuntime, pluginDirectory);
 

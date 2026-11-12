@@ -11,7 +11,7 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.FiberRegistry.ModuleHandle;
-import com.yuier.yuni.plugin.runtime.PluginScopeStore.PluginScopeRecord;
+import com.yuier.yuni.plugin.runtime.UserScopeStore.UserScopeRecord;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
 import com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher;
@@ -80,7 +80,7 @@ import lombok.extern.slf4j.Slf4j;
  * @see PluginFiber
  * @see FiberRegistry
  * @see RegistrationTable
- * @see com.yuier.yuni.plugin.runtime.PluginScopes
+ * @see com.yuier.yuni.plugin.runtime.UserScopeOverrides
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -102,39 +102,38 @@ public final class PluginRuntime {
     private final Map<String, Path> pluginDataDirs = new ConcurrentHashMap<>();
 
     /**
-     * 插件作用域配置表——「每个插件在哪些群被显式开启 / 关闭」。
+     * 用户作用域覆盖——只存「用户显式改过」的部分，<b>不含作者基线</b>。
      *
-     * <p>记录每个插件的群粒度启停例外，供三处使用：</p>
-     * <ol>
-     *   <li>{@code ctx.getScope()} 回答「本插件在某群是否生效」——
-     *       主动插件（定时任务）没有事件上下文，框架无法替它施加过滤；</li>
-     *   <li>事件分发给每个注册项合成一个过滤器；</li>
-     *   <li>{@code PluginAdmin} 读写并在重启后从数据库恢复。</li>
-     * </ol>
+     * <p>它是三层模型里的用户层：</p>
+     * <pre>
+     *   用户覆盖  &gt;  作者基线（{@link #authorBaselines}）  &gt;  元数据 defaultEnable
+     * </pre>
      *
-     * <p>P6 之前这里是一个 {@code Map<String, ScopeFilter>}。换成
-     * {@link com.yuier.yuni.plugin.runtime.PluginScopes} 的原因是表达力：
-     * 单个过滤器无法同时表达「一部分群显式开启、另一部分显式关闭」，
-     * 而管理端的实际配置正是这个三态模型（见该类的说明）。</p>
+     * <p>它不是「最终生效视图」——最终值由 {@link #effectiveScopeOf} /
+     * {@link #isPluginEnabledIn} 每次现算。把三层合并结果缓存下来会成为一份
+     * 随时可能过期的快照，反而需要额外维护失效逻辑。</p>
+     *
+     * <p>用途：管理端读写、持久化（重启恢复）、以及合成事件分发过滤器时的
+     * 用户层输入。</p>
      */
-    private final PluginScopes pluginScopes =
-            new PluginScopes();
+    private final UserScopeOverrides userScopeOverrides =
+            new UserScopeOverrides();
 
     /**
-     * 插件注册时自带的基线作用域配置——「作者意图」这一层。
+     * 作者基线——插件注册时自带的 {@link ScopeFilter}（{@code ctx.plugin(child, filter)}）。
      *
-     * <p>与 {@link #pluginScopes}（用户配置）分工明确：</p>
+     * <p>与 {@link #userScopeOverrides}（用户覆盖）分工明确：</p>
      * <ul>
-     *   <li><b>基线</b>来自插件作者的代码（{@code ctx.plugin(child, filter)}）；</li>
-     *   <li><b>用户配置</b>来自管理端的显式操作，优先于基线。</li>
+     *   <li><b>基线</b>来自插件作者的代码；</li>
+     *   <li><b>用户覆盖</b>来自管理端的显式操作，优先于基线。</li>
      * </ul>
      * <p>没有基线时默认值取插件元数据的 {@code defaultEnable}。</p>
      *
      * <p>基线就是 {@link ScopeFilter} 本身——它已经是「默认值 + 例外群」的
-     * 值对象，不再需要另一种表示，也不需要记「原本是白名单还是黑名单」：
+     * 值对象，不需要另一种表示，也不需要记「原本是白名单还是黑名单」：
      * 默认值本身就把两种意图区分开了。</p>
      */
-    private final Map<String, ScopeFilter> baselines = new ConcurrentHashMap<>();
+    private final Map<String, ScopeFilter> authorBaselines = new ConcurrentHashMap<>();
 
     /**
      * 作用域持久化端口。
@@ -142,7 +141,7 @@ public final class PluginRuntime {
      * <p>为 {@code null} 时作用域配置仅存在于内存——测试场景与未装配数据库的
      * 集成场景都是这样，因此不视为错误。</p>
      */
-    private volatile PluginScopeStore scopeStore;
+    private volatile UserScopeStore userScopeStore;
 
     /**
      * 机器人实例供应函数。
@@ -303,7 +302,7 @@ public final class PluginRuntime {
              * 本身就是「默认值 + 例外群」——与用户配置同一模型，因此直接存，
              * 不需要再做一次形态转换。
              */
-            baselines.put(id, filter);
+            authorBaselines.put(id, filter);
         }
         if (parent != null) {
             parent.addChild(fiber);
@@ -674,13 +673,13 @@ public final class PluginRuntime {
          *
          * 基线来自「插件注册时代码里传的 filter」，生命周期与插件实例一致；
          * 卸载后必须清掉，否则热重载会留下旧类的配置、并且旧插件标识会持续
-         * 占用这张表（{@link #scopeFilterOf} 依赖 Fiber 存在，但这些条目是泄漏）。
+         * 占用这张表（{@link #effectiveScopeOf} 依赖 Fiber 存在，但这些条目是泄漏）。
          *
-         * 注意：用户配置的群例外表（{@link #pluginScopes}）<b>不</b>在这里清除
+         * 注意：用户配置的群例外表（{@link #userScopeOverrides}）<b>不</b>在这里清除
          * ——重载会先 unload 再 load，清掉就等于重载丢配置。
          * 需要真正清除用户配置时走 resetPluginScope。
          */
-        baselines.remove(pluginId);
+        authorBaselines.remove(pluginId);
 
         if (failures.isEmpty()) {
             log.info("插件已卸载: {}", pluginId);
@@ -771,7 +770,7 @@ public final class PluginRuntime {
         // 不同（用户改了插件），因此以快照为准回填，保证「换实现不换配置」。
         Map<String, Map<Long, Boolean>> scopeSnapshot = new LinkedHashMap<>();
         for (String pluginId : handle.getPluginIds()) {
-            Map<Long, Boolean> values = pluginScopes.all(pluginId);
+            Map<Long, Boolean> values = userScopeOverrides.all(pluginId);
             if (!values.isEmpty()) {
                 scopeSnapshot.put(pluginId, values);
             }
@@ -801,7 +800,7 @@ public final class PluginRuntime {
         for (PluginFiber fiber : loaded) {
             Map<Long, Boolean> values = scopeSnapshot.get(fiber.getId());
             if (values != null) {
-                pluginScopes.putAll(fiber.getId(), values);
+                userScopeOverrides.putAll(fiber.getId(), values);
                 restored++;
             }
         }
@@ -883,7 +882,7 @@ public final class PluginRuntime {
                                         .orElse(null)),
                         // 作用域判定委托给本运行时的当前配置——用户的群粒度启停
                         // 随时可变，因此必须在分发时查而不是注册时定
-                        this::scopeFilterOf);
+                        this::effectiveScopeOf);
                 this.pipeline = new EventPipeline(
                         registrations, this, eventAdapter, commandDispatcher);
             }
@@ -902,9 +901,9 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 过滤器；插件不存在或从未注册时为空
      */
-    public Optional<ScopeFilter> scopeFilterOf(String pluginId) {
+    public Optional<ScopeFilter> effectiveScopeOf(String pluginId) {
         return fibers.byId(pluginId).map(fiber ->
-                pluginScopes.toFilter(pluginId, effectiveDefaultEnabled(pluginId)));
+                userScopeOverrides.toFilter(pluginId, effectiveDefaultEnabled(pluginId)));
     }
 
     /**
@@ -914,7 +913,7 @@ public final class PluginRuntime {
      * @return 显式开启的群号；无则为空集
      */
     public Set<Long> explicitlyEnabledGroups(String pluginId) {
-        return pluginScopes.explicitlyEnabledGroups(pluginId);
+        return userScopeOverrides.explicitlyEnabledGroups(pluginId);
     }
 
     /**
@@ -930,7 +929,7 @@ public final class PluginRuntime {
      */
     public Boolean isPluginEnabledIn(String pluginId, long groupId) {
         // ① 用户显式配置的群例外优先级最高
-        Optional<Boolean> explicit = pluginScopes.explicitValue(pluginId, groupId);
+        Optional<Boolean> explicit = userScopeOverrides.explicitValue(pluginId, groupId);
         if (explicit.isPresent()) {
             return explicit.get();
         }
@@ -943,7 +942,7 @@ public final class PluginRuntime {
          * 例如插件自己写了 ctx.plugin(child, onlyGroups(200))，那 a=100/300
          * 就应当明确不生效——而不是回落到默认值（默认值为真时就会误判为生效）。
          */
-        ScopeFilter base = baseScopeOf(pluginId);
+        ScopeFilter base = authorBaselineOf(pluginId);
         if (base != null && !base.getExceptionGroups().isEmpty()) {
             boolean listed = base.getExceptionGroups().contains(groupId);
             // 基线默认开启时，列出的群是「被关闭的例外」；反之列出的群是「被开启的例外」
@@ -971,12 +970,12 @@ public final class PluginRuntime {
      */
     private boolean effectiveDefaultEnabled(String pluginId) {
         // 用户显式设置过全局开关 → 以它为准
-        Optional<Boolean> userGlobal = pluginScopes.explicitGlobalDefault(pluginId);
+        Optional<Boolean> userGlobal = userScopeOverrides.explicitGlobalDefault(pluginId);
         if (userGlobal.isPresent()) {
             return userGlobal.get();
         }
         // 其次看插件注册时的基线
-        ScopeFilter base = baseScopeOf(pluginId);
+        ScopeFilter base = authorBaselineOf(pluginId);
         if (base != null) {
             return base.isEnabledByDefault();
         }
@@ -993,8 +992,8 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      * @return 基线配置；没有时为 {@code null}
      */
-    private ScopeFilter baseScopeOf(String pluginId) {
-        return pluginId == null ? null : baselines.get(pluginId);
+    private ScopeFilter authorBaselineOf(String pluginId) {
+        return pluginId == null ? null : authorBaselines.get(pluginId);
     }
 
     /**
@@ -1084,7 +1083,7 @@ public final class PluginRuntime {
          * 优先描述基线：插件注册时传的 filter 是更强的意图表达
          * （插件作者明确说「只在某几个群生效」），而用户例外只是微调。
          */
-        ScopeFilter base = baseScopeOf(pluginId);
+        ScopeFilter base = authorBaselineOf(pluginId);
         if (base != null && !base.getExceptionGroups().isEmpty()) {
             // 默认开启 → 列出的是被排除的群；默认关闭 → 列出的是被允许的群
             return base.isEnabledByDefault()
@@ -1094,7 +1093,7 @@ public final class PluginRuntime {
 
         // 再看用户配置的群例外
         ScopeFilter persisted =
-                pluginScopes.toFilter(pluginId, effectiveDefaultEnabled(pluginId));
+                userScopeOverrides.toFilter(pluginId, effectiveDefaultEnabled(pluginId));
         if (persisted.getExceptionGroups().isEmpty()) {
             return persisted.isEnabledByDefault() ? "全部群" : "未记录";
         }
@@ -1110,7 +1109,7 @@ public final class PluginRuntime {
      * 修改「插件在某群是否生效」，并返回是否真的改变了配置。
      *
      * <h2>为什么放在运行时而不是 PluginAdmin 实现里</h2>
-     * <p>{@link com.yuier.yuni.plugin.runtime.PluginScopes} 是运行时的私有状态，
+     * <p>{@link com.yuier.yuni.plugin.runtime.UserScopeOverrides} 是运行时的私有状态，
      * 而分发给插件看的 {@link #isPluginEnabledIn} 也从它读取。写入与读取必须在
      * 同一个类里，否则会出现「管理端改了 A、分发读的是 B」这类问题。</p>
      *
@@ -1118,10 +1117,10 @@ public final class PluginRuntime {
      * <p>每个群有三个状态：<b>未设置</b>（按 {@code defaultEnable}）、
      * 显式开启、显式关闭。写入的值与默认值一致时<b>删除</b>该群的记录，
      * 使操作可逆——「关闭再开启」会回到「未设置」而不是留下一条无意义的记录。
-     * 具体实现在 {@link com.yuier.yuni.plugin.runtime.PluginScopes#set}。</p>
+     * 具体实现在 {@link com.yuier.yuni.plugin.runtime.UserScopeOverrides#set}。</p>
      *
      * <h2>写库</h2>
-     * <p>本方法在改完内存后立即调用 {@link com.yuier.yuni.plugin.runtime.PluginScopeStore}
+     * <p>本方法在改完内存后立即调用 {@link com.yuier.yuni.plugin.runtime.UserScopeStore}
      * 落库（若已装配）。落库失败<b>不回滚内存</b>：当前进程内的行为已经按新配置
      * 生效，回滚只会让内存与用户刚看到的反馈不一致。失败会记 error 日志，
      * 下一次成功写入会覆盖它。</p>
@@ -1135,7 +1134,7 @@ public final class PluginRuntime {
         PluginFiber fiber = fibers.byId(pluginId).orElseThrow(() ->
                 new IllegalArgumentException("插件不存在: " + pluginId));
 
-        pluginScopes.set(pluginId, groupId, enabled, fiber.getMetadata().isDefaultEnable());
+        userScopeOverrides.set(pluginId, groupId, enabled, fiber.getMetadata().isDefaultEnable());
         log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
                 pluginId, groupId, enabled, describeScope(pluginId));
         persistScope(pluginId);
@@ -1160,7 +1159,7 @@ public final class PluginRuntime {
         if (!fiberExists(pluginId)) {
             throw new IllegalArgumentException("插件不存在: " + pluginId);
         }
-        pluginScopes.setGlobalDefault(pluginId, enabled);
+        userScopeOverrides.setGlobalDefault(pluginId, enabled);
         log.info("插件 {} 的全局启停改为 {}（当前: {}）", pluginId, enabled, describeScope(pluginId));
         persistScope(pluginId);
     }
@@ -1172,8 +1171,8 @@ public final class PluginRuntime {
      * @return 本来是否有配置可清
      */
     public boolean resetPluginScope(String pluginId) {
-        boolean hadExceptions = pluginScopes.clear(pluginId).isPresent();
-        boolean hadGlobal = pluginScopes.clearGlobalDefault(pluginId);
+        boolean hadExceptions = userScopeOverrides.clear(pluginId).isPresent();
+        boolean hadGlobal = userScopeOverrides.clearGlobalDefault(pluginId);
         if (hadExceptions || hadGlobal) {
             persistScope(pluginId);
             log.info("插件 {} 的群例外与全局开关已重置为插件默认值", pluginId);
@@ -1189,9 +1188,9 @@ public final class PluginRuntime {
      * @param store 持久化实现；{@code null} 表示仅内存（测试场景）
      * @return {@code this}，便于链式配置
      */
-    public PluginRuntime bindScopeStore(
-            PluginScopeStore store) {
-        this.scopeStore = store;
+    public PluginRuntime bindUserScopeStore(
+            UserScopeStore store) {
+        this.userScopeStore = store;
         return this;
     }
 
@@ -1213,11 +1212,11 @@ public final class PluginRuntime {
      * @return 恢复了配置的插件数量；未装配存储时返回 0
      */
     public int restoreScopes() {
-        PluginScopeStore store = this.scopeStore;
+        UserScopeStore store = this.userScopeStore;
         if (store == null) {
             return 0;
         }
-        Map<String, PluginScopeRecord> stored;
+        Map<String, UserScopeRecord> stored;
         try {
             stored = store.loadAll();
         } catch (Exception e) {
@@ -1231,7 +1230,7 @@ public final class PluginRuntime {
 
         int restored = 0;
         for (PluginFiber fiber : fibers.getAll()) {
-            PluginScopeRecord record =
+            UserScopeRecord record =
                     stored.get(fiber.getId());
             if (record == null || record.isEmpty()) {
                 continue;
@@ -1240,8 +1239,8 @@ public final class PluginRuntime {
             // 全局开关：用户设置过就用它，否则用插件默认值。
             // 例外群的「相反值」判定以全局开关为基准，因此必须先定下它
             boolean global = record.getGlobalEnabled() != null ? record.getGlobalEnabled() : pluginDefault;
-            pluginScopes.setGlobalDefault(fiber.getId(), global);
-            pluginScopes.putAll(fiber.getId(),
+            userScopeOverrides.setGlobalDefault(fiber.getId(), global);
+            userScopeOverrides.putAll(fiber.getId(),
                     toValueMap(record.getExceptionGroups(), global));
             restored++;
         }
@@ -1275,7 +1274,7 @@ public final class PluginRuntime {
      * @param pluginId 插件标识
      */
     private void persistScope(String pluginId) {
-        PluginScopeStore store = this.scopeStore;
+        UserScopeStore store = this.userScopeStore;
         if (store == null) {
             return;
         }
@@ -1285,13 +1284,13 @@ public final class PluginRuntime {
                     .orElse(false);
             // 只持久化「用户显式设置过」的全局开关；
             // 未设置时存 null，让下次启动重新回落到插件元数据
-            Boolean global = pluginScopes.explicitGlobalDefault(pluginId).orElse(null);
+            Boolean global = userScopeOverrides.explicitGlobalDefault(pluginId).orElse(null);
             boolean effectiveGlobal = global != null ? global : pluginDefault;
             // 例外群 = 与有效全局值相反的那些群
             Set<Long> exceptionGroups =
-                    pluginScopes.oppositeGroups(pluginId, effectiveGlobal);
+                    userScopeOverrides.oppositeGroups(pluginId, effectiveGlobal);
             store.save(pluginId,
-                    new PluginScopeRecord(
+                    new UserScopeRecord(
                             global, exceptionGroups));
         } catch (Exception e) {
             // 不回滚内存：用户已经看到操作成功，回滚只会让内存与实际反馈不一致。

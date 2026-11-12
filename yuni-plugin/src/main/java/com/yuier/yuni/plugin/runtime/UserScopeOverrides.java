@@ -10,7 +10,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 插件作用域配置表——「每个插件在哪些群被显式开启 / 关闭」。
+ * 用户作用域覆盖表——只记录「用户显式改过」的部分，不含插件作者的基线。
+ *
+ * <p>它不是最终生效视图：最终值由 {@code PluginRuntime} 按
+ * 「用户覆盖 &gt; 作者基线 &gt; 元数据 defaultEnable」现算。本类只负责
+ * 用户层的三态（未设置 / 显式开启 / 显式关闭）与持久化形态的导出。</p>
  *
  * <h2>表示法：每个群一个三态</h2>
  * <p>用户对某个群的操作只有三种结果：未设置、显式开启、显式关闭。因此本表
@@ -19,8 +23,8 @@ import java.util.stream.Collectors;
  *   explicitGroups: pluginId → (groupId → true/false)
  * </pre>
  * <p>需要过滤器时，用「有效默认值 + 与默认值相反的群」合成
- * {@link ScopeFilter}（{@link #toFilter}）。这样不需要维护白名单 / 黑名单
- * 两张具名过滤器，也不需要「把新群并入哪一侧」的合并逻辑。</p>
+ * {@link ScopeFilter}（{@link #toFilter}）。白名单 / 黑名单不再是两套机制，
+ * 只是同一个值对象的两种取值。</p>
  *
  * <h2>为什么还要单独存「显式全局默认值」</h2>
  * <p>「用户把全局开关从插件默认值改成相反值」这一操作，在没有群例外时
@@ -38,7 +42,7 @@ import java.util.stream.Collectors;
  *
  * @see ScopeFilter
  */
-public final class PluginScopes {
+public final class UserScopeOverrides {
 
     /** 插件标识 → 该插件被显式设置过的群（群号 → 是否生效）。 */
     private final Map<String, Map<Long, Boolean>> explicitGroups = new ConcurrentHashMap<>();

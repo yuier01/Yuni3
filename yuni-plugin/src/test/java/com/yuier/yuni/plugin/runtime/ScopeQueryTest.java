@@ -274,7 +274,7 @@ class ScopeQueryTest {
 
         runtime.unload("主动插件");
 
-        assertTrue(runtime.scopeFilterOf("主动插件").isEmpty(),
+        assertTrue(runtime.effectiveScopeOf("主动插件").isEmpty(),
                 "卸载后作用域过滤器记录应被清理，避免泄漏");
     }
 

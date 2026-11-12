@@ -264,7 +264,7 @@ public final class EventPipeline {
         //
         // 顺带说明：现行系统在 request/meta/messageSent 三条路径上漏掉了
         // 这个检查，现在所有事件类型都必经此处。
-        if (!entry.scopeMatches(groupId, runtime::scopeFilterOf)) {
+        if (!entry.scopeMatches(groupId, runtime::effectiveScopeOf)) {
             return false;
         }
         // 关卡 4：附加条件

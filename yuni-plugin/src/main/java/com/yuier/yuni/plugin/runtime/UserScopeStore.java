@@ -9,7 +9,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 插件作用域配置的持久化端口。
+ * 用户作用域覆盖的持久化端口。
+ *
+ * <p>只存「用户显式改过」的部分（全局开关 + 群级覆盖），不存作者基线——
+ * 基线来自插件代码，每次加载重新读取即可。</p>
  *
  * <h2>为什么是「端口」而不是直接依赖 MyBatis</h2>
  * <p>{@code yuni-plugin} 里有两种数据访问方式并存：</p>
@@ -41,16 +44,16 @@ import java.util.Set;
  * <h2>与旧 {@code group_plugin_ability} 表的映射</h2>
  * <p>该表的 {@code (groupId, pluginId, ability)} 三元组可以无损承载本接口的形状：</p>
  * <ul>
- *   <li>{@code groupId = null} 的行 → 全局开关（{@link PluginScopeRecord#getGlobalEnabled()}）；</li>
+ *   <li>{@code groupId = null} 的行 → 全局开关（{@link UserScopeRecord#getGlobalEnabled()}）；</li>
  *   <li>{@code groupId = 具体群号} 的行 → 群例外集合中的一项。</li>
  * </ul>
  * <p>这恰好也是旧系统的用法——{@code PluginEnableProcessor} 在
  * {@code groupId} 为 {@code null} 时就是查全局例外。因此<b>历史数据可直接复用</b>。</p>
  *
- * @see PluginRuntime#bindScopeStore
+ * @see PluginRuntime#bindUserScopeStore
  * @see PluginRuntime#restoreScopes
  */
-public interface PluginScopeStore {
+public interface UserScopeStore {
 
     /**
      * 一个插件的完整作用域配置。
@@ -61,7 +64,7 @@ public interface PluginScopeStore {
     @Getter
     @ToString
     @EqualsAndHashCode
-    final class PluginScopeRecord {
+    final class UserScopeRecord {
 
         /** 全局（不限群）是否生效；{@code null} 表示用户未设置过。 */
         private final Boolean globalEnabled;
@@ -75,7 +78,7 @@ public interface PluginScopeStore {
          * @param globalEnabled   全局开关；{@code null} 表示未设置
          * @param exceptionGroups 群例外集合；{@code null} 视为空集
          */
-        public PluginScopeRecord(Boolean globalEnabled, Set<Long> exceptionGroups) {
+        public UserScopeRecord(Boolean globalEnabled, Set<Long> exceptionGroups) {
             this.globalEnabled = globalEnabled;
             // 冻结例外集合，避免调用方修改影响存储层
             this.exceptionGroups = exceptionGroups == null
@@ -101,7 +104,7 @@ public interface PluginScopeStore {
      *
      * @return 插件标识 → 配置；无数据时返回空 Map
      */
-    Map<String, PluginScopeRecord> loadAll();
+    Map<String, UserScopeRecord> loadAll();
 
     /**
      * 覆盖保存一个插件的完整作用域配置。
@@ -115,7 +118,7 @@ public interface PluginScopeStore {
      * @param pluginId 插件标识
      * @param record   该插件的完整配置
      */
-    void save(String pluginId, PluginScopeRecord record);
+    void save(String pluginId, UserScopeRecord record);
 
     /**
      * 便于实现的便捷方法：由 {@link ScopeFilter} 构造记录。
@@ -126,10 +129,10 @@ public interface PluginScopeStore {
      * @param filter 作用域过滤器；{@code null} 表示未设置
      * @return 对应的记录
      */
-    static PluginScopeRecord of(ScopeFilter filter) {
+    static UserScopeRecord of(ScopeFilter filter) {
         if (filter == null) {
-            return new PluginScopeRecord(null, Set.of());
+            return new UserScopeRecord(null, Set.of());
         }
-        return new PluginScopeRecord(filter.isEnabledByDefault(), filter.getExceptionGroups());
+        return new UserScopeRecord(filter.isEnabledByDefault(), filter.getExceptionGroups());
     }
 }

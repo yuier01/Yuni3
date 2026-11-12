@@ -2,7 +2,7 @@ package com.yuier.yuni.plugin.runtime.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.yuier.yuni.plugin.domain.entity.GroupPluginAbilityEntity;
-import com.yuier.yuni.plugin.runtime.PluginScopeStore;
+import com.yuier.yuni.plugin.runtime.UserScopeStore;
 import com.yuier.yuni.plugin.service.GroupPluginAbilityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@link PluginScopeStore} 的 MyBatis 实现——读写 {@code group_plugin_ability} 表。
+ * {@link UserScopeStore} 的 MyBatis 实现——读写 {@code group_plugin_ability} 表。
  *
  * <h2>为什么复用旧表而不是建新表</h2>
  * <p>该表的结构 {@code (id, groupId, pluginId, ability)} 恰好是群粒度启停所需的
@@ -42,11 +42,11 @@ import java.util.Set;
  * 「用户把某群拨回默认值」之后旧记录不会残留并在下次启动时复活——
  * 那正是三态模型要避免的一类 bug。</p>
  *
- * @see PluginScopeStore
+ * @see UserScopeStore
  */
 @Slf4j
 @RequiredArgsConstructor
-public class MybatisPluginScopeStore implements PluginScopeStore {
+public class MybatisUserScopeStore implements UserScopeStore {
 
     /** 群插件启停表的数据访问。 */
     private final GroupPluginAbilityService abilityService;
@@ -54,7 +54,7 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
     /* 构造器由 @RequiredArgsConstructor 生成：(GroupPluginAbilityService abilityService)。 */
 
     @Override
-    public Map<String, PluginScopeRecord> loadAll() {
+    public Map<String, UserScopeRecord> loadAll() {
         List<GroupPluginAbilityEntity> rows = abilityService.list();
         if (rows == null || rows.isEmpty()) {
             return Map.of();
@@ -82,11 +82,11 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
             }
         }
 
-        Map<String, PluginScopeRecord> result = new LinkedHashMap<>();
+        Map<String, UserScopeRecord> result = new LinkedHashMap<>();
         Set<String> pluginIds = new LinkedHashSet<>(globals.keySet());
         pluginIds.addAll(exceptions.keySet());
         for (String pluginId : pluginIds) {
-            result.put(pluginId, new PluginScopeRecord(
+            result.put(pluginId, new UserScopeRecord(
                     globals.get(pluginId),
                     exceptions.getOrDefault(pluginId, Set.of())));
         }
@@ -96,7 +96,7 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void save(String pluginId, PluginScopeRecord record) {
+    public void save(String pluginId, UserScopeRecord record) {
         if (pluginId == null) {
             return;
         }
@@ -131,7 +131,7 @@ public class MybatisPluginScopeStore implements PluginScopeStore {
              * 注意：本方法拿不到「该群是否生效」的直接答案——因为记录里存的是
              * 「与全局相反的群集合」。当全局开关为 null（用户没设置过，取插件默认）
              * 时，这里只能如实写入「与默认相反」，由运行时在装载时结合插件默认值
-             * 还原。因此真正的判定始终由 PluginScopes 负责，本层只做搬运。
+             * 还原。因此真正的判定始终由 UserScopeOverrides 负责，本层只做搬运。
              */
             row.setAbility(!Boolean.TRUE.equals(record.getGlobalEnabled()));
             abilityService.save(row);
