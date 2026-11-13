@@ -424,7 +424,7 @@ public final class PluginRuntime {
     /**
      * 尝试加载<b>全部</b>停在 PENDING 的插件。
      *
-     * @param dataDirResolver 由插件标识解析资源目录的函数；可为 {@code null}
+     * @param dataDirResolver 由插件标识解析资源目录的函数
      * @return 本次新激活的插件数量
      */
     public int activatePending(Function<String, Path> dataDirResolver) {
@@ -433,7 +433,7 @@ public final class PluginRuntime {
         while (progressed) {
             progressed = false;
             for (PluginFiber fiber : fibers.withState(FiberState.PENDING)) {
-                Path dir = dataDirResolver == null ? null : dataDirResolver.apply(fiber.getId());
+                Path dir = dataDirResolver.apply(fiber.getId());
                 if (tryActivate(fiber.getId(), dir)) {
                     activated++;
                     progressed = true;
