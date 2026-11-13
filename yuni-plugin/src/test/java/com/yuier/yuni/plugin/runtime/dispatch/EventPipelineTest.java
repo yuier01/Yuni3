@@ -218,14 +218,14 @@ class EventPipelineTest {
         runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
                 PluginAbilityRegistry.RegistrationKind.NOTICE, inScope,
                 new ScopeFilter(false, Set.of(999L)),
-                null, null,
+                PluginAbilityRegistry.Registration.ALWAYS, null,
                 (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
         runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
                 PluginAbilityRegistry.RegistrationKind.NOTICE, outOfScope,
                 new ScopeFilter(true, Set.of(999L)),
-                null, null,
+                PluginAbilityRegistry.Registration.ALWAYS, null,
                 (NoticeHandler)
                         (ev, reply) -> outOfScopeHits.incrementAndGet()));
 

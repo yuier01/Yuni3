@@ -281,9 +281,6 @@ public final class EventPipeline {
     @SuppressWarnings("unchecked")
     private boolean matchesPredicate(PluginAbilityRegistry.Registration registration, Event event) {
         Predicate<Object> predicate = registration.getPredicate();
-        if (predicate == null) {
-            return true;
-        }
         try {
             return predicate.test(event);
         } catch (Throwable t) {

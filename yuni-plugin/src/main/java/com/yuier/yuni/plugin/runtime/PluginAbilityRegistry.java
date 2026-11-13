@@ -122,6 +122,9 @@ public final class PluginAbilityRegistry {
     @EqualsAndHashCode
     public static final class Registration {
 
+        /** 无条件谓词——表示「不附加任何条件」，替代 null 哨兵。 */
+        public static final Predicate<Object> ALWAYS = event -> true;
+
         /** 能力种类。 */
         private final RegistrationKind registrationKind;
 
@@ -136,7 +139,7 @@ public final class PluginAbilityRegistry {
          */
         private final ScopeFilter filter;
 
-        /** 附加探测条件；{@code null} 表示无条件（命令与定时任务不使用）。 */
+        /** 附加探测条件；无条件时使用 {@link #ALWAYS}，永不为 {@code null}。 */
         private final Predicate<Object> predicate;
 
         /** 子类型过滤（通知 / 请求 / 元事件使用）；{@code null} 或空表示不过滤。 */
@@ -164,7 +167,7 @@ public final class PluginAbilityRegistry {
             this.registrationKind = registrationKind;
             this.owner = owner;
             this.filter = filter == null ? ScopeFilter.ALL : filter;
-            this.predicate = predicate;
+            this.predicate = java.util.Objects.requireNonNull(predicate, "predicate");
             this.subType = subType;
             this.payload = payload;
         }

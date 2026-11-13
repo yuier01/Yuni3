@@ -338,7 +338,7 @@ public final class PluginContext implements YuniContext {
     private Disposable registerEventHook(PluginAbilityRegistry.RegistrationKind registrationKind,
                                          String subType,
                                          Object handler) {
-        return registerEventHook(registrationKind, null, subType, handler);
+        return registerEventHook(registrationKind, PluginAbilityRegistry.Registration.ALWAYS, subType, handler);
     }
 
     /**
@@ -384,7 +384,8 @@ public final class PluginContext implements YuniContext {
             throw new IllegalArgumentException("命令树不能为 null");
         }
         PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
-                PluginAbilityRegistry.RegistrationKind.COMMAND, fiber, ScopeFilter.ALL, null, null, tree);
+                PluginAbilityRegistry.RegistrationKind.COMMAND,
+                fiber, ScopeFilter.ALL, PluginAbilityRegistry.Registration.ALWAYS, null, tree);
         Disposable removeEntry = registrations.add(registration);
         if (fiber == null) {
             return removeEntry;
