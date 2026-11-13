@@ -14,7 +14,6 @@ import com.yuier.yuni.plugin.runtime.adapter.CoreLifecycleEvents;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageSentEvent;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -107,11 +106,17 @@ public final class EventPipeline {
         }
 
         // 阶段 2：消息/模式处理器
-        dispatchAll(registry.getMessageRegistrations(),
-                    adapted,
-                    groupId,
-                    registration -> registration.when().test(adapted),
-                    registration -> registration.handler().handle(adapted, reply));
+        for (PluginAbilityRegistry.Registration.Message registration :
+                registry.getMessageRegistrations()) {
+            if (!passesGates(registration, adapted, groupId)) {
+                continue;
+            }
+            if (!conditionMatches(registration.owner(), registration.when(), adapted)) {
+                continue;
+            }
+            dispatchAsync(registration.owner(), adapted,
+                    () -> registration.handler().handle(adapted, reply));
+        }
     }
 
     /**
@@ -126,11 +131,18 @@ public final class EventPipeline {
     public void onMessageSent(YuniMessageSentEvent event) {
         CoreMessageSentEvent adapted = adapter.adapt(event);
         Reply reply = adapted.getReply();
-        dispatchAll(registry.getMessageSentRegistrations(),
-                    adapted,
-                    adapted.getGroupId().orElse(null),
-                    registration -> registration.when().test(adapted),
-                    registration -> registration.handler().handle(adapted, reply));
+        Long groupId = adapted.getGroupId().orElse(null);
+        for (PluginAbilityRegistry.Registration.MessageSent registration :
+                registry.getMessageSentRegistrations()) {
+            if (!passesGates(registration, adapted, groupId)) {
+                continue;
+            }
+            if (!conditionMatches(registration.owner(), registration.when(), adapted)) {
+                continue;
+            }
+            dispatchAsync(registration.owner(), adapted,
+                    () -> registration.handler().handle(adapted, reply));
+        }
     }
 
     /**
@@ -141,11 +153,18 @@ public final class EventPipeline {
     public void onNotice(YuniNoticeEvent event) {
         CoreLifecycleEvents.CoreNoticeEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getNoticeRegistrations(),
-                    adapted,
-                    adapted.getGroupId().orElse(null),
-                    registration -> registration.when().test(adapted),
-                    registration -> registration.handler().handle(adapted, reply));
+        Long groupId = adapted.getGroupId().orElse(null);
+        for (PluginAbilityRegistry.Registration.Notice registration :
+                registry.getNoticeRegistrations()) {
+            if (!passesGates(registration, adapted, groupId)) {
+                continue;
+            }
+            if (!conditionMatches(registration.owner(), registration.when(), adapted)) {
+                continue;
+            }
+            dispatchAsync(registration.owner(), adapted,
+                    () -> registration.handler().handle(adapted, reply));
+        }
     }
 
     /**
@@ -156,11 +175,18 @@ public final class EventPipeline {
     public void onRequest(YuniRequestEvent event) {
         CoreLifecycleEvents.CoreRequestEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getRequestRegistrations(),
-                    adapted,
-                    adapted.getGroupId().orElse(null),
-                    registration -> registration.when().test(adapted),
-                    registration -> registration.handler().handle(adapted, reply));
+        Long groupId = adapted.getGroupId().orElse(null);
+        for (PluginAbilityRegistry.Registration.Request registration :
+                registry.getRequestRegistrations()) {
+            if (!passesGates(registration, adapted, groupId)) {
+                continue;
+            }
+            if (!conditionMatches(registration.owner(), registration.when(), adapted)) {
+                continue;
+            }
+            dispatchAsync(registration.owner(), adapted,
+                    () -> registration.handler().handle(adapted, reply));
+        }
     }
 
     /**
@@ -171,100 +197,59 @@ public final class EventPipeline {
     public void onMeta(YuniMetaEvent event) {
         CoreLifecycleEvents.CoreMetaEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getMetaRegistrations(),
-                    adapted,
-                    adapted.getGroupId().orElse(null),
-                    registration -> registration.when().test(adapted),
-                    registration -> registration.handler().handle(adapted, reply));
+        Long groupId = adapted.getGroupId().orElse(null);
+        for (PluginAbilityRegistry.Registration.Meta registration :
+                registry.getMetaRegistrations()) {
+            if (!passesGates(registration, adapted, groupId)) {
+                continue;
+            }
+            if (!conditionMatches(registration.owner(), registration.when(), adapted)) {
+                continue;
+            }
+            dispatchAsync(registration.owner(), adapted,
+                    () -> registration.handler().handle(adapted, reply));
+        }
     }
 
     // ==================== 核心分发 ====================
 
     /**
-     * 遍历注册项并逐个检查、执行。
+     * 判断注册项自带的附加条件是否匹配当前事件。
      *
-     * <p>分发前依次检查：</p>
-     * <ol>
-     *   <li>所属插件处于 {@code ACTIVE} 状态；</li>
-     *   <li>子类型匹配（若注册时声明了子类型）；</li>
-     *   <li>作用域过滤（{@link com.yuier.yuni.plugin.api.ScopeFilter}）；</li>
-     *   <li>注册项自带的附加条件。</li>
-     * </ol>
-     * <p>全部通过后才异步调用处理器。</p>
+     * <p>条件由插件编写，可能抛任意 {@code Throwable}；这里视为不匹配并记录，
+     * 不能让一个写坏的条件把整条分发链路带崩。</p>
      *
-     * @param entries   注册项列表
-     * @param event     插件侧事件
-     * @param groupId   事件群号；非群事件为 {@code null}
-     * @param condition 附加条件
-     * @param body      处理器调用体——参数为通过检查的注册项
-     * @param <R>       注册项类型
-     * @param <E>       事件类型
-     */
-    private <R extends PluginAbilityRegistry.Registration, E extends Event> void dispatchAll(
-            List<R> entries,
-            E event,
-            Long groupId,
-            Predicate<R> condition,
-            ThrowingConsumer<R> body) {
-        for (R registration : entries) {
-            if (!passesGates(registration, event, groupId)) {
-                continue;
-            }
-            if (!matchesCondition(registration, condition)) {
-                continue;
-            }
-            final PluginFiber owner = registration.owner();
-            // 异步执行：不阻塞 OneBot 的 /event 连接线程
-            CompletableFuture.runAsync(
-                    () -> invokeSafely(owner, () -> body.accept(registration), event));
-        }
-    }
-
-    /**
-     * 运行注册项的附加条件。
-     *
-     * @param registration 注册项
-     * @param condition    条件
-     * @param <R>          注册项类型
+     * @param owner 插件 Fiber，用于日志归因；可为 {@code null}
+     * @param when  注册项的附加条件
+     * @param event 插件侧事件
+     * @param <E>   事件类型
      * @return 条件通过时返回 {@code true}
      */
-    private <R extends PluginAbilityRegistry.Registration> boolean matchesCondition(
-            R registration, Predicate<R> condition) {
+    private <E extends Event> boolean conditionMatches(PluginFiber owner,
+                                                       Predicate<E> when,
+                                                       E event) {
         try {
-            return condition.test(registration);
+            return when.test(event);
         } catch (Throwable t) {
-            // 条件判定抛异常：视为不匹配并记录。
-            // 不能让一个写坏的条件把整条分发链路带崩。
-            String pluginId = registration.owner() == null
-                    ? "?" : registration.owner().getId();
+            String pluginId = owner == null ? "?" : owner.getId();
             log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", pluginId, t);
             return false;
         }
     }
 
     /**
-     * 可抛异常的消费者——与各处理器接口的 {@code throws Exception} 签名对齐。
+     * 异步执行处理器，异常统一兜底。
      *
-     * <p>之所以不用 {@link java.util.function.Consumer}：处理器接口声明了
-     * {@code throws Exception}，用标准 Consumer 就得在每个调用点包 try/catch，
-     * 而那正是本类要消除的重复。异常统一由 {@link #invokeSafely} 兜住。</p>
-     *
-     * @param <T> 注册项类型
+     * @param owner  插件 Fiber，用于日志归因；可为 {@code null}
+     * @param event  插件侧事件
+     * @param action 处理器调用体
      */
-    @FunctionalInterface
-    private interface ThrowingConsumer<T> {
-
-        /**
-         * 消费注册项。
-         *
-         * @param registration 注册项
-         * @throws Exception 处理失败
-         */
-        void accept(T registration) throws Exception;
+    private void dispatchAsync(PluginFiber owner, Event event, ThrowingRunnable action) {
+        // 异步执行：不阻塞 OneBot 的 /event 连接线程
+        CompletableFuture.runAsync(() -> invokeSafely(owner, action, event));
     }
-
     /**
-     * 前三道关卡的统一判定；附加条件由 {@link #matchesCondition} 单独处理。
+     * 前三道关卡的统一判定；附加条件由 {@link #conditionMatches} 单独处理。
      *
      * @param registration   注册项
      * @param event   插件侧事件
