@@ -54,7 +54,7 @@ import org.slf4j.Logger;
  * <h2>职责</h2>
  * <p>把插件的注册调用翻译成两件事：</p>
  * <ol>
- *   <li>往 {@link RegistrationTable} 里放一条 {@link RegistrationTable.Entry}，
+ *   <li>往 {@link RegistrationTable} 里放一条 {@link RegistrationTable.Registration}，
  *       供 {@code EventPipeline} 分发时查用；</li>
  *   <li>往所属 {@link PluginFiber} 的 {@link EffectRegistry} 登记一个撤销句柄，
  *       保证插件卸载时该条目被移除且相关资源被释放。</li>
@@ -339,9 +339,9 @@ public final class PluginContext implements YuniContext {
                                      String subType,
                                      Predicate<Object> predicate,
                                      Object handler) {
-        RegistrationTable.Entry entry = new RegistrationTable.Entry(
+        RegistrationTable.Registration registration = new RegistrationTable.Registration(
                 kind, fiber, ScopeFilter.ALL, predicate, subType, handler);
-        Disposable removeEntry = registrations.add(entry);
+        Disposable removeEntry = registrations.add(registration);
 
         // 把「移除注册表条目」交给 PluginEffect 登记表管理，使卸载时自动摘除
         if (fiber == null) {
@@ -363,9 +363,9 @@ public final class PluginContext implements YuniContext {
         if (tree == null) {
             throw new IllegalArgumentException("命令树不能为 null");
         }
-        RegistrationTable.Entry entry = new RegistrationTable.Entry(
+        RegistrationTable.Registration registration = new RegistrationTable.Registration(
                 RegistrationTable.Kind.COMMAND, fiber, ScopeFilter.ALL, null, null, tree);
-        Disposable removeEntry = registrations.add(entry);
+        Disposable removeEntry = registrations.add(registration);
         if (fiber == null) {
             return removeEntry;
         }

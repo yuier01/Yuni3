@@ -178,8 +178,8 @@ public final class CommandDispatcher {
      */
     public int getHandlerCount() {
         int count = 0;
-        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
-            CommandNode tree = asCommandNode(entry);
+        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
+            CommandNode tree = asCommandNode(registration);
             if (tree != null) {
                 count += countHandlers(tree);
             }
@@ -218,15 +218,15 @@ public final class CommandDispatcher {
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
-        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
+        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
             // 关卡：插件状态 + 作用域过滤。
             // 命令的「子类型过滤」不适用（命令靠命令树匹配，不是靠子类型）。
             // 作用域同时看「注册项自带的过滤器」与「运行时的当前作用域」——
             // 后者承载用户的群粒度启停配置。
-            if (!entry.ownerServiceable() || !entry.scopeMatches(groupId, scopeResolver)) {
+            if (!registration.ownerServiceable() || !registration.scopeMatches(groupId, scopeResolver)) {
                 continue;
             }
-            CommandNode tree = asCommandNode(entry);
+            CommandNode tree = asCommandNode(registration);
             if (tree == null) {
                 continue;
             }
@@ -240,7 +240,7 @@ public final class CommandDispatcher {
                 hit = detector.match(engineEvent);
             } catch (Throwable t) {
                 log.error("插件 {} 的命令匹配抛异常，跳过该命令树: {}",
-                        entry.getOwner() == null ? "?" : entry.getOwner().getId(), t.toString(), t);
+                        registration.getOwner() == null ? "?" : registration.getOwner().getId(), t.toString(), t);
                 continue;
             }
             if (!Boolean.TRUE.equals(hit)) {
@@ -251,7 +251,7 @@ public final class CommandDispatcher {
             CommandResult result = engineEvent.getCommandResult();
 
             // 节点级权限校验：沿匹配路径递归比对每一层
-            if (!checkNodePermission(result, event, entry)) {
+            if (!checkNodePermission(result, event, registration)) {
                 if (reply != null) {
                     reply.text("权限不足，无法执行该命令。").send();
                 } else {
@@ -264,7 +264,7 @@ public final class CommandDispatcher {
             if (handler == null) {
                 // 只声明不绑定处理器的命令树：合法的「纯帮助项」，不算命中
                 log.debug("命令树命中但未绑定处理器，视为帮助声明: {}",
-                        entry.getOwner() == null ? "?" : entry.getOwner().getId());
+                        registration.getOwner() == null ? "?" : registration.getOwner().getId());
                 matched = false;
                 continue;
             }
@@ -274,7 +274,7 @@ public final class CommandDispatcher {
                 try {
                     handler.handle(finalEvent, reply);
                 } catch (Throwable t) {
-                    log.error("插件 {} 执行命令失败", entry.getOwner() == null ? "?" : entry.getOwner().getId(), t);
+                    log.error("插件 {} 执行命令失败", registration.getOwner() == null ? "?" : registration.getOwner().getId(), t);
                     if (reply != null) {
                         reply.text("执行命令失败（" + t.getClass().getSimpleName() + "），请联系开发人员。")
                                 .send();
@@ -326,8 +326,8 @@ public final class CommandDispatcher {
         if (key == null) {
             return null;
         }
-        for (RegistrationTable.Entry entry : registrations.getCommandEntries()) {
-            CommandNode tree = asCommandNode(entry);
+        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
+            CommandNode tree = asCommandNode(registration);
             if (tree == null) {
                 continue;
             }
@@ -375,16 +375,16 @@ public final class CommandDispatcher {
      *
      * @param result 匹配结果
      * @param event  插件侧消息事件
-     * @param entry  命令注册项（提供插件标识用于权限查询）
+     * @param registration  命令注册项（提供插件标识用于权限查询）
      * @return 全部节点权限满足时返回 {@code true}
      */
     private boolean checkNodePermission(CommandResult result,
                                         CoreMessageEvent event,
-                                        RegistrationTable.Entry entry) {
+                                        RegistrationTable.Registration registration) {
         if (result == null) {
             return true;
         }
-        String pluginId = entry.getOwner() == null ? null : entry.getOwner().getId();
+        String pluginId = registration.getOwner() == null ? null : registration.getOwner().getId();
         UserPermission userPermission = resolvePermission(event.getUserId(), event.getGroupId().orElse(null), pluginId);
         UserPermission required = result.getRequiredPermission();
         if (required != null && userPermission.getPriority() < required.getPriority()) {
@@ -393,7 +393,7 @@ public final class CommandDispatcher {
             return false;
         }
         for (CommandResult child : result.getChildren().values()) {
-            if (!checkNodePermission(child, event, entry)) {
+            if (!checkNodePermission(child, event, registration)) {
                 return false;
             }
         }
@@ -427,17 +427,17 @@ public final class CommandDispatcher {
     /**
      * 取注册项里的命令树。
      *
-     * @param entry 注册项
+     * @param registration 注册项
      * @return 命令树；类型不符时返回 {@code null}
      */
-    private CommandNode asCommandNode(RegistrationTable.Entry entry) {
-        Object payload = entry.getPayload();
+    private CommandNode asCommandNode(RegistrationTable.Registration registration) {
+        Object payload = registration.getPayload();
         if (payload instanceof CommandNode node) {
             return node;
         }
         log.error("命令注册项载荷类型不符：{}（插件 {}）",
                 payload == null ? "null" : payload.getClass().getName(),
-                entry.getOwner() == null ? "?" : entry.getOwner().getId());
+                registration.getOwner() == null ? "?" : registration.getOwner().getId());
         return null;
     }
 

@@ -199,17 +199,17 @@ public final class EventPipeline {
      *                  由各入口方法负责转型与调用
      * @param <E>       事件类型
      */
-    private <E extends Event> void dispatchAll(List<RegistrationTable.Entry> entries,
+    private <E extends Event> void dispatchAll(List<RegistrationTable.Registration> entries,
                                                E event,
                                                Long groupId,
                                                Reply reply,
                                                ThrowingConsumer<Object> body) {
-        for (RegistrationTable.Entry entry : entries) {
-            if (!passesGates(entry, event, groupId)) {
+        for (RegistrationTable.Registration registration : entries) {
+            if (!passesGates(registration, event, groupId)) {
                 continue;
             }
-            final PluginFiber owner = entry.getOwner();
-            final Object payload = entry.getPayload();
+            final PluginFiber owner = registration.getOwner();
+            final Object payload = registration.getPayload();
             // 异步执行：不阻塞 OneBot 的 /event 连接线程
             CompletableFuture.runAsync(() -> invokeSafely(owner, () -> body.accept(payload), event));
         }
@@ -239,18 +239,18 @@ public final class EventPipeline {
     /**
      * 四道关卡的统一判定。
      *
-     * @param entry   注册项
+     * @param registration   注册项
      * @param event   插件侧事件
      * @param groupId 事件群号
      * @return 全部通过返回 {@code true}
      */
-    private boolean passesGates(RegistrationTable.Entry entry, Event event, Long groupId) {
+    private boolean passesGates(RegistrationTable.Registration registration, Event event, Long groupId) {
         // 关卡 1：插件必须处于 ACTIVE。FAILED / UNLOADING / DISPOSED 的插件不再收事件。
-        if (!entry.ownerServiceable()) {
+        if (!registration.ownerServiceable()) {
             return false;
         }
         // 关卡 2：子类型过滤（注册时用 ctx.onNotice("poke", ...) 声明的）
-        if (!entry.subTypeMatches(event.getSubType())) {
+        if (!registration.subTypeMatches(event.getSubType())) {
             return false;
         }
         // 关卡 3：作用域过滤。
@@ -260,27 +260,27 @@ public final class EventPipeline {
         //
         // 后者是必需的：注册项在插件加载时就固定了，而用户随时可以在管理端
         // 改配置。此前只查注册项，导致管理端的启停完全不生效——见
-        // RegistrationTable.Entry#scopeMatches 的说明。
+        // RegistrationTable.Registration#scopeMatches 的说明。
         //
         // 顺带说明：现行系统在 request/meta/messageSent 三条路径上漏掉了
         // 这个检查，现在所有事件类型都必经此处。
-        if (!entry.scopeMatches(groupId, runtime::effectiveScopeOf)) {
+        if (!registration.scopeMatches(groupId, runtime::effectiveScopeOf)) {
             return false;
         }
         // 关卡 4：附加条件
-        return matchesPredicate(entry, event);
+        return matchesPredicate(registration, event);
     }
 
     /**
      * 运行注册项上的附加条件。
      *
-     * @param entry 注册项
+     * @param registration 注册项
      * @param event 插件侧事件
      * @return 无条件或条件通过时返回 {@code true}
      */
     @SuppressWarnings("unchecked")
-    private boolean matchesPredicate(RegistrationTable.Entry entry, Event event) {
-        Predicate<Object> predicate = entry.getPredicate();
+    private boolean matchesPredicate(RegistrationTable.Registration registration, Event event) {
+        Predicate<Object> predicate = registration.getPredicate();
         if (predicate == null) {
             return true;
         }
@@ -289,7 +289,7 @@ public final class EventPipeline {
         } catch (Throwable t) {
             // 条件判定抛异常：视为不匹配并记录。
             // 不能让一个写坏的条件把整条分发链路带崩。
-            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", entry.getOwner().getId(), t);
+            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", registration.getOwner().getId(), t);
             return false;
         }
     }

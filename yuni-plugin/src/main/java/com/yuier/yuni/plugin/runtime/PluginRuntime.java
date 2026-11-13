@@ -262,6 +262,7 @@ public final class PluginRuntime {
         Path dataDir = artifact.getDataDir();
         pluginDataDirs.put(id, dataDir);
 
+        // 当依赖未就绪时，先停下来直接返回，待后续流程反复推进
         List<Class<?>> missing = missingDependencies(requiredServices);
         if (!missing.isEmpty()) {
             for (Class<?> type : missing) {
@@ -272,6 +273,7 @@ public final class PluginRuntime {
             return fiber;
         }
 
+        // apply
         applyTo(fiber, dataDir);
         return fiber;
     }
@@ -287,13 +289,7 @@ public final class PluginRuntime {
         Objects.requireNonNull(artifact, "artifact");
         fibers.addArtifact(artifact);
     }
-    /**
-     * 执行 {@code apply(ctx)} 并处理成功 / 失败。
-     *
-     * @param fiber  目标 Fiber
-     * @param dataDir 插件资源目录
-     * @param filter  作用域过滤器；当前仅记录，P4 分发时使用
-     */
+
     /**
      * 执行插件的 {@code apply}，并把 Fiber 推进到 ACTIVE。
      *
@@ -324,7 +320,7 @@ public final class PluginRuntime {
         }
 
         /*
-         * 抢占成功后仍要复查封存标志：卸载可能恰好发生在「抢占成功」与「开始 apply」
+         * 抢占成功后仍要复查封存标志：卸载可能恰好发生在「抢占成功」与「开始 apply」  -- 这是大肥鱼说的，虽然我不知道是否真的会有这种极端情况，但再加一层判断也没什么
          * 之间。此时登记表已封存，继续 apply 会让插件注册的一切被就地撤销——
          * 插件作者看到的是「代码跑了但什么也没生效」，很难排查，因此直接放弃。
          */
