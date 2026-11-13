@@ -269,101 +269,83 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Disposable onMessage(MessageHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE, null, handler);
+        return register(new PluginAbilityRegistry.Registration.Message(
+                fiber, ScopeFilter.ALL,
+                PluginAbilityRegistry.Registration.Message.ALWAYS, handler));
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
-        Objects.requireNonNull(when, "when");
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE,
-                (Predicate<Object>) (Predicate<?>) when, null, handler);
+        return register(new PluginAbilityRegistry.Registration.Message(
+                fiber, ScopeFilter.ALL, when, handler));
     }
 
     @Override
     public Disposable onNotice(String subType, NoticeHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE, subType, handler);
+        return register(new PluginAbilityRegistry.Registration.Notice(
+                fiber, ScopeFilter.ALL,
+                PluginAbilityRegistry.Registration.Notice.ALWAYS, subType, handler));
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
-        Objects.requireNonNull(when, "when");
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE,
-                (Predicate<Object>) (Predicate<?>) when, null, handler);
+        return register(new PluginAbilityRegistry.Registration.Notice(
+                fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
     public Disposable onRequest(String subType, RequestHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST, subType, handler);
+        return register(new PluginAbilityRegistry.Registration.Request(
+                fiber, ScopeFilter.ALL,
+                PluginAbilityRegistry.Registration.Request.ALWAYS, subType, handler));
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
-        Objects.requireNonNull(when, "when");
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST,
-                (Predicate<Object>) (Predicate<?>) when, null, handler);
+        return register(new PluginAbilityRegistry.Registration.Request(
+                fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
     public Disposable onMeta(String subType, MetaHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META, subType, handler);
+        return register(new PluginAbilityRegistry.Registration.Meta(
+                fiber, ScopeFilter.ALL,
+                PluginAbilityRegistry.Registration.Meta.ALWAYS, subType, handler));
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
-        Objects.requireNonNull(when, "when");
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META,
-                (Predicate<Object>) (Predicate<?>) when, null, handler);
+        return register(new PluginAbilityRegistry.Registration.Meta(
+                fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
-        Objects.requireNonNull(when, "when");
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE_SENT,
-                (Predicate<Object>) (Predicate<?>) when, null, handler);
+        return register(new PluginAbilityRegistry.Registration.MessageSent(
+                fiber, ScopeFilter.ALL, when, handler));
+    }
+
+    // ==================== 命令注册 ====================
+
+    @Override
+    public Disposable command(CommandNode tree) {
+        return register(new PluginAbilityRegistry.Registration.Command(
+                fiber, ScopeFilter.ALL, tree));
     }
 
     /**
-     * 事件注册的公共实现（无条件）。
-     *
-     * @param registrationKind 能力种类
-     * @param subType          子类型过滤；{@code null} 表示不过滤
-     * @param handler          处理器载荷
-     * @return 撤销句柄
-     */
-    private Disposable registerEventHook(PluginAbilityRegistry.RegistrationKind registrationKind,
-                                         String subType,
-                                         Object handler) {
-        return registerEventHook(registrationKind, PluginAbilityRegistry.Registration.ALWAYS, subType, handler);
-    }
-
-    /**
-     * 事件注册的公共实现（带附加条件）。
+     * 把注册项交给注册表，并把撤销句柄登记为插件的 PluginEffect。
      *
      * <p>一次调用产生两个效果，且必须<b>原子地</b>一起成功或一起失败：
      * 往注册表放入条目，往 Fiber 的 PluginEffect 登记表放入移除句柄。
-     * 若登记失败（插件正在卸载），注册表条目也会被立即撤销——
-     * 否则会出现「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
+     * 若登记失败（插件正在卸载），注册表条目也会被立即撤销——否则会出现
+     * 「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
      *
-     * @param registrationKind      能力种类
-     * @param predicate 附加条件；{@code null} 表示无条件
-     * @param subType   子类型过滤；{@code null} 表示不过滤
-     * @param handler   处理器载荷
+     * @param registration 注册项
      * @return 撤销句柄
      */
-    private Disposable registerEventHook(PluginAbilityRegistry.RegistrationKind registrationKind,
-                                         Predicate<Object> predicate,
-                                         String subType,
-                                         Object handler) {
-        PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
-                registrationKind, fiber, ScopeFilter.ALL, predicate, subType, handler);
+    private Disposable register(PluginAbilityRegistry.Registration registration) {
         Disposable removeEntry = registrations.add(registration);
-
-        // 把「移除注册表条目」交给 PluginEffect 登记表管理，使卸载时自动摘除
         if (fiber == null) {
             // 无 Fiber（测试或框架内部用法）：直接返回移除句柄
             return removeEntry;
@@ -375,27 +357,6 @@ public final class PluginContext implements YuniContext {
         }
         return removeEntry;
     }
-
-    // ==================== 命令注册 ====================
-
-    @Override
-    public Disposable command(CommandNode tree) {
-        if (tree == null) {
-            throw new IllegalArgumentException("命令树不能为 null");
-        }
-        PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
-                PluginAbilityRegistry.RegistrationKind.COMMAND,
-                fiber, ScopeFilter.ALL, PluginAbilityRegistry.Registration.ALWAYS, null, tree);
-        Disposable removeEntry = registrations.add(registration);
-        if (fiber == null) {
-            return removeEntry;
-        }
-        if (!fiber.getEffects().register(removeEntry)) {
-            removeEntry.dispose();
-        }
-        return removeEntry;
-    }
-
     // ==================== 调度 ====================
 
     @Override

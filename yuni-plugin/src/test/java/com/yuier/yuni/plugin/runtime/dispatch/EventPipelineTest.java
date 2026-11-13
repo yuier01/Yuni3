@@ -215,17 +215,17 @@ class EventPipelineTest {
         PluginFiber outOfScope = load(runtime, 
                 YuniPlugin.of("排除群插件", ctx -> { }));
 
-        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
-                PluginAbilityRegistry.RegistrationKind.NOTICE, inScope,
+        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration.Notice(
+                inScope,
                 new ScopeFilter(false, Set.of(999L)),
-                PluginAbilityRegistry.Registration.ALWAYS, null,
+                PluginAbilityRegistry.Registration.Notice.ALWAYS, null,
                 (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
-        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
-                PluginAbilityRegistry.RegistrationKind.NOTICE, outOfScope,
+        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration.Notice(
+                outOfScope,
                 new ScopeFilter(true, Set.of(999L)),
-                PluginAbilityRegistry.Registration.ALWAYS, null,
+                PluginAbilityRegistry.Registration.Notice.ALWAYS, null,
                 (NoticeHandler)
                         (ev, reply) -> outOfScopeHits.incrementAndGet()));
 

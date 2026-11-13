@@ -113,8 +113,8 @@ public final class EventPipeline {
 
         // 阶段 2：消息/模式处理器
         dispatchAll(registrations.getMessageEntries(), adapted, groupId, reply,
-                payload -> cast(payload, MessageHandler.class)
-                        .handle(adapted, reply));
+                registration -> registration.when().test(adapted),
+                registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -131,8 +131,8 @@ public final class EventPipeline {
         Reply reply = adapted.getReply();
         dispatchAll(registrations.getMessageSentEntries(), adapted,
                 adapted.getGroupId().orElse(null), reply,
-                payload -> cast(payload, MessageSentHandler.class)
-                        .handle(adapted, reply));
+                registration -> registration.when().test(adapted),
+                registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -145,8 +145,8 @@ public final class EventPipeline {
         Reply reply = replyOf(adapted);
         dispatchAll(registrations.getNoticeEntries(), adapted,
                 adapted.getGroupId().orElse(null), reply,
-                payload -> cast(payload, NoticeHandler.class)
-                        .handle(adapted, reply));
+                registration -> registration.when().test(adapted),
+                registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -159,8 +159,8 @@ public final class EventPipeline {
         Reply reply = replyOf(adapted);
         dispatchAll(registrations.getRequestEntries(), adapted,
                 adapted.getGroupId().orElse(null), reply,
-                payload -> cast(payload, RequestHandler.class)
-                        .handle(adapted, reply));
+                registration -> registration.when().test(adapted),
+                registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -173,8 +173,8 @@ public final class EventPipeline {
         Reply reply = replyOf(adapted);
         dispatchAll(registrations.getMetaEntries(), adapted,
                 adapted.getGroupId().orElse(null), reply,
-                payload -> cast(payload, MetaHandler.class)
-                        .handle(adapted, reply));
+                registration -> registration.when().test(adapted),
+                registration -> registration.handler().handle(adapted, reply));
     }
 
     // ==================== 核心分发 ====================
@@ -199,19 +199,47 @@ public final class EventPipeline {
      *                  由各入口方法负责转型与调用
      * @param <E>       事件类型
      */
-    private <E extends Event> void dispatchAll(List<PluginAbilityRegistry.Registration> entries,
-                                               E event,
-                                               Long groupId,
-                                               Reply reply,
-                                               ThrowingConsumer<Object> body) {
-        for (PluginAbilityRegistry.Registration registration : entries) {
+    private <R extends PluginAbilityRegistry.Registration> void dispatchAll(
+            List<R> entries,
+            Event event,
+            Long groupId,
+            Reply reply,
+            Predicate<R> condition,
+            ThrowingConsumer<R> body) {
+        for (R registration : entries) {
             if (!passesGates(registration, event, groupId)) {
                 continue;
             }
-            final PluginFiber owner = registration.getOwner();
-            final Object payload = registration.getPayload();
+            if (!matchesCondition(registration, condition, event)) {
+                continue;
+            }
+            final PluginFiber owner = registration.owner();
             // 异步执行：不阻塞 OneBot 的 /event 连接线程
-            CompletableFuture.runAsync(() -> invokeSafely(owner, () -> body.accept(payload), event));
+            CompletableFuture.runAsync(
+                    () -> invokeSafely(owner, () -> body.accept(registration), event));
+        }
+    }
+
+    /**
+     * 运行注册项的附加条件。
+     *
+     * @param registration 注册项
+     * @param condition    条件
+     * @param event        插件侧事件
+     * @param <R>          注册项类型
+     * @return 条件通过时返回 {@code true}
+     */
+    private <R extends PluginAbilityRegistry.Registration> boolean matchesCondition(
+            R registration, Predicate<R> condition, Event event) {
+        try {
+            return condition.test(registration);
+        } catch (Throwable t) {
+            // 条件判定抛异常：视为不匹配并记录。
+            // 不能让一个写坏的条件把整条分发链路带崩。
+            String pluginId = registration.owner() == null
+                    ? "?" : registration.owner().getId();
+            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", pluginId, t);
+            return false;
         }
     }
 
@@ -264,55 +292,10 @@ public final class EventPipeline {
         //
         // 顺带说明：现行系统在 request/meta/messageSent 三条路径上漏掉了
         // 这个检查，现在所有事件类型都必经此处。
-        if (!registration.scopeMatches(groupId, runtime::effectiveScopeOf)) {
-            return false;
-        }
-        // 关卡 4：附加条件
-        return matchesPredicate(registration, event);
+        return registration.scopeMatches(groupId, runtime::effectiveScopeOf);
     }
 
-    /**
-     * 运行注册项上的附加条件。
-     *
-     * @param registration 注册项
-     * @param event 插件侧事件
-     * @return 无条件或条件通过时返回 {@code true}
-     */
-    @SuppressWarnings("unchecked")
-    private boolean matchesPredicate(PluginAbilityRegistry.Registration registration, Event event) {
-        Predicate<Object> predicate = registration.getPredicate();
-        try {
-            return predicate.test(event);
-        } catch (Throwable t) {
-            // 条件判定抛异常：视为不匹配并记录。
-            // 不能让一个写坏的条件把整条分发链路带崩。
-            log.error("插件 {} 的事件条件判定抛异常，按不匹配处理", registration.getOwner().getId(), t);
-            return false;
-        }
-    }
 
-    /**
-     * 安全地把注册项载荷转型为处理器。
-     *
-     * <p>类型不符说明注册表被写入了错误类型的载荷——这属于框架内部缺陷，
-     * 因此记 error 并抛 {@link IllegalStateException}，由
-     * {@link #invokeSafely} 统一兜住并记入日志，而不是让
-     * {@code ClassCastException} 在异步线程里裸奔。</p>
-     *
-     * @param payload     注册项载荷
-     * @param handlerType 期望的处理器类型
-     * @param <H>         处理器类型
-     * @return 处理器
-     * @throws IllegalStateException 载荷类型不符
-     */
-    private static <H> H cast(Object payload, Class<H> handlerType) {
-        if (!handlerType.isInstance(payload)) {
-            throw new IllegalStateException(
-                    "注册表载荷类型不符：期望 " + handlerType.getSimpleName()
-                            + "，实际 " + (payload == null ? "null" : payload.getClass().getName()));
-        }
-        return handlerType.cast(payload);
-    }
 
     /**
      * 统一异常兜底。
