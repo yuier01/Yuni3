@@ -274,51 +274,51 @@ public final class PluginContext implements YuniContext {
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
-        return registerEvent(RegistrationTable.Kind.MESSAGE, null,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, handler);
+        return registerEvent(RegistrationTable.Kind.MESSAGE,
+                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onNotice(String subType, NoticeHandler handler) {
-        return registerEvent(RegistrationTable.Kind.NOTICE, subType, null, handler);
+        return registerEvent(RegistrationTable.Kind.NOTICE, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
-        return registerEvent(RegistrationTable.Kind.NOTICE, null,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, handler);
+        return registerEvent(RegistrationTable.Kind.NOTICE,
+                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onRequest(String subType, RequestHandler handler) {
-        return registerEvent(RegistrationTable.Kind.REQUEST, subType, null, handler);
+        return registerEvent(RegistrationTable.Kind.REQUEST, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
-        return registerEvent(RegistrationTable.Kind.REQUEST, null,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, handler);
+        return registerEvent(RegistrationTable.Kind.REQUEST,
+                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onMeta(String subType, MetaHandler handler) {
-        return registerEvent(RegistrationTable.Kind.META, subType, null, handler);
+        return registerEvent(RegistrationTable.Kind.META, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
-        return registerEvent(RegistrationTable.Kind.META, null,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, handler);
+        return registerEvent(RegistrationTable.Kind.META,
+                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
-        return registerEvent(RegistrationTable.Kind.MESSAGE_SENT, null,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, handler);
+        return registerEvent(RegistrationTable.Kind.MESSAGE_SENT,
+                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     /**
@@ -330,14 +330,14 @@ public final class PluginContext implements YuniContext {
      * 否则会出现「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
      *
      * @param kind      能力种类
-     * @param subType   子类型过滤；{@code null} 表示不过滤
      * @param predicate 附加条件；{@code null} 表示无条件
+     * @param subType   子类型过滤；{@code null} 表示不过滤
      * @param handler   处理器载荷
      * @return 撤销句柄
      */
     private Disposable registerEvent(RegistrationTable.Kind kind,
-                                     String subType,
                                      Predicate<Object> predicate,
+                                     String subType,
                                      Object handler) {
         RegistrationTable.Registration registration = new RegistrationTable.Registration(
                 kind, fiber, ScopeFilter.ALL, predicate, subType, handler);
