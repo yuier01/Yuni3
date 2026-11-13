@@ -110,7 +110,6 @@ public final class EventPipeline {
         dispatchAll(registry.getMessageRegistrations(),
                     adapted,
                     groupId,
-                    reply,
                     registration -> registration.when().test(adapted),
                     registration -> registration.handler().handle(adapted, reply));
     }
@@ -127,10 +126,11 @@ public final class EventPipeline {
     public void onMessageSent(YuniMessageSentEvent event) {
         CoreMessageSentEvent adapted = adapter.adapt(event);
         Reply reply = adapted.getReply();
-        dispatchAll(registry.getMessageSentRegistrations(), adapted,
-                adapted.getGroupId().orElse(null), reply,
-                registration -> registration.when().test(adapted),
-                registration -> registration.handler().handle(adapted, reply));
+        dispatchAll(registry.getMessageSentRegistrations(),
+                    adapted,
+                    adapted.getGroupId().orElse(null),
+                    registration -> registration.when().test(adapted),
+                    registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -141,10 +141,11 @@ public final class EventPipeline {
     public void onNotice(YuniNoticeEvent event) {
         CoreLifecycleEvents.CoreNoticeEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getNoticeRegistrations(), adapted,
-                adapted.getGroupId().orElse(null), reply,
-                registration -> registration.when().test(adapted),
-                registration -> registration.handler().handle(adapted, reply));
+        dispatchAll(registry.getNoticeRegistrations(),
+                    adapted,
+                    adapted.getGroupId().orElse(null),
+                    registration -> registration.when().test(adapted),
+                    registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -155,10 +156,11 @@ public final class EventPipeline {
     public void onRequest(YuniRequestEvent event) {
         CoreLifecycleEvents.CoreRequestEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getRequestRegistrations(), adapted,
-                adapted.getGroupId().orElse(null), reply,
-                registration -> registration.when().test(adapted),
-                registration -> registration.handler().handle(adapted, reply));
+        dispatchAll(registry.getRequestRegistrations(),
+                    adapted,
+                    adapted.getGroupId().orElse(null),
+                    registration -> registration.when().test(adapted),
+                    registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -169,10 +171,11 @@ public final class EventPipeline {
     public void onMeta(YuniMetaEvent event) {
         CoreLifecycleEvents.CoreMetaEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registry.getMetaRegistrations(), adapted,
-                adapted.getGroupId().orElse(null), reply,
-                registration -> registration.when().test(adapted),
-                registration -> registration.handler().handle(adapted, reply));
+        dispatchAll(registry.getMetaRegistrations(),
+                    adapted,
+                    adapted.getGroupId().orElse(null),
+                    registration -> registration.when().test(adapted),
+                    registration -> registration.handler().handle(adapted, reply));
     }
 
     // ==================== 核心分发 ====================
@@ -192,23 +195,22 @@ public final class EventPipeline {
      * @param entries   注册项列表
      * @param event     插件侧事件
      * @param groupId   事件群号；非群事件为 {@code null}
-     * @param reply     回复入口；可为 {@code null}
      * @param condition 附加条件
      * @param body      处理器调用体——参数为通过检查的注册项
      * @param <R>       注册项类型
+     * @param <E>       事件类型
      */
-    private <R extends PluginAbilityRegistry.Registration> void dispatchAll(
+    private <R extends PluginAbilityRegistry.Registration, E extends Event> void dispatchAll(
             List<R> entries,
-            Event event,
+            E event,
             Long groupId,
-            Reply reply,
             Predicate<R> condition,
             ThrowingConsumer<R> body) {
         for (R registration : entries) {
             if (!passesGates(registration, event, groupId)) {
                 continue;
             }
-            if (!matchesCondition(registration, condition, event)) {
+            if (!matchesCondition(registration, condition)) {
                 continue;
             }
             final PluginFiber owner = registration.owner();
@@ -223,12 +225,11 @@ public final class EventPipeline {
      *
      * @param registration 注册项
      * @param condition    条件
-     * @param event        插件侧事件
      * @param <R>          注册项类型
      * @return 条件通过时返回 {@code true}
      */
     private <R extends PluginAbilityRegistry.Registration> boolean matchesCondition(
-            R registration, Predicate<R> condition, Event event) {
+            R registration, Predicate<R> condition) {
         try {
             return condition.test(registration);
         } catch (Throwable t) {

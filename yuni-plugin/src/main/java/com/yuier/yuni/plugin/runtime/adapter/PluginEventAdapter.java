@@ -15,15 +15,13 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * 事件适配工厂——把 core 事件对象翻译为插件侧的 {@code Event} 与 {@link Reply}。
+ * 事件适配工厂——把 core 事件对象翻译为运行时侧事件（{@code CoreXxxEvent}，其 {@code getReply()} 提供 {@link Reply}）。
  *
  * <h2>为什么需要一个工厂</h2>
- * <p>分发流程需要把「同一个 core 事件」翻译成三样东西：</p>
- * <ol>
- *   <li>供<b>条件判定</b>用的插件侧事件（每条注册项都要用它跑 predicate）；</li>
- *   <li>供<b>处理器调用</b>用的插件侧事件（同上，可复用同一个实例）；</li>
- *   <li>绑定到该事件会话的 {@link Reply}。</li>
- * </ol>
+ * <p>一次适配只产出一个对象：运行时侧事件（如 {@code CoreMessageEvent}，
+ * 实现插件侧 {@link com.yuier.yuni.plugin.api.event.Event} 接口）。它同时供
+ * 条件判定与处理器调用，并通过 {@code getReply()} 提供绑定到该会话的
+ * {@link Reply}。</p>
  * <p>如果把这些逻辑散在 {@code EventPipeline} 的各分支里，五类事件会各写一遍
  * 「取群号 → 构造 Reply → 包装事件」。集中到本工厂后，
  * {@code EventPipeline} 只负责「按类型分派 + 作用域过滤 + 异常兜底」，
