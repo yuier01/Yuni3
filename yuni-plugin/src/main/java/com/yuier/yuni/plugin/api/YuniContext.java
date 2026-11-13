@@ -240,9 +240,8 @@ public interface YuniContext {
      * 可以被删除。参数取值仍走 {@code ev.getCommandResult()}，与现行写法一致。</p>
      *
      * @param tree 命令树根节点
-     * @return 撤销句柄
      */
-    Disposable command(CommandNode tree);
+    void command(CommandNode tree);
 
     // ==================== 调度 ====================
 

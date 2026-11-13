@@ -328,8 +328,8 @@ public final class PluginContext implements YuniContext {
     // ==================== 命令注册 ====================
 
     @Override
-    public Disposable command(CommandNode tree) {
-        return register(new PluginAbilityRegistry.Registration.Command(
+    public void command(CommandNode tree) {
+        register(new PluginAbilityRegistry.Registration.Command(
                 fiber, ScopeFilter.ALL, tree));
     }
 
@@ -342,21 +342,20 @@ public final class PluginContext implements YuniContext {
      * 「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
      *
      * @param registration 注册项
-     * @return 撤销句柄
      */
-    private Disposable register(PluginAbilityRegistry.Registration registration) {
+    private void register(PluginAbilityRegistry.Registration registration) {
         Disposable removeEntry = registrations.add(registration);
         if (fiber == null) {
-            // 无 Fiber（测试或框架内部用法）：直接返回移除句柄
-            return removeEntry;
+            // 无 Fiber（测试或框架内部用法）：注册项只存在于注册表，随 clear 清理
+            return;
         }
         boolean accepted = fiber.getEffects().register(removeEntry);
         if (!accepted) {
             // 插件正在卸载：登记表已封存，注册表条目必须立即回滚
             removeEntry.dispose();
         }
-        return removeEntry;
     }
+
     // ==================== 调度 ====================
 
     @Override
