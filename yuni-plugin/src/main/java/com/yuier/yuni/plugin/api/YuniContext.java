@@ -132,7 +132,7 @@ public interface YuniContext {
      *               (ev, reply) -> reply.text("大家不要信，这是骑空士的陷阱！"));
      * }</pre>
      *
-     * @param when    探测条件；{@code null} 视为无条件
+     * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
      * @return 撤销句柄
      */
@@ -158,7 +158,7 @@ public interface YuniContext {
     /**
      * 注册通知事件处理器（带探测条件）。
      *
-     * @param when    探测条件；{@code null} 视为无条件
+     * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
      * @return 撤销句柄
      */
@@ -177,7 +177,7 @@ public interface YuniContext {
     /**
      * 注册请求事件处理器（带探测条件）。
      *
-     * @param when    探测条件；{@code null} 视为无条件
+     * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
      * @return 撤销句柄
      */
@@ -196,7 +196,7 @@ public interface YuniContext {
     /**
      * 注册元事件处理器（带探测条件）。
      *
-     * @param when    探测条件；{@code null} 视为无条件
+     * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
      * @return 撤销句柄
      */
@@ -208,7 +208,7 @@ public interface YuniContext {
      * <p>现行 {@code MessageSentPlugin} 无条件是这类事件的特征。新系统中
      * 「无条件」需要显式写出：{@code ctx.onMessageSent(ev -> true, handler)}。</p>
      *
-     * @param when    探测条件；{@code null} 视为无条件
+     * @param when    探测条件；不能为 {@code null}；无条件请显式写 {@code ev -> true}
      * @param handler 处理器
      * @return 撤销句柄
      */

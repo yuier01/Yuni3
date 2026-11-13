@@ -36,6 +36,7 @@ import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -268,61 +269,80 @@ public final class PluginContext implements YuniContext {
 
     @Override
     public Disposable onMessage(MessageHandler handler) {
-        return onMessage((Predicate<MessageEvent>) null, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE, null, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
+        Objects.requireNonNull(when, "when");
         return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
+                (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onNotice(String subType, NoticeHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
+        Objects.requireNonNull(when, "when");
         return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
+                (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onRequest(String subType, RequestHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
+        Objects.requireNonNull(when, "when");
         return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
+                (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onMeta(String subType, MetaHandler handler) {
-        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
+        Objects.requireNonNull(when, "when");
         return registerEventHook(PluginAbilityRegistry.RegistrationKind.META,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
+                (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
+        Objects.requireNonNull(when, "when");
         return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE_SENT,
-                when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
+                (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     /**
-     * 事件注册的公共实现。
+     * 事件注册的公共实现（无条件）。
+     *
+     * @param registrationKind 能力种类
+     * @param subType          子类型过滤；{@code null} 表示不过滤
+     * @param handler          处理器载荷
+     * @return 撤销句柄
+     */
+    private Disposable registerEventHook(PluginAbilityRegistry.RegistrationKind registrationKind,
+                                         String subType,
+                                         Object handler) {
+        return registerEventHook(registrationKind, null, subType, handler);
+    }
+
+    /**
+     * 事件注册的公共实现（带附加条件）。
      *
      * <p>一次调用产生两个效果，且必须<b>原子地</b>一起成功或一起失败：
      * 往注册表放入条目，往 Fiber 的 PluginEffect 登记表放入移除句柄。
