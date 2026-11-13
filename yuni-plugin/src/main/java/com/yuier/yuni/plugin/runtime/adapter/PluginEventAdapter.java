@@ -91,12 +91,35 @@ public final class PluginEventAdapter {
      * @return 插件侧事件
      */
     public CoreMessageEvent adapt(YuniMessageEvent source) {
-        Reply reply = replyFor(source.getGroupId(), source.getUserId(),
-                source.getMessageType(), source.getMessageId());
+        return adapt(source, replyForMessage(source));
+    }
+
+    /**
+     * 使用已经构造好的回复入口翻译消息事件。
+     *
+     * <p>命令路径需要先拿到 {@link Reply}，但不需要构造插件侧事件；命令未命中时
+     * 再把同一个 {@link Reply} 交给事件适配，避免重复构造。</p>
+     *
+     * @param source 核心消息事件
+     * @param reply  回复入口；可为 {@code null}
+     * @return 插件侧事件
+     */
+    public CoreMessageEvent adapt(YuniMessageEvent source, Reply reply) {
         return new CoreMessageEvent(
                 source,
                 new CoreMessageChainView(source.getMessageChain(), jsonCodec),
                 reply);
+    }
+
+    /**
+     * 为消息事件构造回复入口。
+     *
+     * @param source 核心消息事件
+     * @return 回复入口
+     */
+    public Reply replyForMessage(YuniMessageEvent source) {
+        return replyFor(source.getGroupId(), source.getUserId(),
+                source.getMessageType(), source.getMessageId());
     }
 
     /**

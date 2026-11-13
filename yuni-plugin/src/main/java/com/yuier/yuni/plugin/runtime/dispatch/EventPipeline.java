@@ -91,21 +91,17 @@ public final class EventPipeline {
      * @param event 核心消息事件
      */
     public void onMessage(YuniMessageEvent event) {
-        CoreMessageEvent adapted = adapter.adapt(event);
-        Long groupId = adapted.getGroupId().orElse(null);
-        Reply reply = adapted.getReply();
+        Long groupId = event.getGroupId();
+        Reply reply = adapter.replyForMessage(event);
 
-        // 阶段 1：命令（同步匹配）
-        boolean commandMatched = false;
-        if (commandDispatcher != null) {
-            commandMatched = commandDispatcher.dispatch(event, groupId, reply);
-        }
-        if (commandMatched) {
+        // 阶段 1：命令（同步匹配）——直接使用原始核心事件，命中时不做插件侧适配
+        if (commandDispatcher != null && commandDispatcher.dispatch(event, groupId, reply)) {
             // 现行不变式：命中命令后不再匹配模式插件
             return;
         }
 
         // 阶段 2：消息/模式处理器
+        CoreMessageEvent adapted = adapter.adapt(event, reply);
         for (PluginAbilityRegistry.Registration.Message registration :
                 registry.getMessageRegistrations()) {
             if (!passesGates(registration, adapted, groupId)) {
