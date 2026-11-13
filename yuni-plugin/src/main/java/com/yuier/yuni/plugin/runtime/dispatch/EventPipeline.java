@@ -7,11 +7,6 @@ import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.event.Event;
-import com.yuier.yuni.plugin.api.handler.MessageHandler;
-import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
-import com.yuier.yuni.plugin.api.handler.MetaHandler;
-import com.yuier.yuni.plugin.api.handler.NoticeHandler;
-import com.yuier.yuni.plugin.api.handler.RequestHandler;
 import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
@@ -182,12 +177,12 @@ public final class EventPipeline {
     /**
      * 遍历注册项并逐个检查、执行。
      *
-     * <p>四道关卡，顺序固定：</p>
+     * <p>分发前依次检查：</p>
      * <ol>
      *   <li>所属插件处于 {@code ACTIVE} 状态；</li>
      *   <li>子类型匹配（若注册时声明了子类型）；</li>
      *   <li>作用域过滤（{@link com.yuier.yuni.plugin.api.ScopeFilter}）；</li>
-     *   <li>附加条件（注册时声明的 predicate）。</li>
+     *   <li>注册项自带的附加条件。</li>
      * </ol>
      * <p>全部通过后才异步调用处理器。</p>
      *
@@ -195,9 +190,9 @@ public final class EventPipeline {
      * @param event     插件侧事件
      * @param groupId   事件群号；非群事件为 {@code null}
      * @param reply     回复入口；可为 {@code null}
-     * @param body      处理器调用体——参数为「该注册项的处理器载荷」，
-     *                  由各入口方法负责转型与调用
-     * @param <E>       事件类型
+     * @param condition 附加条件
+     * @param body      处理器调用体——参数为通过检查的注册项
+     * @param <R>       注册项类型
      */
     private <R extends PluginAbilityRegistry.Registration> void dispatchAll(
             List<R> entries,
@@ -250,22 +245,22 @@ public final class EventPipeline {
      * {@code throws Exception}，用标准 Consumer 就得在每个调用点包 try/catch，
      * 而那正是本类要消除的重复。异常统一由 {@link #invokeSafely} 兜住。</p>
      *
-     * @param <T> 载荷类型
+     * @param <T> 注册项类型
      */
     @FunctionalInterface
     private interface ThrowingConsumer<T> {
 
         /**
-         * 消费载荷。
+         * 消费注册项。
          *
-         * @param payload 载荷
+         * @param registration 注册项
          * @throws Exception 处理失败
          */
-        void accept(T payload) throws Exception;
+        void accept(T registration) throws Exception;
     }
 
     /**
-     * 四道关卡的统一判定。
+     * 前三道关卡的统一判定；附加条件由 {@link #matchesCondition} 单独处理。
      *
      * @param registration   注册项
      * @param event   插件侧事件
@@ -294,8 +289,6 @@ public final class EventPipeline {
         // 这个检查，现在所有事件类型都必经此处。
         return registration.scopeMatches(groupId, runtime::effectiveScopeOf);
     }
-
-
 
     /**
      * 统一异常兜底。
