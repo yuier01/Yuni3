@@ -5,9 +5,6 @@ import com.yuier.yuni.core.enums.UserPermission;
 import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.event.matched.CommandResult;
 import com.yuier.yuni.core.model.bot.BotApp;
-import com.yuier.yuni.core.model.message.MessageChain;
-import com.yuier.yuni.core.model.message.MessageSegment;
-import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.event.detector.message.command.CommandDetector;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.CommandHandler;
@@ -16,9 +13,6 @@ import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
-import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
-import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
@@ -209,12 +203,12 @@ public final class CommandDispatcher {
     /**
      * 匹配并执行命令。
      *
-     * @param event   插件侧消息事件（用于取消息链与条件判定）
+     * @param event   核心消息事件（命令引擎直接消费）
      * @param groupId 事件群号；非群事件为 {@code null}
      * @param reply   回复入口；可为 {@code null}
      * @return 是否命中并执行了至少一个命令（用于决定是否短路模式插件）
      */
-    public boolean dispatch(CoreMessageEvent event,
+    public boolean dispatch(YuniMessageEvent event,
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
@@ -231,13 +225,11 @@ public final class CommandDispatcher {
                 continue;
             }
 
-            // 把插件侧事件还原为命令引擎所需的 YuniMessageEvent（携带同一个消息链）
-            YuniMessageEvent engineEvent = toEngineEvent(event);
             CommandDetector detector = new CommandDetector(tree, bot, botApp);
 
             Boolean hit;
             try {
-                hit = detector.match(engineEvent);
+                hit = detector.match(event);
             } catch (Throwable t) {
                 log.error("插件 {} 的命令匹配抛异常，跳过该命令树: {}",
                         registration.owner() == null ? "?" : registration.owner().getId(), t.toString(), t);
@@ -248,7 +240,7 @@ public final class CommandDispatcher {
             }
 
             matched = true;
-            CommandResult result = engineEvent.getCommandResult();
+            CommandResult result = event.getCommandResult();
 
             // 节点级权限校验：沿匹配路径递归比对每一层
             if (!checkNodePermission(result, event, registration)) {
@@ -269,10 +261,9 @@ public final class CommandDispatcher {
                 continue;
             }
 
-            final YuniMessageEvent finalEvent = engineEvent;
             CompletableFuture.runAsync(() -> {
                 try {
-                    handler.handle(finalEvent, reply);
+                    handler.handle(event, reply);
                 } catch (Throwable t) {
                     log.error("插件 {} 执行命令失败", registration.owner() == null ? "?" : registration.owner().getId(), t);
                     if (reply != null) {
@@ -379,13 +370,13 @@ public final class CommandDispatcher {
      * @return 全部节点权限满足时返回 {@code true}
      */
     private boolean checkNodePermission(CommandResult result,
-                                        CoreMessageEvent event,
+                                        YuniMessageEvent event,
                                         PluginAbilityRegistry.Registration.Command registration) {
         if (result == null) {
             return true;
         }
         String pluginId = registration.owner() == null ? null : registration.owner().getId();
-        UserPermission userPermission = resolvePermission(event.getUserId(), event.getGroupId().orElse(null), pluginId);
+        UserPermission userPermission = resolvePermission(event.getUserId(), event.getGroupId(), pluginId);
         UserPermission required = result.getRequiredPermission();
         if (required != null && userPermission.getPriority() < required.getPriority()) {
             log.info("权限不足: 用户 {} 执行 {} 需要 {}，实际 {}",
@@ -422,57 +413,6 @@ public final class CommandDispatcher {
             log.warn("权限判定失败，回落 USER: userId={}, groupId={}", userId, groupId, e);
             return UserPermission.USER;
         }
-    }
-
-    /**
-     * 把插件侧消息事件还原为命令引擎所需的 {@link YuniMessageEvent}。
-     *
-     * <p>只填命令匹配与命令处理器真正会用到的字段（消息链、类型、群号、发送者、
-     * 消息 ID）。其余字段留空——命令处理器不应依赖它们；若确实需要，
-     * 应改用 {@code CoreMessageEvent} 上新增的字段访问方法。</p>
-     *
-     * @param event 插件侧事件
-     * @return 引擎事件
-     */
-    private YuniMessageEvent toEngineEvent(CoreMessageEvent event) {
-        YuniMessageEvent engineEvent = new YuniMessageEvent();
-        engineEvent.setTime(event.getTime());
-        engineEvent.setSelfId(event.getSelfId());
-        engineEvent.setMessageType(event.getMessageType());
-        engineEvent.setSubType(event.getSubType());
-        engineEvent.setMessageId(event.getMessageId());
-        engineEvent.setUserId(event.getUserId());
-        engineEvent.setGroupId(event.getGroupId().orElse(null));
-        engineEvent.setRawMessage(event.getRawMessage());
-
-        if (event.getChain() instanceof CoreMessageChainView view) {
-            // 复用同一个内部链对象，避免 JSON 往返
-            List<MessageSegment> segments = view.getRawSegments();
-            engineEvent.setMessage(segments);
-            MessageChain chain =
-                    new MessageChain();
-            chain.addAll(segments);
-            engineEvent.setMessageChain(chain);
-        } else {
-            // 其他视图实现（测试替身等）：用纯文本构造一个等价的链
-            MessageChain chain =
-                    new MessageChain();
-            chain.addTextSegment(event.getChain().getPlainText());
-            engineEvent.setMessage(chain.getContent());
-            engineEvent.setMessageChain(chain);
-        }
-
-        // 发送者：命令引擎不读它，但保留以便将来的节点级校验
-        MessageSender sender =
-                new MessageSender();
-        sender.setUserId(event.getUserId());
-        sender.setNickname(event.getSender().getNickname());
-        sender.setCard(event.getSender().getCard().orElse(null));
-        sender.setRole(event.getSender().getRole().orElse(null));
-        sender.setTitle(event.getSender().getTitle().orElse(null));
-        engineEvent.setSender(sender);
-
-        return engineEvent;
     }
 
     /**

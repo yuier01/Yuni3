@@ -98,7 +98,7 @@ public final class EventPipeline {
         // 阶段 1：命令（同步匹配）
         boolean commandMatched = false;
         if (commandDispatcher != null) {
-            commandMatched = commandDispatcher.dispatch(adapted, groupId, reply);
+            commandMatched = commandDispatcher.dispatch(event, groupId, reply);
         }
         if (commandMatched) {
             // 现行不变式：命中命令后不再匹配模式插件
