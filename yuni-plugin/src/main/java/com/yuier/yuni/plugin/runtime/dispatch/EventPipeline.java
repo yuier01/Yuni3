@@ -243,20 +243,27 @@ public final class EventPipeline {
      * @param owner  插件 Fiber，用于日志归因；可为 {@code null}
      * @param event  插件侧事件
      * @param action 处理器调用体
+     * @param <E>    事件类型
      */
-    private void dispatchAsync(PluginFiber owner, Event event, ThrowingRunnable action) {
+    private <E extends Event> void dispatchAsync(PluginFiber owner,
+                                                 E event,
+                                                 ThrowingRunnable action) {
         // 异步执行：不阻塞 OneBot 的 /event 连接线程
-        CompletableFuture.runAsync(() -> invokeSafely(owner, action, event));
+        CompletableFuture.runAsync(() -> invokeSafely(owner, event, action));
     }
+
     /**
      * 前三道关卡的统一判定；附加条件由 {@link #conditionMatches} 单独处理。
      *
-     * @param registration   注册项
-     * @param event   插件侧事件
-     * @param groupId 事件群号
+     * @param registration 注册项
+     * @param event        插件侧事件
+     * @param groupId      事件群号
+     * @param <E>          事件类型
      * @return 全部通过返回 {@code true}
      */
-    private boolean passesGates(PluginAbilityRegistry.Registration registration, Event event, Long groupId) {
+    private <E extends Event> boolean passesGates(PluginAbilityRegistry.Registration registration,
+                                                  E event,
+                                                  Long groupId) {
         // 关卡 1：插件必须处于 ACTIVE。FAILED / UNLOADING / DISPOSED 的插件不再收事件。
         if (!registration.ownerServiceable()) {
             return false;
@@ -286,13 +293,16 @@ public final class EventPipeline {
      * {@code Error}，只 catch Exception 会让插件静默消失
      * （2026-08 P0 事故的成因之一）。</p>
      *
-     * @param owner 插件 Fiber（用于日志归因）；可为 {@code null}
-     * @param body  处理器调用体
-     * @param event 事件（用于日志）
+     * @param owner  插件 Fiber（用于日志归因）；可为 {@code null}
+     * @param event  事件（用于日志）
+     * @param action 处理器调用体
+     * @param <E>    事件类型
      */
-    private void invokeSafely(PluginFiber owner, ThrowingRunnable body, Event event) {
+    private <E extends Event> void invokeSafely(PluginFiber owner,
+                                                E event,
+                                                ThrowingRunnable action) {
         try {
-            body.run();
+            action.run();
         } catch (Throwable t) {
             String pluginId = owner == null ? "?" : owner.getId();
             log.error("插件 {} 处理事件失败: {}", pluginId, event.toLogString(), t);
@@ -323,8 +333,9 @@ public final class EventPipeline {
      * @param owner 插件 Fiber
      * @param event 事件
      * @param cause 失败原因
+     * @param <E>   事件类型
      */
-    private void replyFailure(PluginFiber owner, Event event, Throwable cause) {
+    private <E extends Event> void replyFailure(PluginFiber owner, E event, Throwable cause) {
         Reply reply = replyOf(event);
         if (reply == null) {
             // 元事件等无会话目标的事件：日志已经是唯一的反馈渠道
@@ -349,9 +360,10 @@ public final class EventPipeline {
      * 因此这里返回 {@code null}。</p>
      *
      * @param event 插件侧事件
+     * @param <E>   事件类型
      * @return 回复入口；无则返回 {@code null}
      */
-    private Reply replyOf(Event event) {
+    private <E extends Event> Reply replyOf(E event) {
         if (event instanceof CoreMessageEvent messageEvent) {
             return messageEvent.getReply();
         }
