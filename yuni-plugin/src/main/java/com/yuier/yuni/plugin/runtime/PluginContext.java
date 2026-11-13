@@ -274,50 +274,50 @@ public final class PluginContext implements YuniContext {
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.MESSAGE,
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onNotice(String subType, NoticeHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.NOTICE, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.NOTICE,
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.NOTICE,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onRequest(String subType, RequestHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.REQUEST, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.REQUEST,
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.REQUEST,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onMeta(String subType, MetaHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.META, null, subType, handler);
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.META,
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.META,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
-        return registerEvent(PluginAbilityRegistry.RegistrationKind.MESSAGE_SENT,
+        return registerEventHook(PluginAbilityRegistry.RegistrationKind.MESSAGE_SENT,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
@@ -335,10 +335,10 @@ public final class PluginContext implements YuniContext {
      * @param handler   处理器载荷
      * @return 撤销句柄
      */
-    private Disposable registerEvent(PluginAbilityRegistry.RegistrationKind registrationKind,
-                                     Predicate<Object> predicate,
-                                     String subType,
-                                     Object handler) {
+    private Disposable registerEventHook(PluginAbilityRegistry.RegistrationKind registrationKind,
+                                         Predicate<Object> predicate,
+                                         String subType,
+                                         Object handler) {
         PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
                 registrationKind, fiber, ScopeFilter.ALL, predicate, subType, handler);
         Disposable removeEntry = registrations.add(registration);
