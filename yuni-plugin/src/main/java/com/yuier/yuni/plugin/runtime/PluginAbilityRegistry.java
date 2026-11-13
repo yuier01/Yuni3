@@ -13,7 +13,7 @@ import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
-import java.util.ArrayList;
+
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -50,22 +50,22 @@ import java.util.function.Predicate;
 public final class PluginAbilityRegistry {
 
     /** 命令树根节点的注册项。 */
-    private final List<Registration.Command> commandEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.Command> commandRegistrations = new CopyOnWriteArrayList<>();
 
     /** 消息事件处理器注册项。 */
-    private final List<Registration.Message> messageEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.Message> messageRegistrations = new CopyOnWriteArrayList<>();
 
     /** 消息发出事件处理器注册项。 */
-    private final List<Registration.MessageSent> messageSentEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.MessageSent> messageSentRegistrations = new CopyOnWriteArrayList<>();
 
     /** 通知事件处理器注册项。 */
-    private final List<Registration.Notice> noticeEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.Notice> noticeRegistrations = new CopyOnWriteArrayList<>();
 
     /** 请求事件处理器注册项。 */
-    private final List<Registration.Request> requestEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.Request> requestRegistrations = new CopyOnWriteArrayList<>();
 
     /** 元事件处理器注册项。 */
-    private final List<Registration.Meta> metaEntries = new CopyOnWriteArrayList<>();
+    private final List<Registration.Meta> metaRegistrations = new CopyOnWriteArrayList<>();
 
     /**
      * 注册项的能力种类。
@@ -377,12 +377,12 @@ public final class PluginAbilityRegistry {
     public Disposable add(Registration registration) {
         Objects.requireNonNull(registration, "registration");
         return switch (registration) {
-            case Registration.Command command -> addTo(commandEntries, command);
-            case Registration.Message message -> addTo(messageEntries, message);
-            case Registration.MessageSent messageSent -> addTo(messageSentEntries, messageSent);
-            case Registration.Notice notice -> addTo(noticeEntries, notice);
-            case Registration.Request request -> addTo(requestEntries, request);
-            case Registration.Meta meta -> addTo(metaEntries, meta);
+            case Registration.Command command -> addTo(commandRegistrations, command);
+            case Registration.Message message -> addTo(messageRegistrations, message);
+            case Registration.MessageSent messageSent -> addTo(messageSentRegistrations, messageSent);
+            case Registration.Notice notice -> addTo(noticeRegistrations, notice);
+            case Registration.Request request -> addTo(requestRegistrations, request);
+            case Registration.Meta meta -> addTo(metaRegistrations, meta);
         };
     }
 
@@ -409,12 +409,12 @@ public final class PluginAbilityRegistry {
      */
     private List<? extends Registration> bucketOf(RegistrationKind kind) {
         return switch (kind) {
-            case COMMAND -> commandEntries;
-            case MESSAGE -> messageEntries;
-            case MESSAGE_SENT -> messageSentEntries;
-            case NOTICE -> noticeEntries;
-            case REQUEST -> requestEntries;
-            case META -> metaEntries;
+            case COMMAND -> commandRegistrations;
+            case MESSAGE -> messageRegistrations;
+            case MESSAGE_SENT -> messageSentRegistrations;
+            case NOTICE -> noticeRegistrations;
+            case REQUEST -> requestRegistrations;
+            case META -> metaRegistrations;
         };
     }
 
@@ -423,8 +423,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.Command> getCommandEntries() {
-        return List.copyOf(commandEntries);
+    public List<Registration.Command> getCommandRegistrations() {
+        return List.copyOf(commandRegistrations);
     }
 
     /**
@@ -432,8 +432,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.Message> getMessageEntries() {
-        return List.copyOf(messageEntries);
+    public List<Registration.Message> getMessageRegistrations() {
+        return List.copyOf(messageRegistrations);
     }
 
     /**
@@ -441,8 +441,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.MessageSent> getMessageSentEntries() {
-        return List.copyOf(messageSentEntries);
+    public List<Registration.MessageSent> getMessageSentRegistrations() {
+        return List.copyOf(messageSentRegistrations);
     }
 
     /**
@@ -450,8 +450,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.Notice> getNoticeEntries() {
-        return List.copyOf(noticeEntries);
+    public List<Registration.Notice> getNoticeRegistrations() {
+        return List.copyOf(noticeRegistrations);
     }
 
     /**
@@ -459,8 +459,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.Request> getRequestEntries() {
-        return List.copyOf(requestEntries);
+    public List<Registration.Request> getRequestRegistrations() {
+        return List.copyOf(requestRegistrations);
     }
 
     /**
@@ -468,8 +468,8 @@ public final class PluginAbilityRegistry {
      *
      * @return 只读快照
      */
-    public List<Registration.Meta> getMetaEntries() {
-        return List.copyOf(metaEntries);
+    public List<Registration.Meta> getMetaRegistrations() {
+        return List.copyOf(metaRegistrations);
     }
 
     /**
@@ -478,9 +478,9 @@ public final class PluginAbilityRegistry {
      * @return 总数
      */
     public int getTotalSize() {
-        return commandEntries.size() + messageEntries.size()
-                + messageSentEntries.size() + noticeEntries.size()
-                + requestEntries.size() + metaEntries.size();
+        return commandRegistrations.size() + messageRegistrations.size()
+                + messageSentRegistrations.size() + noticeRegistrations.size()
+                + requestRegistrations.size() + metaRegistrations.size();
     }
 
     /**
@@ -521,11 +521,11 @@ public final class PluginAbilityRegistry {
      * <p>仅用于测试与全量重载前的兜底清理；正常卸载由各注册项的撤销句柄完成。</p>
      */
     public void clear() {
-        commandEntries.clear();
-        messageEntries.clear();
-        messageSentEntries.clear();
-        noticeEntries.clear();
-        requestEntries.clear();
-        metaEntries.clear();
+        commandRegistrations.clear();
+        messageRegistrations.clear();
+        messageSentRegistrations.clear();
+        noticeRegistrations.clear();
+        requestRegistrations.clear();
+        metaRegistrations.clear();
     }
 }

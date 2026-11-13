@@ -178,7 +178,7 @@ public final class CommandDispatcher {
      */
     public int getHandlerCount() {
         int count = 0;
-        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandRegistrations()) {
             CommandNode tree = registration.tree();
             if (tree != null) {
                 count += countHandlers(tree);
@@ -218,7 +218,7 @@ public final class CommandDispatcher {
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
-        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandRegistrations()) {
             // 关卡：插件状态 + 作用域过滤。
             // 命令的「子类型过滤」不适用（命令靠命令树匹配，不是靠子类型）。
             // 作用域同时看「注册项自带的过滤器」与「运行时的当前作用域」——
@@ -326,7 +326,7 @@ public final class CommandDispatcher {
         if (key == null) {
             return null;
         }
-        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration.Command registration : registrations.getCommandRegistrations()) {
             CommandNode tree = registration.tree();
             if (tree == null) {
                 continue;

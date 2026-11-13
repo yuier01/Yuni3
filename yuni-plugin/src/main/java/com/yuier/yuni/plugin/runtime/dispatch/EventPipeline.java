@@ -70,7 +70,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class EventPipeline {
 
     /** 能力注册总表。 */
-    private final PluginAbilityRegistry registrations;
+    private final PluginAbilityRegistry registry;
 
     /** 运行时，用于状态检查与失败记录。 */
     private final PluginRuntime runtime;
@@ -107,9 +107,12 @@ public final class EventPipeline {
         }
 
         // 阶段 2：消息/模式处理器
-        dispatchAll(registrations.getMessageEntries(), adapted, groupId, reply,
-                registration -> registration.when().test(adapted),
-                registration -> registration.handler().handle(adapted, reply));
+        dispatchAll(registry.getMessageRegistrations(),
+                    adapted,
+                    groupId,
+                    reply,
+                    registration -> registration.when().test(adapted),
+                    registration -> registration.handler().handle(adapted, reply));
     }
 
     /**
@@ -124,7 +127,7 @@ public final class EventPipeline {
     public void onMessageSent(YuniMessageSentEvent event) {
         CoreMessageSentEvent adapted = adapter.adapt(event);
         Reply reply = adapted.getReply();
-        dispatchAll(registrations.getMessageSentEntries(), adapted,
+        dispatchAll(registry.getMessageSentRegistrations(), adapted,
                 adapted.getGroupId().orElse(null), reply,
                 registration -> registration.when().test(adapted),
                 registration -> registration.handler().handle(adapted, reply));
@@ -138,7 +141,7 @@ public final class EventPipeline {
     public void onNotice(YuniNoticeEvent event) {
         CoreLifecycleEvents.CoreNoticeEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.getNoticeEntries(), adapted,
+        dispatchAll(registry.getNoticeRegistrations(), adapted,
                 adapted.getGroupId().orElse(null), reply,
                 registration -> registration.when().test(adapted),
                 registration -> registration.handler().handle(adapted, reply));
@@ -152,7 +155,7 @@ public final class EventPipeline {
     public void onRequest(YuniRequestEvent event) {
         CoreLifecycleEvents.CoreRequestEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.getRequestEntries(), adapted,
+        dispatchAll(registry.getRequestRegistrations(), adapted,
                 adapted.getGroupId().orElse(null), reply,
                 registration -> registration.when().test(adapted),
                 registration -> registration.handler().handle(adapted, reply));
@@ -166,7 +169,7 @@ public final class EventPipeline {
     public void onMeta(YuniMetaEvent event) {
         CoreLifecycleEvents.CoreMetaEvent adapted = adapter.adapt(event);
         Reply reply = replyOf(adapted);
-        dispatchAll(registrations.getMetaEntries(), adapted,
+        dispatchAll(registry.getMetaRegistrations(), adapted,
                 adapted.getGroupId().orElse(null), reply,
                 registration -> registration.when().test(adapted),
                 registration -> registration.handler().handle(adapted, reply));
