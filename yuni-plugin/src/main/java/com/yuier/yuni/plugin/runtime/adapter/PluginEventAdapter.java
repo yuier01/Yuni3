@@ -26,7 +26,7 @@ import java.util.function.Supplier;
  * </ol>
  * <p>如果把这些逻辑散在 {@code EventPipeline} 的各分支里，五类事件会各写一遍
  * 「取群号 → 构造 Reply → 包装事件」。集中到本工厂后，
- * {@code EventPipeline} 只负责「按类型分派 + 作用域过滤 + 权限检查 + 异常兜底」，
+ * {@code EventPipeline} 只负责「按类型分派 + 作用域过滤 + 异常兜底」，
  * 两件事各自内聚。</p>
  *
  * <h2>翻译是无副作用的</h2>
@@ -34,9 +34,9 @@ import java.util.function.Supplier;
  * （仅用于构造 {@link CoreReply}，构造时不发送任何消息）。
  * 因此翻译可以安全地在分发线程上同步完成。</p>
  *
- * <h2>关于「不需要翻译的旧路径」</h2>
- * <p>过渡期内旧插件系统仍会消费同一批 core 事件。本工厂<b>只读取</b>事件对象，
- * 不修改它，因此新旧两条路径可以并存消费同一事件而互不干扰。</p>
+ * <h2>只读翻译</h2>
+ * <p>本工厂<b>只读取</b> core 事件对象，不修改它；适配结果是新的插件侧对象。
+ * core 事件可能还有其他消费者，保持只读可以避免适配过程影响它们。</p>
  */
 @RequiredArgsConstructor
 public final class PluginEventAdapter {
