@@ -1,6 +1,5 @@
 package com.yuier.yuni.plugin.runtime;
 
-import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
@@ -428,7 +427,7 @@ class PluginRuntimeTest {
     @DisplayName("关闭后再注册：拒收并就地撤销，不留悬挂引用")
     void registrationAfterDisposeIsRejectedAndRolledBack() {
         PluginRuntime runtime = runtime();
-        List<Disposable> lateHandles = new ArrayList<>();
+        YuniContext[] ctxRef = new YuniContext[1];
 
         // 保留 ctx 引用并在卸载后再注册——模拟「异步回调在插件卸载后才触发」
         YuniPlugin plugin = new YuniPlugin() {
@@ -439,7 +438,8 @@ class PluginRuntimeTest {
 
             @Override
             public void apply(YuniContext ctx) {
-                lateHandles.add(ctx.onMessage((ev, reply) -> { }));
+                ctxRef[0] = ctx;
+                ctx.onMessage((ev, reply) -> { });
             }
         };
 
@@ -449,8 +449,8 @@ class PluginRuntimeTest {
         runtime.unload(fiber.getId());
         assertEquals(0, runtime.getRegistrations().getTotalSize());
 
-        // 已经不在注册表里，再次撤销是幂等的
-        lateHandles.get(0).dispose();
+        // 卸载后再注册：注册表条目被立即回滚，不留下悬挂引用
+        ctxRef[0].onMessage((ev, reply) -> { });
         assertEquals(0, runtime.getRegistrations().getTotalSize());
     }
 

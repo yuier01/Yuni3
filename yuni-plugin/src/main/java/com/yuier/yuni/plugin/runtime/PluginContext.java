@@ -268,60 +268,60 @@ public final class PluginContext implements YuniContext {
     // ==================== 事件注册 ====================
 
     @Override
-    public Disposable onMessage(MessageHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Message(
+    public void onMessage(MessageHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Message(
                 fiber, ScopeFilter.ALL,
                 PluginAbilityRegistry.Registration.Message.ALWAYS, handler));
     }
 
     @Override
-    public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Message(
+    public void onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Message(
                 fiber, ScopeFilter.ALL, when, handler));
     }
 
     @Override
-    public Disposable onNotice(String subType, NoticeHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Notice(
+    public void onNotice(String subType, NoticeHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Notice(
                 fiber, ScopeFilter.ALL,
                 PluginAbilityRegistry.Registration.Notice.ALWAYS, subType, handler));
     }
 
     @Override
-    public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Notice(
+    public void onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Notice(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
-    public Disposable onRequest(String subType, RequestHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Request(
+    public void onRequest(String subType, RequestHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Request(
                 fiber, ScopeFilter.ALL,
                 PluginAbilityRegistry.Registration.Request.ALWAYS, subType, handler));
     }
 
     @Override
-    public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Request(
+    public void onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Request(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
-    public Disposable onMeta(String subType, MetaHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Meta(
+    public void onMeta(String subType, MetaHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Meta(
                 fiber, ScopeFilter.ALL,
                 PluginAbilityRegistry.Registration.Meta.ALWAYS, subType, handler));
     }
 
     @Override
-    public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.Meta(
+    public void onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
+        register(new PluginAbilityRegistry.Registration.Meta(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
-    public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
-        return register(new PluginAbilityRegistry.Registration.MessageSent(
+    public void onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
+        register(new PluginAbilityRegistry.Registration.MessageSent(
                 fiber, ScopeFilter.ALL, when, handler));
     }
 

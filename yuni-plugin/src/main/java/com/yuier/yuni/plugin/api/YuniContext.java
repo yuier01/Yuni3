@@ -116,9 +116,9 @@ public interface YuniContext {
      * 是刻意的——让读者知道这里不是漏了条件。</p>
      *
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onMessage(MessageHandler handler);
+    void onMessage(MessageHandler handler);
 
     /**
      * 注册消息事件处理器（带探测条件）。
@@ -134,9 +134,9 @@ public interface YuniContext {
      *
      * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler);
+    void onMessage(Predicate<MessageEvent> when, MessageHandler handler);
 
     /**
      * 注册通知事件处理器（按子类型过滤）。
@@ -151,18 +151,18 @@ public interface YuniContext {
      * @param subType 通知子类型（如 {@code "poke"} / {@code "group_admin"}）；
      *                {@code null} 或空串表示不过滤
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onNotice(String subType, NoticeHandler handler);
+    void onNotice(String subType, NoticeHandler handler);
 
     /**
      * 注册通知事件处理器（带探测条件）。
      *
      * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler);
+    void onNotice(Predicate<NoticeEvent> when, NoticeHandler handler);
 
     /**
      * 注册请求事件处理器（按子类型过滤）。
@@ -170,18 +170,18 @@ public interface YuniContext {
      * @param subType 请求子类型（{@code "friend"} / {@code "group"} / {@code "add"} /
      *                {@code "invite"}）；{@code null} 或空串表示不过滤
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onRequest(String subType, RequestHandler handler);
+    void onRequest(String subType, RequestHandler handler);
 
     /**
      * 注册请求事件处理器（带探测条件）。
      *
      * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler);
+    void onRequest(Predicate<RequestEvent> when, RequestHandler handler);
 
     /**
      * 注册元事件处理器（按类型过滤）。
@@ -189,18 +189,18 @@ public interface YuniContext {
      * @param subType 元事件类型（{@code "heartbeat"} / {@code "lifecycle"}）；
      *                {@code null} 或空串表示不过滤
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onMeta(String subType, MetaHandler handler);
+    void onMeta(String subType, MetaHandler handler);
 
     /**
      * 注册元事件处理器（带探测条件）。
      *
      * @param when    探测条件；不能为 {@code null}；无条件请用对应的不带条件重载
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler);
+    void onMeta(Predicate<MetaEvent> when, MetaHandler handler);
 
     /**
      * 注册「机器人自身发出消息」事件处理器。
@@ -210,9 +210,9 @@ public interface YuniContext {
      *
      * @param when    探测条件；不能为 {@code null}；无条件请显式写 {@code ev -> true}
      * @param handler 处理器
-     * @return 撤销句柄
+     * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler);
+    void onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler);
 
     // ==================== 命令注册 ====================
 
