@@ -2,7 +2,6 @@ package com.yuier.yuni.plugin.runtime;
 
 import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginDescriptor;
-import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import org.junit.jupiter.api.DisplayName;
@@ -74,7 +73,7 @@ class PluginRuntimeTest {
         // 两个事件注册 + 一个自定义 PluginEffect
         assertEquals(3, fiber.getEffectCount());
         // 注册表也应看到这三条（自定义 PluginEffect 不进注册表，故为 2）
-        assertEquals(2, runtime.getRegistrations().getTotalSize());
+        assertEquals(2, runtime.getRegistry().getTotalSize());
         assertEquals(1, runtime.getFibers().getPluginCount());
     }
 
@@ -91,7 +90,7 @@ class PluginRuntimeTest {
 
         PluginFiber fiber = load(runtime, plugin);
         assertEquals(3, fiber.getEffectCount());
-        assertTrue(runtime.getRegistrations().getTotalSize() > 0);
+        assertTrue(runtime.getRegistry().getTotalSize() > 0);
 
         List<String> failures = runtime.unload(fiber.getId());
 
@@ -99,7 +98,7 @@ class PluginRuntimeTest {
         assertEquals(0, fiber.getEffectCount(), "PluginEffect 必须归零");
         assertEquals(FiberState.DISPOSED, fiber.getState());
         assertEquals(0, runtime.getFibers().getPluginCount());
-        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
+        assertEquals(0, runtime.getRegistry().getTotalSize(), "注册表必须清空");
         assertEquals(0, runtime.getFibers().getTotalEffectCount());
     }
 
@@ -133,7 +132,7 @@ class PluginRuntimeTest {
         // 回滚是关键：不回滚会出现「标记为失败但监听器仍在工作」的半初始化状态
         assertEquals(0, fiber.getEffectCount(), "失败后 PluginEffect 必须回滚");
         assertEquals(1, disposed.get(), "自定义 PluginEffect 的 Disposer 应被调用");
-        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表不应残留半初始化条目");
+        assertEquals(0, runtime.getRegistry().getTotalSize(), "注册表不应残留半初始化条目");
     }
 
     @Test
@@ -151,7 +150,7 @@ class PluginRuntimeTest {
         // 只 catch Exception 会让这里静默通过并把注册残留下来
         assertEquals(FiberState.FAILED, fiber.getState());
         assertEquals(0, fiber.getEffectCount());
-        assertEquals(0, runtime.getRegistrations().getTotalSize());
+        assertEquals(0, runtime.getRegistry().getTotalSize());
     }
 
     @Test
@@ -420,7 +419,7 @@ class PluginRuntimeTest {
         assertTrue(failures.isEmpty(), "不应有清理失败: " + failures);
         assertEquals(0, runtime.getFibers().getPluginCount());
         assertEquals(0, runtime.getFibers().getTotalEffectCount());
-        assertEquals(0, runtime.getRegistrations().getTotalSize());
+        assertEquals(0, runtime.getRegistry().getTotalSize());
     }
 
     @Test
@@ -444,14 +443,14 @@ class PluginRuntimeTest {
         };
 
         PluginFiber fiber = load(runtime, plugin);
-        assertEquals(1, runtime.getRegistrations().getTotalSize());
+        assertEquals(1, runtime.getRegistry().getTotalSize());
 
         runtime.unload(fiber.getId());
-        assertEquals(0, runtime.getRegistrations().getTotalSize());
+        assertEquals(0, runtime.getRegistry().getTotalSize());
 
         // 卸载后再注册：注册表条目被立即回滚，不留下悬挂引用
         ctxRef[0].onMessage((ev, reply) -> { });
-        assertEquals(0, runtime.getRegistrations().getTotalSize());
+        assertEquals(0, runtime.getRegistry().getTotalSize());
     }
 
     /**

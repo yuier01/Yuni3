@@ -85,9 +85,9 @@ class EventPipelineTest {
         botApp.setCommandFlag("/");
 
         commandDispatcher = new CommandDispatcher(
-                runtime.getRegistrations(), bot, botApp, CommandDispatcher.permissiveResolver());
+                runtime.getRegistry(), bot, botApp, CommandDispatcher.permissiveResolver());
         pipeline = new EventPipeline(
-                runtime.getRegistrations(), runtime, adapter, commandDispatcher);
+                runtime.getRegistry(), runtime, adapter, commandDispatcher);
     }
 
     /**
@@ -215,14 +215,14 @@ class EventPipelineTest {
         PluginFiber outOfScope = load(runtime, 
                 YuniPlugin.of("排除群插件", ctx -> { }));
 
-        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration.Notice(
+        runtime.getRegistry().add(new PluginAbilityRegistry.Registration.Notice(
                 inScope,
                 new ScopeFilter(false, Set.of(999L)),
                 PluginAbilityRegistry.Registration.Notice.ALWAYS, null,
                 (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
-        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration.Notice(
+        runtime.getRegistry().add(new PluginAbilityRegistry.Registration.Notice(
                 outOfScope,
                 new ScopeFilter(true, Set.of(999L)),
                 PluginAbilityRegistry.Registration.Notice.ALWAYS, null,
@@ -560,13 +560,13 @@ class EventPipelineTest {
         // 注入一个「拥有 ADMIN」的权限判定，并用它构造独立的分发器与流水线。
         // 注意处理器必须绑到这个分发器上——处理器绑定表是分发器私有的。
         CommandDispatcher adminDispatcher = new CommandDispatcher(
-                runtime.getRegistrations(), bot, botApp,
+                runtime.getRegistry(), bot, botApp,
                 (userId, groupId, pluginId) -> UserPermission.ADMIN);
         com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0),
                 (event, reply) -> runs.incrementAndGet());
 
         EventPipeline adminPipeline = new EventPipeline(
-                runtime.getRegistrations(), runtime, adapter, adminDispatcher);
+                runtime.getRegistry(), runtime, adapter, adminDispatcher);
 
         adminPipeline.onMessage(groupMessage("/测试 管理"));
 
@@ -677,7 +677,7 @@ class EventPipelineTest {
                 ctx.onMessage((ev, reply) -> hits.incrementAndGet())));
 
         runtime.unload(fiber.getId());
-        assertEquals(0, runtime.getRegistrations().getTotalSize());
+        assertEquals(0, runtime.getRegistry().getTotalSize());
 
         pipeline.onMessage(groupMessage("任意"));
         await(() -> hits.get() > 0, 300);
@@ -691,7 +691,7 @@ class EventPipelineTest {
         // 而单元测试里没有 Spring 容器。它必须给出可操作的错误信息，
         // 否则在插件里表现为「命令莫名其妙不生效」，极难定位。
         CommandDispatcher noBotApp = new CommandDispatcher(
-                runtime.getRegistrations(), bot, null, CommandDispatcher.permissiveResolver());
+                runtime.getRegistry(), bot, null, CommandDispatcher.permissiveResolver());
 
         CommandNode tree = CommandNode.builder("测试").build();
         load(runtime, YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));

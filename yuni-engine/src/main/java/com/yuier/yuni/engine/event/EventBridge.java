@@ -27,5 +27,6 @@ public class EventBridge implements BotEventCallback {
     @Override
     public void onEvent(YuniEvent event) {
         springPublisher.publishEvent(event);
+        // 处理广播流程见 YuniEventDispatcher
     }
 }

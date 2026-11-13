@@ -11,6 +11,7 @@ import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
+import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.UserScopeStore.UserScopeRecord;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
@@ -87,7 +88,7 @@ public final class PluginRuntime {
 
     /** 能力注册总表：所有插件注册的事件处理器与命令树。 */
     @Getter
-    private final PluginAbilityRegistry registrations = new PluginAbilityRegistry();
+    private final PluginAbilityRegistry registry = new PluginAbilityRegistry();
 
     /** 服务注册表：框架内置服务与插件提供的服务。 */
     @Getter
@@ -329,14 +330,14 @@ public final class PluginRuntime {
         }
 
         PluginContext ctx = PluginContext.forFiber(
-                fiber, services, registrations, taskManager, dataDir, jsonCodec);
+                fiber, services, registry, taskManager, dataDir, jsonCodec);
         // 让上下文能回调运行时（作用域查询、管理接口）
         ctx.bindRuntime(this);
 
         try {
             fiber.getPlugin().apply(ctx);
             if (fiber.tryMarkActive()) {
-                log.info("插件已加载: {} | 贡献能力 {}", fiber.getId(), registrations.kindsOf(fiber));
+                log.info("插件已加载: {} | 贡献能力 {}", fiber.getId(), registry.kindsOf(fiber));
                 return true;
             }
 
@@ -691,20 +692,20 @@ public final class PluginRuntime {
                 this.eventAdapter = new PluginEventAdapter(
                         botSupplier, jsonCodec);
                 this.commandDispatcher = new CommandDispatcher(
-                        registrations,
+                        registry,
                         // 命令引擎需要 bot 的具体实例（用于回复段解析）；
                         // 这里即时解析一次，未就绪时传 null，由引擎的静态回退兜住
                         resolveBot(),
                         botApp,
                         // 权限判定委托给权限服务——插件可通过 ctx.getPermission() 覆盖注册
-                        com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher.fromService(
-                                services.resolve(com.yuier.yuni.plugin.api.service.PermissionService.class)
+                        CommandDispatcher.fromService(
+                                services.resolve(PermissionService.class)
                                         .orElse(null)),
                         // 作用域判定委托给本运行时的当前配置——用户的群粒度启停
                         // 随时可变，因此必须在分发时查而不是注册时定
                         this::effectiveScopeOf);
                 this.pipeline = new EventPipeline(
-                        registrations, this, eventAdapter, commandDispatcher);
+                        registry, this, eventAdapter, commandDispatcher);
             }
             return this.pipeline;
         }
@@ -1199,7 +1200,7 @@ public final class PluginRuntime {
      * @return 形如 {@code "artifacts=13, plugins=23, effects=41, states={...}"}
      */
     public String describe() {
-        return fibers.describe() + ", registrations=" + registrations.getTotalSize();
+        return fibers.describe() + ", registrations=" + registry.getTotalSize();
     }
 
     // ==================== 内部 ====================

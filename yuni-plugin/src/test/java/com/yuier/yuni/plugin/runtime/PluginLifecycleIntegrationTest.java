@@ -206,7 +206,7 @@ class PluginLifecycleIntegrationTest {
         assertEquals(FiberState.ACTIVE, fiber.getState());
         assertEquals(4, fiber.getEffectCount(), "应有 4 个 PluginEffect：消息 + 定时 + 服务 + 自定义");
         // 注册表：消息 1 条；服务不进注册表（在 ServiceRegistry 里）
-        assertEquals(1, runtime.getRegistrations().getTotalSize());
+        assertEquals(1, runtime.getRegistry().getTotalSize());
         assertTrue(runtime.getServices().contains(MultiAbilityPlugin.Greeter.class));
 
         // 能力 1 生效：符合条件时处理器被调用
@@ -228,7 +228,7 @@ class PluginLifecycleIntegrationTest {
 
         assertTrue(failures.isEmpty(), "清理不应失败: " + failures);
         assertEquals(0, fiber.getEffectCount(), "PluginEffect 必须归零");
-        assertEquals(0, runtime.getRegistrations().getTotalSize(), "注册表必须清空");
+        assertEquals(0, runtime.getRegistry().getTotalSize(), "注册表必须清空");
         assertTrue(!runtime.getServices().contains(MultiAbilityPlugin.Greeter.class),
                 "提供的服务必须注销");
         assertEquals(FiberState.DISPOSED, fiber.getState());
@@ -240,7 +240,7 @@ class PluginLifecycleIntegrationTest {
     void abilitiesAreDerivableFromRegistrations() {
         PluginFiber fiber = load(runtime, new MultiAbilityPlugin());
 
-        Set<PluginAbilityRegistry.RegistrationKind> registrationKinds = runtime.getRegistrations().kindsOf(fiber);
+        Set<PluginAbilityRegistry.RegistrationKind> registrationKinds = runtime.getRegistry().kindsOf(fiber);
 
         // 「这个插件是什么类型」由它注册了什么推导得出，而不是由它 extends 了什么声明
         assertTrue(registrationKinds.contains(PluginAbilityRegistry.RegistrationKind.MESSAGE));
