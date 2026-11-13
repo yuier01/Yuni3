@@ -15,7 +15,7 @@ import com.yuier.yuni.plugin.api.Commands;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.service.PermissionService;
-import com.yuier.yuni.plugin.runtime.RegistrationTable;
+import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import java.util.List;
@@ -73,7 +73,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class CommandDispatcher {
 
     /** 能力注册总表。 */
-    private final RegistrationTable registrations;
+    private final PluginAbilityRegistry registrations;
 
     /** 机器人实例，传给 {@link CommandDetector} 以支持回复段解析。 */
     private final YuniBot bot;
@@ -129,7 +129,7 @@ public final class CommandDispatcher {
      * @param botApp             机器人业务配置；可为 {@code null}（则回退静态查找）
      * @param permissionResolver 权限判定函数；可为 {@code null}（则一律视为 USER）
      */
-    public CommandDispatcher(RegistrationTable registrations,
+    public CommandDispatcher(PluginAbilityRegistry registrations,
                              YuniBot bot,
                              BotApp botApp,
                              PermissionResolver permissionResolver) {
@@ -156,7 +156,7 @@ public final class CommandDispatcher {
     /**
      * 解绑节点与处理器。
      *
-     * <p>由插件卸载时调用。实际实现上命令卸载走的是「撤销 {@link RegistrationTable}
+     * <p>由插件卸载时调用。实际实现上命令卸载走的是「撤销 {@link PluginAbilityRegistry}
      * 条目」，本方法用于显式清理。</p>
      *
      * @param node 命令节点
@@ -178,7 +178,7 @@ public final class CommandDispatcher {
      */
     public int getHandlerCount() {
         int count = 0;
-        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration registration : registrations.getCommandEntries()) {
             CommandNode tree = asCommandNode(registration);
             if (tree != null) {
                 count += countHandlers(tree);
@@ -218,7 +218,7 @@ public final class CommandDispatcher {
                             Long groupId,
                             Reply reply) {
         boolean matched = false;
-        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration registration : registrations.getCommandEntries()) {
             // 关卡：插件状态 + 作用域过滤。
             // 命令的「子类型过滤」不适用（命令靠命令树匹配，不是靠子类型）。
             // 作用域同时看「注册项自带的过滤器」与「运行时的当前作用域」——
@@ -326,7 +326,7 @@ public final class CommandDispatcher {
         if (key == null) {
             return null;
         }
-        for (RegistrationTable.Registration registration : registrations.getCommandEntries()) {
+        for (PluginAbilityRegistry.Registration registration : registrations.getCommandEntries()) {
             CommandNode tree = asCommandNode(registration);
             if (tree == null) {
                 continue;
@@ -380,7 +380,7 @@ public final class CommandDispatcher {
      */
     private boolean checkNodePermission(CommandResult result,
                                         CoreMessageEvent event,
-                                        RegistrationTable.Registration registration) {
+                                        PluginAbilityRegistry.Registration registration) {
         if (result == null) {
             return true;
         }
@@ -430,7 +430,7 @@ public final class CommandDispatcher {
      * @param registration 注册项
      * @return 命令树；类型不符时返回 {@code null}
      */
-    private CommandNode asCommandNode(RegistrationTable.Registration registration) {
+    private CommandNode asCommandNode(PluginAbilityRegistry.Registration registration) {
         Object payload = registration.getPayload();
         if (payload instanceof CommandNode node) {
             return node;

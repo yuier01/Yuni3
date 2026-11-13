@@ -12,9 +12,9 @@ import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
+import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
-import com.yuier.yuni.plugin.runtime.RegistrationTable;
 import com.yuier.yuni.plugin.runtime.adapter.CoreLifecycleEvents;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageEvent;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageSentEvent;
@@ -68,14 +68,14 @@ import lombok.extern.slf4j.Slf4j;
  * （不只是 {@code Exception}）——类加载失败抛的是 {@code Error}，
  * 只 catch Exception 会让插件静默消失，这正是 2026-08 那次 P0 事故的成因之一。</p>
  *
- * @see RegistrationTable
+ * @see PluginAbilityRegistry
  */
 @Slf4j
 @RequiredArgsConstructor
 public final class EventPipeline {
 
     /** 能力注册总表。 */
-    private final RegistrationTable registrations;
+    private final PluginAbilityRegistry registrations;
 
     /** 运行时，用于状态检查与失败记录。 */
     private final PluginRuntime runtime;
@@ -87,7 +87,7 @@ public final class EventPipeline {
     private final CommandDispatcher commandDispatcher;
 
     /* 构造器由 @RequiredArgsConstructor 生成，参数按字段声明顺序：
-     * (RegistrationTable, PluginRuntime, PluginEventAdapter, CommandDispatcher)。 */
+     * (PluginAbilityRegistry, PluginRuntime, PluginEventAdapter, CommandDispatcher)。 */
 
     // ==================== 公开入口（与 core 事件类型一一对应）====================
 
@@ -199,12 +199,12 @@ public final class EventPipeline {
      *                  由各入口方法负责转型与调用
      * @param <E>       事件类型
      */
-    private <E extends Event> void dispatchAll(List<RegistrationTable.Registration> entries,
+    private <E extends Event> void dispatchAll(List<PluginAbilityRegistry.Registration> entries,
                                                E event,
                                                Long groupId,
                                                Reply reply,
                                                ThrowingConsumer<Object> body) {
-        for (RegistrationTable.Registration registration : entries) {
+        for (PluginAbilityRegistry.Registration registration : entries) {
             if (!passesGates(registration, event, groupId)) {
                 continue;
             }
@@ -244,7 +244,7 @@ public final class EventPipeline {
      * @param groupId 事件群号
      * @return 全部通过返回 {@code true}
      */
-    private boolean passesGates(RegistrationTable.Registration registration, Event event, Long groupId) {
+    private boolean passesGates(PluginAbilityRegistry.Registration registration, Event event, Long groupId) {
         // 关卡 1：插件必须处于 ACTIVE。FAILED / UNLOADING / DISPOSED 的插件不再收事件。
         if (!registration.ownerServiceable()) {
             return false;
@@ -260,7 +260,7 @@ public final class EventPipeline {
         //
         // 后者是必需的：注册项在插件加载时就固定了，而用户随时可以在管理端
         // 改配置。此前只查注册项，导致管理端的启停完全不生效——见
-        // RegistrationTable.Registration#scopeMatches 的说明。
+        // PluginAbilityRegistry.Registration#scopeMatches 的说明。
         //
         // 顺带说明：现行系统在 request/meta/messageSent 三条路径上漏掉了
         // 这个检查，现在所有事件类型都必经此处。
@@ -279,7 +279,7 @@ public final class EventPipeline {
      * @return 无条件或条件通过时返回 {@code true}
      */
     @SuppressWarnings("unchecked")
-    private boolean matchesPredicate(RegistrationTable.Registration registration, Event event) {
+    private boolean matchesPredicate(PluginAbilityRegistry.Registration registration, Event event) {
         Predicate<Object> predicate = registration.getPredicate();
         if (predicate == null) {
             return true;

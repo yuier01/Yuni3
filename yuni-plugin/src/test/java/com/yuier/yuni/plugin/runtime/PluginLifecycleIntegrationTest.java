@@ -11,7 +11,6 @@ import com.yuier.yuni.core.model.user.MessageSender;
 import com.yuier.yuni.core.task.DynamicTaskManager;
 import com.yuier.yuni.core.util.PolymorphicRegistrationProcessor;
 import com.yuier.yuni.plugin.api.PluginDeclaration;
-import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
@@ -241,11 +240,11 @@ class PluginLifecycleIntegrationTest {
     void abilitiesAreDerivableFromRegistrations() {
         PluginFiber fiber = load(runtime, new MultiAbilityPlugin());
 
-        Set<RegistrationTable.Kind> kinds = runtime.getRegistrations().kindsOf(fiber);
+        Set<PluginAbilityRegistry.RegistrationKind> registrationKinds = runtime.getRegistrations().kindsOf(fiber);
 
         // 「这个插件是什么类型」由它注册了什么推导得出，而不是由它 extends 了什么声明
-        assertTrue(kinds.contains(RegistrationTable.Kind.MESSAGE));
-        assertEquals(1, kinds.size(), "本插件只贡献了 MESSAGE 类注册项：定时与服务不走注册表");
+        assertTrue(registrationKinds.contains(PluginAbilityRegistry.RegistrationKind.MESSAGE));
+        assertEquals(1, registrationKinds.size(), "本插件只贡献了 MESSAGE 类注册项：定时与服务不走注册表");
     }
 
     @Test

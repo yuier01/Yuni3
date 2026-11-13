@@ -54,7 +54,7 @@ import org.slf4j.Logger;
  * <h2>职责</h2>
  * <p>把插件的注册调用翻译成两件事：</p>
  * <ol>
- *   <li>往 {@link RegistrationTable} 里放一条 {@link RegistrationTable.Registration}，
+ *   <li>往 {@link PluginAbilityRegistry} 里放一条 {@link PluginAbilityRegistry.Registration}，
  *       供 {@code EventPipeline} 分发时查用；</li>
  *   <li>往所属 {@link PluginFiber} 的 {@link EffectRegistry} 登记一个撤销句柄，
  *       保证插件卸载时该条目被移除且相关资源被释放。</li>
@@ -110,7 +110,7 @@ public final class PluginContext implements YuniContext {
     private final ServiceRegistry services;
 
     /** 能力注册总表；子上下文与父上下文共享同一实例。 */
-    private final RegistrationTable registrations;
+    private final PluginAbilityRegistry registrations;
 
     /** 插件资源目录；未注入时为 {@code null}。 */
     private final Path dataDir;
@@ -155,7 +155,7 @@ public final class PluginContext implements YuniContext {
      * @param dataDir       默认资源目录；可为 {@code null}
      */
     public PluginContext(ServiceRegistry services,
-                         RegistrationTable registrations,
+                         PluginAbilityRegistry registrations,
                          DynamicTaskManager taskManager,
                          Path dataDir) {
         this(services, registrations, taskManager, dataDir, null);
@@ -171,7 +171,7 @@ public final class PluginContext implements YuniContext {
      * @param jsonCodec     JSON 编解码器；可为 {@code null}
      */
     public PluginContext(ServiceRegistry services,
-                         RegistrationTable registrations,
+                         PluginAbilityRegistry registrations,
                          DynamicTaskManager taskManager,
                          Path dataDir,
                          JsonCodec jsonCodec) {
@@ -199,7 +199,7 @@ public final class PluginContext implements YuniContext {
      */
     public static PluginContext forFiber(PluginFiber fiber,
                                          ServiceRegistry services,
-                                         RegistrationTable registrations,
+                                         PluginAbilityRegistry registrations,
                                          DynamicTaskManager taskManager,
                                          Path dataDir,
                                          JsonCodec jsonCodec) {
@@ -274,50 +274,50 @@ public final class PluginContext implements YuniContext {
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
-        return registerEvent(RegistrationTable.Kind.MESSAGE,
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.MESSAGE,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onNotice(String subType, NoticeHandler handler) {
-        return registerEvent(RegistrationTable.Kind.NOTICE, null, subType, handler);
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.NOTICE, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
-        return registerEvent(RegistrationTable.Kind.NOTICE,
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.NOTICE,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onRequest(String subType, RequestHandler handler) {
-        return registerEvent(RegistrationTable.Kind.REQUEST, null, subType, handler);
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.REQUEST, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
-        return registerEvent(RegistrationTable.Kind.REQUEST,
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.REQUEST,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     public Disposable onMeta(String subType, MetaHandler handler) {
-        return registerEvent(RegistrationTable.Kind.META, null, subType, handler);
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.META, null, subType, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
-        return registerEvent(RegistrationTable.Kind.META,
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.META,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public Disposable onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
-        return registerEvent(RegistrationTable.Kind.MESSAGE_SENT,
+        return registerEvent(PluginAbilityRegistry.RegistrationKind.MESSAGE_SENT,
                 when == null ? null : (Predicate<Object>) (Predicate<?>) when, null, handler);
     }
 
@@ -329,18 +329,18 @@ public final class PluginContext implements YuniContext {
      * 若登记失败（插件正在卸载），注册表条目也会被立即撤销——
      * 否则会出现「插件已卸载但事件仍会分发到它」的悬挂引用。</p>
      *
-     * @param kind      能力种类
+     * @param registrationKind      能力种类
      * @param predicate 附加条件；{@code null} 表示无条件
      * @param subType   子类型过滤；{@code null} 表示不过滤
      * @param handler   处理器载荷
      * @return 撤销句柄
      */
-    private Disposable registerEvent(RegistrationTable.Kind kind,
+    private Disposable registerEvent(PluginAbilityRegistry.RegistrationKind registrationKind,
                                      Predicate<Object> predicate,
                                      String subType,
                                      Object handler) {
-        RegistrationTable.Registration registration = new RegistrationTable.Registration(
-                kind, fiber, ScopeFilter.ALL, predicate, subType, handler);
+        PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
+                registrationKind, fiber, ScopeFilter.ALL, predicate, subType, handler);
         Disposable removeEntry = registrations.add(registration);
 
         // 把「移除注册表条目」交给 PluginEffect 登记表管理，使卸载时自动摘除
@@ -363,8 +363,8 @@ public final class PluginContext implements YuniContext {
         if (tree == null) {
             throw new IllegalArgumentException("命令树不能为 null");
         }
-        RegistrationTable.Registration registration = new RegistrationTable.Registration(
-                RegistrationTable.Kind.COMMAND, fiber, ScopeFilter.ALL, null, null, tree);
+        PluginAbilityRegistry.Registration registration = new PluginAbilityRegistry.Registration(
+                PluginAbilityRegistry.RegistrationKind.COMMAND, fiber, ScopeFilter.ALL, null, null, tree);
         Disposable removeEntry = registrations.add(registration);
         if (fiber == null) {
             return removeEntry;
@@ -845,7 +845,7 @@ public final class PluginContext implements YuniContext {
      *
      * @return 注册表
      */
-    public RegistrationTable getRegistrationTable() {
+    public PluginAbilityRegistry getRegistrationTable() {
         return registrations;
     }
 

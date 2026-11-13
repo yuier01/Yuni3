@@ -78,7 +78,7 @@ import lombok.extern.slf4j.Slf4j;
  *
  * @see PluginFiber
  * @see FiberContainer
- * @see RegistrationTable
+ * @see PluginAbilityRegistry
  * @see com.yuier.yuni.plugin.runtime.UserScopeOverrides
  */
 @Slf4j
@@ -87,7 +87,7 @@ public final class PluginRuntime {
 
     /** 能力注册总表：所有插件注册的事件处理器与命令树。 */
     @Getter
-    private final RegistrationTable registrations = new RegistrationTable();
+    private final PluginAbilityRegistry registrations = new PluginAbilityRegistry();
 
     /** 服务注册表：框架内置服务与插件提供的服务。 */
     @Getter

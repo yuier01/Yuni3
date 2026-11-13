@@ -38,8 +38,8 @@ import lombok.ToString;
  * 热重载时也不再需要手工维护八条列表 + 修正 index 偏移。</p>
  *
  * <h2>分组维度</h2>
- * <p>{@link Registration} 携带 {@link Kind}，表按 Kind 分桶。这与「8 种插件类型」的区别在于：
- * Kind 是<b>注册动作的种类</b>（注册了一条消息处理器 / 一个定时任务），
+ * <p>{@link Registration} 携带 {@link RegistrationKind}，表按 RegistrationKind 分桶。这与「8 种插件类型」的区别在于：
+ * RegistrationKind 是<b>注册动作的种类</b>（注册了一条消息处理器 / 一个定时任务），
  * 一个插件可以同时出现在多个桶里，不需要插件类型来做互斥分类。</p>
  *
  * <h2>顺序语义</h2>
@@ -52,7 +52,7 @@ import lombok.ToString;
  * {@link CopyOnWriteArrayList} 保证遍历期间不需要加锁——分发是高频路径，
  * 读取零同步开销比写入性能更重要。</p>
  */
-public final class RegistrationTable {
+public final class PluginAbilityRegistry {
 
     /** 命令树根节点的注册项。 */
     private final List<Registration> commandEntries = new CopyOnWriteArrayList<>();
@@ -85,7 +85,7 @@ public final class RegistrationTable {
      * <b>注册动作</b>而非插件本身，因此不存在「一个插件只能属于一个类型」的限制。</p>
      */
     @Getter
-    public enum Kind {
+    public enum RegistrationKind {
         /** 命令树。 */
         COMMAND("命令"),
         /** 消息事件处理器。 */
@@ -106,7 +106,7 @@ public final class RegistrationTable {
         /** 面向管理端的中文显示名；访问器由 @Getter + @Accessors(fluent) 生成。 */
         private final String displayName;
 
-        Kind(String displayName) {
+        RegistrationKind(String displayName) {
             this.displayName = displayName;
         }
     }
@@ -123,7 +123,7 @@ public final class RegistrationTable {
     public static final class Registration {
 
         /** 能力种类。 */
-        private final Kind kind;
+        private final RegistrationKind registrationKind;
 
         /** 注册者（插件 Fiber），用于状态检查、日志与失败归因。 */
         private final PluginFiber owner;
@@ -148,20 +148,20 @@ public final class RegistrationTable {
         /**
          * 构造注册项。
          *
-         * @param kind      能力种类
+         * @param registrationKind      能力种类
          * @param owner     注册者
          * @param filter    作用域过滤器；{@code null} 视为 {@link ScopeFilter#ALL}
          * @param predicate 附加条件；可为 {@code null}
          * @param subType   子类型过滤；可为 {@code null}
          * @param payload   载荷
          */
-        public Registration(Kind kind,
+        public Registration(RegistrationKind registrationKind,
                             PluginFiber owner,
                             ScopeFilter filter,
                             Predicate<Object> predicate,
                             String subType,
                             Object payload) {
-            this.kind = kind;
+            this.registrationKind = registrationKind;
             this.owner = owner;
             this.filter = filter == null ? ScopeFilter.ALL : filter;
             this.predicate = predicate;
@@ -244,7 +244,7 @@ public final class RegistrationTable {
      * @return 撤销句柄；调用后从对应桶中移除该条目
      */
     public Disposable add(Registration registration) {
-        List<Registration> bucket = bucketOf(registration.getKind());
+        List<Registration> bucket = bucketOf(registration.getRegistrationKind());
         bucket.add(registration);
         // 撤销时只做移除；桶是 CopyOnWriteArrayList，remove 是安全且幂等的
         return () -> bucket.remove(registration);
@@ -253,11 +253,11 @@ public final class RegistrationTable {
     /**
      * 取指定种类的桶。
      *
-     * @param kind 能力种类
+     * @param registrationKind 能力种类
      * @return 对应的桶
      */
-    private List<Registration> bucketOf(Kind kind) {
-        return switch (kind) {
+    private List<Registration> bucketOf(RegistrationKind registrationKind) {
+        return switch (registrationKind) {
             case COMMAND -> commandEntries;
             case MESSAGE -> messageEntries;
             case MESSAGE_SENT -> messageSentEntries;
@@ -274,11 +274,11 @@ public final class RegistrationTable {
     /**
      * 取指定种类的全部注册项。
      *
-     * @param kind 能力种类
+     * @param registrationKind 能力种类
      * @return 不可变快照
      */
-    public List<Registration> entriesOf(Kind kind) {
-        return Collections.unmodifiableList(new ArrayList<>(bucketOf(kind)));
+    public List<Registration> entriesOf(RegistrationKind registrationKind) {
+        return Collections.unmodifiableList(new ArrayList<>(bucketOf(registrationKind)));
     }
 
     /**
@@ -287,7 +287,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getCommandEntries() {
-        return entriesOf(Kind.COMMAND);
+        return entriesOf(RegistrationKind.COMMAND);
     }
 
     /**
@@ -296,7 +296,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getMessageEntries() {
-        return entriesOf(Kind.MESSAGE);
+        return entriesOf(RegistrationKind.MESSAGE);
     }
 
     /**
@@ -305,7 +305,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getMessageSentEntries() {
-        return entriesOf(Kind.MESSAGE_SENT);
+        return entriesOf(RegistrationKind.MESSAGE_SENT);
     }
 
     /**
@@ -314,7 +314,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getNoticeEntries() {
-        return entriesOf(Kind.NOTICE);
+        return entriesOf(RegistrationKind.NOTICE);
     }
 
     /**
@@ -323,7 +323,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getRequestEntries() {
-        return entriesOf(Kind.REQUEST);
+        return entriesOf(RegistrationKind.REQUEST);
     }
 
     /**
@@ -332,7 +332,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getMetaEntries() {
-        return entriesOf(Kind.META);
+        return entriesOf(RegistrationKind.META);
     }
 
     /**
@@ -341,7 +341,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getScheduleEntries() {
-        return entriesOf(Kind.SCHEDULE);
+        return entriesOf(RegistrationKind.SCHEDULE);
     }
 
     /**
@@ -350,7 +350,7 @@ public final class RegistrationTable {
      * @return 不可变快照
      */
     public List<Registration> getServiceEntries() {
-        return entriesOf(Kind.SERVICE);
+        return entriesOf(RegistrationKind.SERVICE);
     }
 
     /**
@@ -362,8 +362,8 @@ public final class RegistrationTable {
      */
     public int getTotalSize() {
         int total = 0;
-        for (Kind kind : Kind.values()) {
-            total += bucketOf(kind).size();
+        for (RegistrationKind registrationKind : RegistrationKind.values()) {
+            total += bucketOf(registrationKind).size();
         }
         return total;
     }
@@ -375,12 +375,12 @@ public final class RegistrationTable {
      * 「把插件类型从声明改为推导」。比如一个插件若 {@code COMMAND=2, SCHEDULE=1}，
      * 管理端就可以把它标为「命令 + 定时」。</p>
      *
-     * @return 种类 → 条目数（全部 Kind 都有键，无条目时为 0）
+     * @return 种类 → 条目数（全部 RegistrationKind 都有键，无条目时为 0）
      */
-    public Map<Kind, Integer> countByKind() {
-        Map<Kind, Integer> counts = new LinkedHashMap<>();
-        for (Kind kind : Kind.values()) {
-            counts.put(kind, bucketOf(kind).size());
+    public Map<RegistrationKind, Integer> countByKind() {
+        Map<RegistrationKind, Integer> counts = new LinkedHashMap<>();
+        for (RegistrationKind registrationKind : RegistrationKind.values()) {
+            counts.put(registrationKind, bucketOf(registrationKind).size());
         }
         return Collections.unmodifiableMap(counts);
     }
@@ -391,19 +391,19 @@ public final class RegistrationTable {
      * <p>用于管理端推导插件类型标签。</p>
      *
      * @param owner 插件 Fiber
-     * @return 该插件贡献的种类集合（保持 Kind 声明顺序）
+     * @return 该插件贡献的种类集合（保持 RegistrationKind 声明顺序）
      */
-    public Set<Kind> kindsOf(PluginFiber owner) {
-        Set<Kind> kinds = java.util.EnumSet.noneOf(Kind.class);
-        for (Kind kind : Kind.values()) {
-            for (Registration registration : bucketOf(kind)) {
+    public Set<RegistrationKind> kindsOf(PluginFiber owner) {
+        Set<RegistrationKind> registrationKinds = java.util.EnumSet.noneOf(RegistrationKind.class);
+        for (RegistrationKind registrationKind : RegistrationKind.values()) {
+            for (Registration registration : bucketOf(registrationKind)) {
                 if (registration.getOwner() == owner) {
-                    kinds.add(kind);
+                    registrationKinds.add(registrationKind);
                     break;
                 }
             }
         }
-        return Collections.unmodifiableSet(kinds);
+        return Collections.unmodifiableSet(registrationKinds);
     }
 
     /**
@@ -414,8 +414,8 @@ public final class RegistrationTable {
      * 本方法仅用于测试与全量重载前的兜底清理。</p>
      */
     public void clear() {
-        for (Kind kind : Kind.values()) {
-            bucketOf(kind).clear();
+        for (RegistrationKind registrationKind : RegistrationKind.values()) {
+            bucketOf(registrationKind).clear();
         }
     }
 }

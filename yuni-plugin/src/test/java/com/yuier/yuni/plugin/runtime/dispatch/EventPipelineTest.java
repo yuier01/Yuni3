@@ -22,9 +22,9 @@ import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.YuniContext;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
+import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
-import com.yuier.yuni.plugin.runtime.RegistrationTable;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
 import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
@@ -215,15 +215,15 @@ class EventPipelineTest {
         PluginFiber outOfScope = load(runtime, 
                 YuniPlugin.of("排除群插件", ctx -> { }));
 
-        runtime.getRegistrations().add(new RegistrationTable.Registration(
-                RegistrationTable.Kind.NOTICE, inScope,
+        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
+                PluginAbilityRegistry.RegistrationKind.NOTICE, inScope,
                 new ScopeFilter(false, Set.of(999L)),
                 null, null,
                 (NoticeHandler)
                         (ev, reply) -> inScopeHits.incrementAndGet()));
 
-        runtime.getRegistrations().add(new RegistrationTable.Registration(
-                RegistrationTable.Kind.NOTICE, outOfScope,
+        runtime.getRegistrations().add(new PluginAbilityRegistry.Registration(
+                PluginAbilityRegistry.RegistrationKind.NOTICE, outOfScope,
                 new ScopeFilter(true, Set.of(999L)),
                 null, null,
                 (NoticeHandler)
