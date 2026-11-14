@@ -26,7 +26,7 @@ import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.adapter.CoreMessageChainView;
-import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
+import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
 import com.yuier.yuni.plugin.runtime.adapter.RecordingYuniBot;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -60,7 +60,7 @@ class EventPipelineTest {
     private RecordingYuniBot bot;
     private JsonCodec jsonCodec;
     private PluginRuntime runtime;
-    private PluginEventAdapter adapter;
+    private ReplyFactory replyFactory;
     private CommandDispatcher commandDispatcher;
     private EventPipeline pipeline;
 
@@ -77,7 +77,7 @@ class EventPipelineTest {
 
         bot = new RecordingYuniBot();
         runtime = new PluginRuntime(null, jsonCodec);
-        adapter = PluginEventAdapter.of(bot, jsonCodec);
+        replyFactory = new ReplyFactory(() -> bot, jsonCodec);
 
         // 命令前缀必须注入——CommandDetector 会用它剥离命令头。
         // 不注入时会回退到 SpringContextUtil，而在单元测试里没有 Spring 容器。
@@ -87,7 +87,7 @@ class EventPipelineTest {
         commandDispatcher = new CommandDispatcher(
                 runtime.getRegistry(), bot, botApp, CommandDispatcher.permissiveResolver());
         pipeline = new EventPipeline(
-                runtime.getRegistry(), runtime, adapter, commandDispatcher);
+                runtime.getRegistry(), runtime, replyFactory, commandDispatcher);
     }
 
     /**
@@ -440,7 +440,7 @@ class EventPipelineTest {
      * @param handler 处理器
      */
     private static void bind(CommandNode tree, Runnable handler) {
-        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> handler.run());
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, result, reply) -> handler.run());
     }
 
     @Test
@@ -563,10 +563,10 @@ class EventPipelineTest {
                 runtime.getRegistry(), bot, botApp,
                 (userId, groupId, pluginId) -> UserPermission.ADMIN);
         com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0),
-                (event, reply) -> runs.incrementAndGet());
+                (event, result, reply) -> runs.incrementAndGet());
 
         EventPipeline adminPipeline = new EventPipeline(
-                runtime.getRegistry(), runtime, adapter, adminDispatcher);
+                runtime.getRegistry(), runtime, replyFactory, adminDispatcher);
 
         adminPipeline.onMessage(groupMessage("/测试 管理"));
 
@@ -603,9 +603,8 @@ class EventPipelineTest {
                 .arg(ArgDef.required("数字", "一个数字", CommandArgRequireType.NUMBER))
                 .build();
         registerCommandTree(tree);
-        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> {
-            var result = ((YuniMessageEvent) event).getCommandResult();
-            argValue.set(result.getArg("数字").asNumber().intValue());
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, commandResult, reply) -> {
+            argValue.set(commandResult.getArg("数字").asNumber().intValue());
         });
 
         pipeline.onMessage(groupMessage("/测试 42"));
@@ -695,19 +694,11 @@ class EventPipelineTest {
 
         CommandNode tree = CommandNode.builder("测试").build();
         load(runtime, YuniPlugin.of("命令插件", ctx -> ctx.command(tree)));
-        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, result, reply) -> { });
 
         // 直接调用 detector 验证错误语义——CommandDispatcher 会把异常吞成日志，
         // 因此这里绕过它，单独断言底层行为
-        var adapted = adapter.adapt(groupMessage("/测试"));
-        var engineEvent = new YuniMessageEvent();
-        engineEvent.setMessageChain(adapted.getChain() instanceof
-                CoreMessageChainView view
-                ? buildChain(view) : new MessageChain());
-        engineEvent.setMessageType("group");
-        engineEvent.setSubType("normal");
-        engineEvent.setUserId(10001L);
-        engineEvent.setGroupId(123L);
+        var engineEvent = groupMessage("/测试");
 
         var detector = new CommandDetector(tree, bot, null);
         IllegalStateException ex = org.junit.jupiter.api.Assertions.assertThrows(
@@ -739,7 +730,7 @@ class EventPipelineTest {
         registerCommandTree(tree);
 
         // 只给根绑处理器
-        com.yuier.yuni.plugin.api.Commands.on(tree, (event, reply) -> { });
+        com.yuier.yuni.plugin.api.Commands.on(tree, (event, result, reply) -> { });
 
         assertTrue(commandDispatcher.handlerOf(tree).isPresent());
         assertFalse(commandDispatcher.handlerOf(tree.getChildren().get(0)).isPresent(),
@@ -747,7 +738,7 @@ class EventPipelineTest {
         assertEquals(1, commandDispatcher.getHandlerCount());
 
         // 给子节点也绑上
-        com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0), (event, reply) -> { });
+        com.yuier.yuni.plugin.api.Commands.on(tree.getChildren().get(0), (event, result, reply) -> { });
         assertEquals(2, commandDispatcher.getHandlerCount());
 
         commandDispatcher.unbindHandler(tree);
@@ -761,7 +752,7 @@ class EventPipelineTest {
         CommandNode tree = CommandNode.builder("测试").build();
 
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> com.yuier.yuni.plugin.api.Commands.on(null, (event, reply) -> { }));
+                () -> com.yuier.yuni.plugin.api.Commands.on(null, (event, result, reply) -> { }));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> com.yuier.yuni.plugin.api.Commands.on(tree, null));
         // null 节点查询返回空而不是抛异常

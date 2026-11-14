@@ -28,6 +28,21 @@ public class YuniNoticeEvent extends YuniEvent {
     /** 匹配到的具体通知事件子类型（由 detector 设置） */
     private YuniNoticeEvent matchedEvent;
 
+    /**
+     * 事件子类型——通知事件的 {@code noticeType}。
+     *
+     * @return 子类型
+     */
+    public String getSubType() {
+        if (matchedEvent != null) {
+            String subType = matchedEvent.getSubType();
+            if (subType != null && !subType.isBlank()) {
+                return subType;
+            }
+        }
+        return noticeType;
+    }
+
     @Override
     public String toLogString() {
         return "收到未定义通知事件。";

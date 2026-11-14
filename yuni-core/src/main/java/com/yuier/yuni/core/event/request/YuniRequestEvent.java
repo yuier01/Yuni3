@@ -38,6 +38,15 @@ public class YuniRequestEvent extends YuniEvent {
     /** 匹配到的具体请求事件子类型（由 detector 设置） */
     private YuniRequestEvent matchedEvent;
 
+    /**
+     * 事件子类型——请求事件的 {@code requestType}。
+     *
+     * @return 子类型
+     */
+    public String getSubType() {
+        return requestType;
+    }
+
     @Override
     public String toLogString() {
         return "收到未定义请求事件。";

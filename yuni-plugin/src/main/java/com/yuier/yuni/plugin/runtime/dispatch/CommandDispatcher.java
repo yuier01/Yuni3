@@ -227,20 +227,19 @@ public final class CommandDispatcher {
 
             CommandDetector detector = new CommandDetector(tree, bot, botApp);
 
-            Boolean hit;
+            CommandResult result;
             try {
-                hit = detector.match(event);
+                result = detector.match(event);
             } catch (Throwable t) {
                 log.error("插件 {} 的命令匹配抛异常，跳过该命令树: {}",
                         registration.owner() == null ? "?" : registration.owner().getId(), t.toString(), t);
                 continue;
             }
-            if (!Boolean.TRUE.equals(hit)) {
+            if (result == null) {
                 continue;
             }
 
             matched = true;
-            CommandResult result = event.getCommandResult();
 
             // 节点级权限校验：沿匹配路径递归比对每一层
             if (!checkNodePermission(result, event, registration)) {
@@ -263,7 +262,7 @@ public final class CommandDispatcher {
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    handler.handle(event, reply);
+                    handler.handle(event, result, reply);
                 } catch (Throwable t) {
                     log.error("插件 {} 执行命令失败", registration.owner() == null ? "?" : registration.owner().getId(), t);
                     if (reply != null) {

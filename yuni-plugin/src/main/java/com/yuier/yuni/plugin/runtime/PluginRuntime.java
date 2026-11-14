@@ -13,7 +13,7 @@ import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.UserScopeStore.UserScopeRecord;
-import com.yuier.yuni.plugin.runtime.adapter.PluginEventAdapter;
+import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
 import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
 import com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher;
 import com.yuier.yuni.plugin.runtime.dispatch.EventPipeline;
@@ -139,7 +139,7 @@ public final class PluginRuntime {
     private volatile CommandDispatcher commandDispatcher;
 
     /** 事件适配工厂；由 {@link #getPipeline()} 惰性构造。 */
-    private volatile PluginEventAdapter eventAdapter;
+    private volatile ReplyFactory replyFactory;
 
     /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
     private volatile BotApp botApp;
@@ -666,7 +666,7 @@ public final class PluginRuntime {
         // 使已构造的流水线失效，下次访问时用新的 bot 重建
         this.pipeline = null;
         this.commandDispatcher = null;
-        this.eventAdapter = null;
+        this.replyFactory = null;
         return this;
     }
 
@@ -689,7 +689,7 @@ public final class PluginRuntime {
         }
         synchronized (this) {
             if (this.pipeline == null) {
-                this.eventAdapter = new PluginEventAdapter(
+                this.replyFactory = new ReplyFactory(
                         botSupplier, jsonCodec);
                 this.commandDispatcher = new CommandDispatcher(
                         registry,
@@ -705,7 +705,7 @@ public final class PluginRuntime {
                         // 随时可变，因此必须在分发时查而不是注册时定
                         this::effectiveScopeOf);
                 this.pipeline = new EventPipeline(
-                        registry, this, eventAdapter, commandDispatcher);
+                        registry, this, replyFactory, commandDispatcher);
             }
             return this.pipeline;
         }

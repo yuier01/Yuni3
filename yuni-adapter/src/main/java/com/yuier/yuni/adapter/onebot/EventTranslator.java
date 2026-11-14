@@ -8,7 +8,9 @@ import com.yuier.yuni.core.util.BeanCopyUtils;
 import com.yuier.yuni.core.event.ChatSession;
 import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.event.YuniMessageSentEvent;
+import com.yuier.yuni.core.event.meta.YuniHeartbeatEvent;
 import com.yuier.yuni.core.event.meta.YuniMetaEvent;
+import com.yuier.yuni.core.event.notice.PokeEvent;
 import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.core.bot.YuniBot;
@@ -94,11 +96,18 @@ public class EventTranslator {
 
     private YuniNoticeEvent buildYuniNoticeEvent(OneBotEvent event) {
         NoticeEvent noticeEvent = (NoticeEvent) event;
-        YuniNoticeEvent yuniNoticeEvent = new YuniNoticeEvent();
+        YuniNoticeEvent yuniNoticeEvent = "notify".equals(noticeEvent.getNoticeType())
+                && "poke".equals(noticeEvent.getSubType())
+                ? new PokeEvent()
+                : new YuniNoticeEvent();
         yuniNoticeEvent.setNoticeType(noticeEvent.getNoticeType());
         yuniNoticeEvent.setUserId(noticeEvent.getUserId());
         yuniNoticeEvent.setGroupId(noticeEvent.getGroupId());
         yuniNoticeEvent.setOperatorId(noticeEvent.getOperatorId());
+        if (yuniNoticeEvent instanceof PokeEvent poke) {
+            poke.setSubType(noticeEvent.getSubType());
+            poke.setTargetId(noticeEvent.getTargetId());
+        }
         return yuniNoticeEvent;
     }
 
@@ -115,9 +124,15 @@ public class EventTranslator {
 
     private YuniMetaEvent buildYuniMetaEvent(OneBotEvent event) {
         MetaEvent metaEvent = (MetaEvent) event;
-        YuniMetaEvent yuniMetaEvent = new YuniMetaEvent();
+        YuniMetaEvent yuniMetaEvent = "heartbeat".equals(metaEvent.getMetaEventType())
+                ? new YuniHeartbeatEvent()
+                : new YuniMetaEvent();
         yuniMetaEvent.setMetaEventType(metaEvent.getMetaEventType());
         yuniMetaEvent.setSubType(metaEvent.getSubType());
+        if (yuniMetaEvent instanceof YuniHeartbeatEvent heartbeat) {
+            heartbeat.setStatus(metaEvent.getStatus());
+            heartbeat.setInterval(metaEvent.getInterval());
+        }
         return yuniMetaEvent;
     }
 }

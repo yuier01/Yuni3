@@ -1,7 +1,7 @@
 package com.yuier.yuni.plugin.api.handler;
 
 import com.yuier.yuni.plugin.api.Reply;
-import com.yuier.yuni.plugin.api.event.MetaEvent;
+import com.yuier.yuni.core.event.meta.YuniMetaEvent;
 
 /**
  * 元事件处理器。
@@ -36,5 +36,5 @@ public interface MetaHandler {
      * @param reply 回复入口（元事件一般不需要回复）
      * @throws Exception 处理失败时抛出
      */
-    void handle(MetaEvent event, Reply reply) throws Exception;
+    void handle(YuniMetaEvent event, Reply reply) throws Exception;
 }

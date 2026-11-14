@@ -3,11 +3,11 @@ package com.yuier.yuni.plugin.runtime;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import com.yuier.yuni.plugin.api.Disposable;
 import com.yuier.yuni.plugin.api.ScopeFilter;
-import com.yuier.yuni.plugin.api.event.MessageEvent;
-import com.yuier.yuni.plugin.api.event.MessageSentEvent;
-import com.yuier.yuni.plugin.api.event.MetaEvent;
-import com.yuier.yuni.plugin.api.event.NoticeEvent;
-import com.yuier.yuni.plugin.api.event.RequestEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.YuniMessageSentEvent;
+import com.yuier.yuni.core.event.meta.YuniMetaEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
+import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
@@ -31,8 +31,8 @@ import java.util.function.Predicate;
  *
  * <h2>为什么用 sealed</h2>
  * <p>注册项的能力种类、谓词类型、处理器类型是<b>一一对应</b>的：
- * 消息注册项只可能带 {@code Predicate<MessageEvent>} 与 {@code MessageHandler}，
- * 通知注册项只可能带 {@code Predicate<NoticeEvent>} 与 {@code NoticeHandler}。</p>
+ * 消息注册项只可能带 {@code Predicate<YuniMessageEvent>} 与 {@code MessageHandler}，
+ * 通知注册项只可能带 {@code Predicate<YuniNoticeEvent>} 与 {@code NoticeHandler}。</p>
  *
  * <p>{@link Registration} 用 sealed 接口 + 每种能力一个 record 表达这个约束：
  * 种类由<b>子类型</b>决定，而不是一个可以和谓词/载荷不一致的
@@ -209,11 +209,11 @@ public final class PluginAbilityRegistry {
          */
         record Message(PluginFiber owner,
                        ScopeFilter filter,
-                       Predicate<MessageEvent> when,
+                       Predicate<YuniMessageEvent> when,
                        MessageHandler handler) implements Registration {
 
             /** 无条件谓词。 */
-            public static final Predicate<MessageEvent> ALWAYS = event -> true;
+            public static final Predicate<YuniMessageEvent> ALWAYS = event -> true;
 
             /** 归一化。 */
             public Message {
@@ -238,11 +238,11 @@ public final class PluginAbilityRegistry {
          */
         record MessageSent(PluginFiber owner,
                            ScopeFilter filter,
-                           Predicate<MessageSentEvent> when,
+                           Predicate<YuniMessageSentEvent> when,
                            MessageSentHandler handler) implements Registration {
 
             /** 无条件谓词。 */
-            public static final Predicate<MessageSentEvent> ALWAYS = event -> true;
+            public static final Predicate<YuniMessageSentEvent> ALWAYS = event -> true;
 
             /** 归一化。 */
             public MessageSent {
@@ -268,12 +268,12 @@ public final class PluginAbilityRegistry {
          */
         record Notice(PluginFiber owner,
                       ScopeFilter filter,
-                      Predicate<NoticeEvent> when,
+                      Predicate<YuniNoticeEvent> when,
                       String subType,
                       NoticeHandler handler) implements Registration {
 
             /** 无条件谓词。 */
-            public static final Predicate<NoticeEvent> ALWAYS = event -> true;
+            public static final Predicate<YuniNoticeEvent> ALWAYS = event -> true;
 
             /** 归一化。 */
             public Notice {
@@ -304,12 +304,12 @@ public final class PluginAbilityRegistry {
          */
         record Request(PluginFiber owner,
                        ScopeFilter filter,
-                       Predicate<RequestEvent> when,
+                       Predicate<YuniRequestEvent> when,
                        String subType,
                        RequestHandler handler) implements Registration {
 
             /** 无条件谓词。 */
-            public static final Predicate<RequestEvent> ALWAYS = event -> true;
+            public static final Predicate<YuniRequestEvent> ALWAYS = event -> true;
 
             /** 归一化。 */
             public Request {
@@ -340,12 +340,12 @@ public final class PluginAbilityRegistry {
          */
         record Meta(PluginFiber owner,
                     ScopeFilter filter,
-                    Predicate<MetaEvent> when,
+                    Predicate<YuniMetaEvent> when,
                     String subType,
                     MetaHandler handler) implements Registration {
 
             /** 无条件谓词。 */
-            public static final Predicate<MetaEvent> ALWAYS = event -> true;
+            public static final Predicate<YuniMetaEvent> ALWAYS = event -> true;
 
             /** 归一化。 */
             public Meta {

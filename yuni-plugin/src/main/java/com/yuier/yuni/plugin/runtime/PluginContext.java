@@ -13,11 +13,11 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.ScopeQuery;
 import com.yuier.yuni.plugin.api.YuniContext;
-import com.yuier.yuni.plugin.api.event.MessageEvent;
-import com.yuier.yuni.plugin.api.event.MessageSentEvent;
-import com.yuier.yuni.plugin.api.event.MetaEvent;
-import com.yuier.yuni.plugin.api.event.NoticeEvent;
-import com.yuier.yuni.plugin.api.event.RequestEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.YuniMessageSentEvent;
+import com.yuier.yuni.core.event.meta.YuniMetaEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
+import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
@@ -275,7 +275,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public void onMessage(Predicate<MessageEvent> when, MessageHandler handler) {
+    public void onMessage(Predicate<YuniMessageEvent> when, MessageHandler handler) {
         register(new PluginAbilityRegistry.Registration.Message(
                 fiber, ScopeFilter.ALL, when, handler));
     }
@@ -288,7 +288,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public void onNotice(Predicate<NoticeEvent> when, NoticeHandler handler) {
+    public void onNotice(Predicate<YuniNoticeEvent> when, NoticeHandler handler) {
         register(new PluginAbilityRegistry.Registration.Notice(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
@@ -301,7 +301,7 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public void onRequest(Predicate<RequestEvent> when, RequestHandler handler) {
+    public void onRequest(Predicate<YuniRequestEvent> when, RequestHandler handler) {
         register(new PluginAbilityRegistry.Registration.Request(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
@@ -314,13 +314,13 @@ public final class PluginContext implements YuniContext {
     }
 
     @Override
-    public void onMeta(Predicate<MetaEvent> when, MetaHandler handler) {
+    public void onMeta(Predicate<YuniMetaEvent> when, MetaHandler handler) {
         register(new PluginAbilityRegistry.Registration.Meta(
                 fiber, ScopeFilter.ALL, when, null, handler));
     }
 
     @Override
-    public void onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler) {
+    public void onMessageSent(Predicate<YuniMessageSentEvent> when, MessageSentHandler handler) {
         register(new PluginAbilityRegistry.Registration.MessageSent(
                 fiber, ScopeFilter.ALL, when, handler));
     }

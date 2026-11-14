@@ -2,11 +2,11 @@ package com.yuier.yuni.plugin.api;
 
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
-import com.yuier.yuni.plugin.api.event.MessageEvent;
-import com.yuier.yuni.plugin.api.event.MessageSentEvent;
-import com.yuier.yuni.plugin.api.event.MetaEvent;
-import com.yuier.yuni.plugin.api.event.NoticeEvent;
-import com.yuier.yuni.plugin.api.event.RequestEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.YuniMessageSentEvent;
+import com.yuier.yuni.core.event.meta.YuniMetaEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
+import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
@@ -136,7 +136,7 @@ public interface YuniContext {
      * @param handler 处理器
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    void onMessage(Predicate<MessageEvent> when, MessageHandler handler);
+    void onMessage(Predicate<YuniMessageEvent> when, MessageHandler handler);
 
     /**
      * 注册通知事件处理器（按子类型过滤）。
@@ -162,7 +162,7 @@ public interface YuniContext {
      * @param handler 处理器
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    void onNotice(Predicate<NoticeEvent> when, NoticeHandler handler);
+    void onNotice(Predicate<YuniNoticeEvent> when, NoticeHandler handler);
 
     /**
      * 注册请求事件处理器（按子类型过滤）。
@@ -181,7 +181,7 @@ public interface YuniContext {
      * @param handler 处理器
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    void onRequest(Predicate<RequestEvent> when, RequestHandler handler);
+    void onRequest(Predicate<YuniRequestEvent> when, RequestHandler handler);
 
     /**
      * 注册元事件处理器（按类型过滤）。
@@ -200,7 +200,7 @@ public interface YuniContext {
      * @param handler 处理器
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    void onMeta(Predicate<MetaEvent> when, MetaHandler handler);
+    void onMeta(Predicate<YuniMetaEvent> when, MetaHandler handler);
 
     /**
      * 注册「机器人自身发出消息」事件处理器。
@@ -212,7 +212,7 @@ public interface YuniContext {
      * @param handler 处理器
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
-    void onMessageSent(Predicate<MessageSentEvent> when, MessageSentHandler handler);
+    void onMessageSent(Predicate<YuniMessageSentEvent> when, MessageSentHandler handler);
 
     // ==================== 命令注册 ====================
 

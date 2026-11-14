@@ -6,7 +6,7 @@ import com.yuier.yuni.core.model.bot.Bot;
 import com.yuier.yuni.core.util.BusinessMappingUtil;
 import com.yuier.yuni.permission.domain.entity.GroupUserPluginPermissionEntity;
 import com.yuier.yuni.permission.service.GroupUserPluginPermissionService;
-import com.yuier.yuni.plugin.api.event.MessageEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -99,7 +99,7 @@ public final class DefaultPermissionService implements PermissionService {
     }
 
     @Override
-    public UserPermission resolve(MessageEvent event, String pluginId) {
+    public UserPermission resolve(YuniMessageEvent event, String pluginId) {
         /*
          * 群聊场景优先使用事件里已携带的角色，避免一次额外的
          * get_group_member_info 接口调用。
@@ -107,21 +107,21 @@ public final class DefaultPermissionService implements PermissionService {
          * 注意例外记录仍然优先——它是显式配置，应当覆盖角色推断。
          */
         UserPermission exception = lookupException(
-                event.getUserId(), event.getGroupId().orElse(null), pluginId);
+                event.getUserId(), event.getGroupId(), pluginId);
         if (exception != null) {
             return exception;
         }
 
         if (event.isGroup()) {
-            Optional<String> role = event.getSender().getRole();
-            if (role.isPresent()) {
-                UserPermission mapped = safeRoleToPermission(role.get());
+            String role = event.getSender().getRole();
+            if (role != null && !role.isBlank()) {
+                UserPermission mapped = safeRoleToPermission(role);
                 if (mapped != null) {
                     return mapped;
                 }
             }
             // 事件未带角色（部分协议实现不填）：回退到接口查询
-            return defaultGroupPermission(event.getUserId(), event.getGroupId().orElse(null));
+            return defaultGroupPermission(event.getUserId(), event.getGroupId());
         }
         return defaultPrivatePermission(event.getUserId());
     }

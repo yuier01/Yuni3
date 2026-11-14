@@ -1,9 +1,9 @@
 package com.yuier.yuni.plugin.api.service;
 
 import com.yuier.yuni.core.enums.UserPermission;
-import com.yuier.yuni.plugin.api.event.MessageEvent;
-import com.yuier.yuni.plugin.api.event.NoticeEvent;
-import com.yuier.yuni.plugin.api.event.RequestEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
+import com.yuier.yuni.core.event.request.YuniRequestEvent;
 
 import java.util.Optional;
 
@@ -60,8 +60,8 @@ public interface PermissionService {
      * @param pluginId 插件标识
      * @return 权限等级
      */
-    default UserPermission resolve(MessageEvent event, String pluginId) {
-        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
+    default UserPermission resolve(YuniMessageEvent event, String pluginId) {
+        return resolve(event.getUserId(), event.getGroupId(), pluginId);
     }
 
     /**
@@ -71,8 +71,8 @@ public interface PermissionService {
      * @param pluginId 插件标识
      * @return 权限等级
      */
-    default UserPermission resolve(NoticeEvent event, String pluginId) {
-        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
+    default UserPermission resolve(YuniNoticeEvent event, String pluginId) {
+        return resolve(event.getUserId(), event.getGroupId(), pluginId);
     }
 
     /**
@@ -82,8 +82,8 @@ public interface PermissionService {
      * @param pluginId 插件标识
      * @return 权限等级
      */
-    default UserPermission resolve(RequestEvent event, String pluginId) {
-        return resolve(event.getUserId(), event.getGroupId().orElse(null), pluginId);
+    default UserPermission resolve(YuniRequestEvent event, String pluginId) {
+        return resolve(event.getUserId(), event.getGroupId(), pluginId);
     }
 
     /**
@@ -94,7 +94,7 @@ public interface PermissionService {
      * @param required 要求的权限等级
      * @return 达到或超过时返回 {@code true}
      */
-    default boolean atLeast(MessageEvent event, String pluginId, UserPermission required) {
+    default boolean atLeast(YuniMessageEvent event, String pluginId, UserPermission required) {
         return resolve(event, pluginId).getPriority() >= required.getPriority();
     }
 
@@ -108,7 +108,7 @@ public interface PermissionService {
      * @param pluginId 插件标识
      * @return 权限高于 BLOCKED 时返回 {@code true}
      */
-    default boolean notBlocked(NoticeEvent event, String pluginId) {
+    default boolean notBlocked(YuniNoticeEvent event, String pluginId) {
         return resolve(event, pluginId).getPriority() > UserPermission.BLOCKED.getPriority();
     }
 

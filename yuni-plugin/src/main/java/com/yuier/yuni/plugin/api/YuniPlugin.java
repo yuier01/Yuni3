@@ -1,7 +1,7 @@
 package com.yuier.yuni.plugin.api;
 
-import com.yuier.yuni.plugin.api.event.MessageEvent;
-import com.yuier.yuni.plugin.api.event.MessageSentEvent;
+import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.YuniMessageSentEvent;
 import com.yuier.yuni.plugin.api.handler.MessageHandler;
 import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
@@ -202,7 +202,7 @@ public interface YuniPlugin {
      * @return 插件实例
      */
     static YuniPlugin onMessage(String name,
-                                Predicate<MessageEvent> when,
+                                Predicate<YuniMessageEvent> when,
                                 MessageHandler handler) {
         return of(name, ctx -> ctx.onMessage(when, handler));
     }
@@ -252,7 +252,7 @@ public interface YuniPlugin {
      * @return 插件实例
      */
     static YuniPlugin onMessageSent(String name,
-                                    Predicate<MessageSentEvent> when,
+                                    Predicate<YuniMessageSentEvent> when,
                                     MessageSentHandler handler) {
         return of(name, ctx -> ctx.onMessageSent(when, handler));
     }

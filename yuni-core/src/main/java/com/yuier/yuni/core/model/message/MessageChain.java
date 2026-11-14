@@ -96,6 +96,34 @@ public class MessageChain {
         return content.remove(index);
     }
 
+    /**
+     * 是否包含指定子串。
+     *
+     * @param text 子串；{@code null} 返回 {@code false}
+     * @return 任一文本段包含时返回 {@code true}
+     */
+    public boolean containsText(String text) {
+        return text != null && containsString(text);
+    }
+
+    /**
+     * 全部文本段按顺序拼接。
+     *
+     * @return 纯文本；无文本段时为空串
+     */
+    public String getPlainText() {
+        StringBuilder sb = new StringBuilder();
+        for (MessageSegment seg : content) {
+            if (seg.typeOf(TEXT)) {
+                TextSegment text = (TextSegment) seg;
+                if (text.getText() != null) {
+                    sb.append(text.getText());
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     public Boolean containsString(String str) {
         for (MessageSegment seg : content) {
             if (seg.typeOf(TEXT) && ((TextSegment) seg).getText().contains(str)) {

@@ -1,7 +1,7 @@
 package com.yuier.yuni.plugin.api.handler;
 
 import com.yuier.yuni.plugin.api.Reply;
-import com.yuier.yuni.plugin.api.event.NoticeEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 
 /**
  * 通知事件处理器。
@@ -20,7 +20,7 @@ import com.yuier.yuni.plugin.api.event.NoticeEvent;
  * <h2>不要在处理器里再解 rawJson</h2>
  * <p>现行 {@code PokeNotice} 因为事件模型字段缺失，被迫把 {@code rawJson}
  * 反序列化两次来判断子类型。新系统中子类型已由适配器写入
- * {@link NoticeEvent#getSubType()}，且判定在注册时就完成了（用
+ * {@link YuniNoticeEvent#getSubType()}，且判定在注册时就完成了（用
  * {@code ctx.onNotice("poke", ...)}），处理器拿到的必定是目标子类型。</p>
  *
  * <h2>权限</h2>
@@ -39,5 +39,5 @@ public interface NoticeHandler {
      * @param reply 回复入口
      * @throws Exception 处理失败时抛出
      */
-    void handle(NoticeEvent event, Reply reply) throws Exception;
+    void handle(YuniNoticeEvent event, Reply reply) throws Exception;
 }

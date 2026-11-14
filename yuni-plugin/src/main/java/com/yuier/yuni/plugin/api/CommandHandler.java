@@ -1,6 +1,7 @@
 package com.yuier.yuni.plugin.api;
 
 import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.matched.CommandResult;
 
 /**
  * 命令处理器——绑定到 {@code CommandNode} 上的执行入口。
@@ -40,9 +41,10 @@ public interface CommandHandler {
     /**
      * 执行命令。
      *
-     * @param event 携带 {@code CommandResult} 的消息事件
-     * @param reply 回复入口；可为 {@code null}（例如无法确定会话时）
+     * @param event  消息事件
+     * @param result 命令匹配结果，提供参数与子命令
+     * @param reply  回复入口；可为 {@code null}（例如无法确定会话时）
      * @throws Exception 执行失败；由框架统一兜底并回复用户
      */
-    void handle(YuniMessageEvent event, Reply reply) throws Exception;
+    void handle(YuniMessageEvent event, CommandResult result, Reply reply) throws Exception;
 }

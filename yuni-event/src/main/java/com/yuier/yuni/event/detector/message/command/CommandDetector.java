@@ -14,7 +14,7 @@ import com.yuier.yuni.core.model.message.segment.ReplySegment;
 import com.yuier.yuni.core.model.message.segment.TextSegment;
 import com.yuier.yuni.core.util.SpringContextUtil;
 import com.yuier.yuni.core.model.bot.BotApp;
-import com.yuier.yuni.event.detector.message.MessageDetector;
+
 import com.yuier.yuni.event.detector.message.command.model.CommandNode;
 import lombok.Getter;
 
@@ -38,7 +38,7 @@ import static com.yuier.yuni.core.constants.YuniMessageType.PRIVATE_MESSAGE;
  * 静态取 Bean 仅作为<b>兼容回退</b>保留（旧插件路径仍在用无参构造）。</p>
  */
 @AllArgsConstructor
-public class CommandDetector implements MessageDetector {
+public class CommandDetector {
 
     /**
      * -- GETTER --
@@ -83,34 +83,32 @@ public class CommandDetector implements MessageDetector {
     public void setRootNode(CommandNode rootNode) {
         this.rootNode = rootNode;
     }
-
-    @Override
-    public Boolean match(YuniMessageEvent event) {
+    public CommandResult match(YuniMessageEvent event) {
         if (!messageTypeMatches(event)) {
-            return false;
+            return null;
         }
 
         // tokenize → CommandTokens（含抽离的回复消息段）
         // 传入实例化的 bot：新插件系统在 Spring 容器之外也能正常工作
         CommandTokens tokens = tokenize(event.getMessageChain(), resolveBot());
         if (tokens.isEmpty()) {
-            return false;
+            return null;
         }
 
         // 检查命令头是否以 commandFlag 开头
         String commandFlag = resolveBotApp().getCommandFlag();
         if (!(tokens.get(FIRST_INDEX) instanceof TextSegment)) {
-            return false;
+            return null;
         }
         String first = ((TextSegment) tokens.get(FIRST_INDEX)).getText();
         if (!first.startsWith(commandFlag)) {
-            return false;
+            return null;
         }
 
         // 去掉命令前缀（将 "/echo" 变为 "echo"）
         String stripped = first.substring(commandFlag.length());
         if (stripped.isEmpty()) {
-            return false;
+            return null;
         }
         List<MessageSegment> mutableTokens = new ArrayList<>(tokens.getTokens());
         mutableTokens.set(FIRST_INDEX, new TextSegment(stripped));
@@ -119,12 +117,7 @@ public class CommandDetector implements MessageDetector {
         // 匹配
         CommandMatcher matcher = new CommandMatcher();
         CommandResult result = matcher.match(commandTokens, rootNode);
-
-        if (result.isMatchSuccess()) {
-            event.setCommandResult(result);
-            return true;
-        }
-        return false;
+        return result.isMatchSuccess() ? result : null;
     }
 
     /**
@@ -168,8 +161,6 @@ public class CommandDetector implements MessageDetector {
             return null;
         }
     }
-
-    @Override
     public MessageType listenAt() {
         return MessageType.GROUP;
     }
