@@ -34,7 +34,7 @@ public interface RequestHandler {
     /**
      * 处理一条请求事件。
      *
-     * @param event 请求事件（只读）
+     * @param event 请求事件
      * @param reply 回复入口
      * @throws Exception 处理失败时抛出
      */

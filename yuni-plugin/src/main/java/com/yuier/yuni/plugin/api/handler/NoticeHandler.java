@@ -35,7 +35,7 @@ public interface NoticeHandler {
     /**
      * 处理一条通知事件。
      *
-     * @param event 通知事件（只读）
+     * @param event 通知事件
      * @param reply 回复入口
      * @throws Exception 处理失败时抛出
      */

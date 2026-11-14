@@ -32,7 +32,7 @@ public interface MetaHandler {
     /**
      * 处理一条元事件。
      *
-     * @param event 元事件（只读）
+     * @param event 元事件
      * @param reply 回复入口（元事件一般不需要回复）
      * @throws Exception 处理失败时抛出
      */

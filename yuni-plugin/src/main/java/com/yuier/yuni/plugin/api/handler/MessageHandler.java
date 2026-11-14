@@ -7,7 +7,7 @@ import com.yuier.yuni.core.event.YuniMessageEvent;
  * 消息事件处理器。
  *
  * <p>由 {@code ctx.onMessage(...)} 注册。参数为「事件」与「回复入口」两件东西：
- * 事件只读，回复入口负责构造与发送。</p>
+ * 事件用于读取，回复入口负责构造与发送。</p>
  *
  * <h2>示例</h2>
  * <pre>{@code
@@ -38,7 +38,7 @@ public interface MessageHandler {
     /**
      * 处理一条消息事件。
      *
-     * @param event 消息事件（只读）
+     * @param event 消息事件
      * @param reply 回复入口，绑定到本消息所在的会话
      * @throws Exception 处理失败时抛出；框架会捕获并回复用户
      */

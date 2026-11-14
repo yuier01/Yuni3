@@ -186,7 +186,7 @@ public final class EventPipeline {
      *
      * @param owner 插件 Fiber，用于日志归因；可为 {@code null}
      * @param when  注册项的附加条件
-     * @param event 插件侧事件
+     * @param event 核心事件
      * @param <E>   事件类型
      * @return 条件通过时返回 {@code true}
      */

@@ -27,7 +27,7 @@ public interface MessageSentHandler {
     /**
      * 处理一条「机器人自身发出消息」的事件。
      *
-     * @param event 事件（只读）
+     * @param event 事件
      * @param reply 回复入口；注意再次发送会产生新消息
      * @throws Exception 处理失败时抛出
      */

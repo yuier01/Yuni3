@@ -59,7 +59,7 @@ import org.slf4j.Logger;
  *     ctx.schedule("0 0/5 * * * ?", () -> pollSteam(key));
  *
  *     // 3. 事件处理（条件与行为写在一起）
- *     ctx.onMessage(ev -> ev.getChain().startsWithText() && ev.getChain().containsText("/steam"),
+ *     ctx.onMessage(ev -> ev.getChain().containsText("/steam"),
  *                   (ev, reply) -> handleSteamCommand(ev, reply));
  *
  *     // 4. 自定义资源
@@ -225,19 +225,19 @@ public interface YuniContext {
      * <pre>{@code
      * ctx.command(CommandNode.builder("安慕希")
      *     .description("MC 服务器管理")
-     *     .on((ev, reply) -> MCStatus.query(ev))          // 无子命令时的默认行为
+     *     .on((ev, result, reply) -> MCStatus.query(result)) // 无子命令时的默认行为
      *     .child(CommandNode.builder("添加")
      *         .description("添加 MC 服务器")
      *         .arg(ArgDef.required("服务器名称", "MC 服务器名称"))
      *         .arg(ArgDef.required("服务器地址", "服务器地址"))
-     *         .on((ev, reply) -> MCServer.add(ev))        // 处理器紧贴它自己的参数声明
+     *         .on((ev, result, reply) -> MCServer.add(result)) // 处理器紧贴它自己的参数声明
      *         .build())
      *     .build());
      * }</pre>
      *
      * <p>分发时框架取「匹配到的最深节点」的处理器，因此现行
      * {@code MCManage.execute()} 里那串 {@code if (result.hasChild(...))} 分派链
-     * 可以被删除。参数取值仍走 {@code ev.getCommandResult()}，与现行写法一致。</p>
+     * 可以被删除。参数取值走 {@code result.getArg(...)} / {@code result.getChild(...)}。</p>
      *
      * @param tree 命令树根节点
      */

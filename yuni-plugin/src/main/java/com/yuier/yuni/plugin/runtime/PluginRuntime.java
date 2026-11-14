@@ -138,7 +138,7 @@ public final class PluginRuntime {
     /** 命令分发器；由 {@link #getPipeline()} 惰性构造。 */
     private volatile CommandDispatcher commandDispatcher;
 
-    /** 事件适配工厂；由 {@link #getPipeline()} 惰性构造。 */
+    /** 回复入口工厂；由 {@link #getPipeline()} 惰性构造。 */
     private volatile ReplyFactory replyFactory;
 
     /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
@@ -677,8 +677,8 @@ public final class PluginRuntime {
      *
      * <p>流水线需要 bot（用于构造 Reply）与 BotApp（提供命令前缀）。
      * 二者都由 {@link #bindBot} 后置注入，因此这里是惰性构造：
-     * 若在绑定之前就收到事件，构造出的适配器会在解析 bot 时安全降级
-     * （事件可翻译但没有 Reply），不会抛异常。</p>
+     * 若在绑定之前就收到事件，ReplyFactory 解析 bot 时会安全降级
+     * （没有 Reply），不会抛异常。</p>
      *
      * @return 流水线，永不为 {@code null}
      */

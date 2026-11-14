@@ -11,10 +11,10 @@ import java.util.Optional;
  * <pre>{@code
  * ctx.command(CommandNode.builder("安慕希")
  *     .description("MC 服务器管理")
- *     .on((ev, reply) -> MCStatus.query(ev))          // ← 处理器紧贴它的参数声明
+ *     .on((ev, result, reply) -> MCStatus.query(result))          // ← 处理器紧贴它的参数声明
  *     .child(CommandNode.builder("添加")
  *         .arg(ArgDef.required("服务器名称", "MC 服务器名称"))
- *         .on((ev, reply) -> MCServer.add(ev))
+ *         .on((ev, result, reply) -> MCServer.add(result))
  *         .build())
  *     .build());
  * }</pre>
@@ -47,8 +47,8 @@ import java.util.Optional;
  *     .description("MC 服务器管理")
  *     .child(on(CommandNode.builder("添加")
  *         .arg(ArgDef.required("服务器名称", "MC 服务器名称"))
- *         .build(), (ev, reply) -> addServer(ev, reply)))
- *     .build(), (ev, reply) -> queryStatus(ev, reply)));
+ *         .build(), (ev, result, reply) -> addServer(ev, result, reply)))
+ *     .build(), (ev, result, reply) -> queryStatus(ev, result, reply)));
  * }</pre>
  *
  * <p><b>括号位置很关键</b>：{@code on(...)} 返回的是已 build 好的
