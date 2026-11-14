@@ -86,13 +86,7 @@ public class YuniMessageSentEvent extends YuniEvent {
     // 消息链
     private MessageChain messageChain;
 
-    // 会话状态
-    private ChatSession chatSession;
 
-    /**
-     * 纯日志字符串
-     */
-    private String plainLogStr;
 
     public Boolean isPrivate() {
         return PRIVATE_MESSAGE.equals(messageType);
@@ -107,11 +101,6 @@ public class YuniMessageSentEvent extends YuniEvent {
         return "YuniEvent";
     }
 
-    public String toPlainLogString() {
-        String plainLog = "YuniEvent";
-        setPlainLogStr(plainLog);
-        return plainLog;
-    }
 
     public String getPosition() {
         if (isPrivate()) {

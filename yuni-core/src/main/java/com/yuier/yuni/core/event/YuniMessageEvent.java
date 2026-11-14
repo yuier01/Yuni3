@@ -86,14 +86,8 @@ public class YuniMessageEvent extends YuniEvent {
     // 消息链
     private MessageChain messageChain;
 
-    // 会话状态
-    private ChatSession chatSession;
 
 
-    /**
-     * 纯日志字符串
-     */
-    private String plainLogStr;
 
     /**
      * 消息链。

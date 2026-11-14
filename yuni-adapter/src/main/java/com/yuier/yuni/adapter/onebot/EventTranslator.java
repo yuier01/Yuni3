@@ -5,7 +5,6 @@ import com.yuier.yuni.core.constants.OneBotPostType;
 import com.yuier.yuni.core.event.YuniEvent;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.util.BeanCopyUtils;
-import com.yuier.yuni.core.event.ChatSession;
 import com.yuier.yuni.core.event.YuniMessageEvent;
 import com.yuier.yuni.core.event.YuniMessageSentEvent;
 import com.yuier.yuni.core.event.meta.YuniHeartbeatEvent;
@@ -75,13 +74,7 @@ public class EventTranslator {
         yuniMessageEvent.setMessage(messageEvent.getMessage());
         yuniMessageEvent.setMessageChain(new MessageChain(yuniMessageEvent.getMessage()));
         yuniMessageEvent.setSender(messageEvent.getSender());
-        ChatSession chatSession = new ChatSession(bot);
-        chatSession.setSelfId(messageEvent.getSelfId());
-        chatSession.setUserId(messageEvent.getUserId());
-        chatSession.setGroupId(messageEvent.getGroupId());
-        chatSession.setMessageType(messageEvent.getMessageType());
-        chatSession.setMessageId(messageEvent.getMessageId());
-        yuniMessageEvent.setChatSession(chatSession);
+
         return yuniMessageEvent;
     }
 

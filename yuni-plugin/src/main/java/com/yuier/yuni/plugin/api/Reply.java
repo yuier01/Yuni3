@@ -9,13 +9,9 @@ import java.util.Optional;
  * 消息构建门面。
  *
  * <h2>为什么要与 {@code MessageChain} 分开</h2>
- * <p>现行系统里插件发消息的入口是 {@code MessageChain} 本身——一个既可读又可写的
- * 对象。这带来两个问题：</p>
- * <ol>
- *   <li>读事件拿到的链与准备发送的链是同一类型，插件容易误改传入的事件内容；</li>
- *   <li>链式调用冗长：{@code eventContext.getChatSession().response(new MessageChain().addAt(...).addTextSegment(...))}。</li>
- * </ol>
- * <p>本接口只保留<b>构建与发送</b>，读取由 {@link MessageChainView} 负责。</p>
+ * <p>{@code MessageChain} 同时承担读取与构建，插件容易误改事件内容，
+ * 调用链也比较长。本接口只保留<b>构建与发送</b>，读取由
+ * {@link MessageChainView} 负责。</p>
  *
  * <h2>链式调用</h2>
  * <p>全部构建方法返回 {@code this}，因此可以一路链到 {@link #send()}：</p>
@@ -30,8 +26,7 @@ import java.util.Optional;
  *
  * <h2>引用回复</h2>
  * <ul>
- *   <li>{@link #quote()}：把当前消息设为对触发事件的引用回复（等价现行
- *       {@code ChatSession.reply}）。</li>
+ *   <li>{@link #quote()}：把当前消息设为对触发事件的引用回复。</li>
  *   <li>{@link #quote(String)}：引用指定的历史消息 ID。</li>
  * </ul>
  * <p>引用段会被插入链首——这是 QQ 客户端的硬性要求（回复段必须在第一位），
@@ -134,8 +129,8 @@ public interface Reply {
     /**
      * 把本消息设为对「触发当前处理器的消息」的引用回复。
      *
-     * <p>等价现行 {@code ChatSession.reply(...)}。当前处理器不是由消息事件触发时
-     * （例如定时任务里），本方法退化为空操作并记录一条 debug 日志。</p>
+     * <p>当前处理器不是由消息事件触发时（例如定时任务里），本方法退化为空操作
+     * 并记录一条 debug 日志。</p>
      *
      * @return {@code this}
      */
