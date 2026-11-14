@@ -34,8 +34,8 @@ public class CommandResult {
     /** 匹配到的选项（裸标志） */
     private Set<String> options = new LinkedHashSet<>();
 
-    /** 子命令匹配结果（key = 子命令名） */
-    private Map<String, CommandResult> children = new LinkedHashMap<>();
+    /** 子命令匹配结果；一次调用最多一个子命令 */
+    private CommandResult child;
 
     // ---- 查询 ----
 
@@ -57,25 +57,25 @@ public class CommandResult {
     }
 
     public boolean hasChild(String name) {
-        return children.containsKey(name);
+        return child != null && name != null && name.equals(child.getMatchedKey());
     }
 
     public CommandResult getChild(String name) {
-        return children.get(name);
+        return hasChild(name) ? child : null;
     }
 
     public Set<String> getChildNames() {
-        return children.keySet();
+        return child == null ? Set.of() : Set.of(child.getMatchedKey());
     }
 
-    /** 是否有任何子命令被匹配 */
+    /** 是否有子命令被匹配 */
     public boolean hasAnyChild() {
-        return !children.isEmpty();
+        return child != null;
     }
 
     /** 是否匹配了至少一个选项或子命令 */
     public boolean hasAnyOptionOrChild() {
-        return !options.isEmpty() || !children.isEmpty();
+        return !options.isEmpty() || child != null;
     }
 
     // ---- 静态工厂 ----

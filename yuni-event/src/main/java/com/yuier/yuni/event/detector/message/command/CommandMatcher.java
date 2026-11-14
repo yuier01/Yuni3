@@ -132,50 +132,63 @@ public class CommandMatcher {
         }
 
         // 2. 匹配选项 + 子命令
+        //
+        // 语法约束：同一层级最多匹配一个子命令。匹配到子命令后，
+        // 只允许继续消费本节点的选项；若后面又出现子命令名，直接判失败。
+        // 这样 CommandResult.children 在每一层最多一个元素，分发侧不必
+        // 再面对「多个兄弟子命令只执行一个」的歧义。
+        boolean childMatched = false;
         if (!node.getOptions().isEmpty() || !node.getChildren().isEmpty()) {
             while (pos < tokens.size()) {
                 MessageSegment seg = tokens.get(pos);
+                String text = seg.typeOf(MessageSegmentTypes.TEXT)
+                        ? ((TextSegment) seg).getText()
+                        : null;
 
-                // 2a. 选项
-                if (seg.typeOf(MessageSegmentTypes.TEXT)) {
-                    String text = ((TextSegment) seg).getText();
-                    if (node.getOptions().contains(text)) {
-                        result.getOptions().add(text);
-                        pos++;
-                        continue;
-                    }
+                // 2a. 选项（子命令前后都可以出现）
+                if (text != null && node.getOptions().contains(text)) {
+                    result.getOptions().add(text);
+                    pos++;
+                    continue;
                 }
 
-                // 2b. 子命令（回溯）
+                // 2b. 已经匹配过子命令：不允许再匹配第二个兄弟子命令
+                if (childMatched) {
+                    if (text != null && isChildName(node, text)) {
+                        return CommandResult.fail();
+                    }
+                    // 不是本节点的子命令/选项：交给上层继续消费（例如父选项）
+                    break;
+                }
+
+                // 2c. 子命令：只尝试一次，匹配后不再进入这个分支
                 boolean matched = false;
                 for (CommandNode child : node.getChildren()) {
                     CommandResult childResult = matchInternal(tokens, pos, child);
                     if (childResult.isMatchSuccess()) {
-                        // 匹配到一条子命令，就跳出 while 循环，在循环外重置 pos 等值
-                        result.getChildren().put(child.getName(), childResult);
+                        result.setChild(childResult);
                         pos += childResult.getConsumedCount();
                         matched = true;
+                        childMatched = true;
                         break;
                     }
                 }
-                // 如果所有子命令均匹配完，也没匹配到，为避免不消费 token 导致的无限循环，也跳出 while 循环
                 if (!matched) {
                     break;
                 }
             }
         }
-
         result.setConsumedCount(pos - start);
 
         // 3. 校验必须子命令
         for (CommandNode child : node.getChildren()) {
-            if (child.isRequired() && !result.getChildren().containsKey(child.getName())) {
+            if (child.isRequired() && !result.hasChild(child.getName())) {
                 return CommandResult.fail();
             }
         }
 
         // 4. 校验 requiresChild
-        if (node.isRequiresChild() && result.getOptions().isEmpty() && result.getChildren().isEmpty()) {
+        if (node.isRequiresChild() && result.getOptions().isEmpty() && !result.hasAnyChild()) {
             return CommandResult.fail();
         }
 

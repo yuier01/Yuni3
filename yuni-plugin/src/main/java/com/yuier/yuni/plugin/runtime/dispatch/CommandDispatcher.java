@@ -290,8 +290,9 @@ public final class CommandDispatcher {
         if (result == null) {
             return null;
         }
-        // 先深后浅：子命令更具体
-        for (CommandResult child : result.getChildren().values()) {
+        // 先深后浅：子命令更具体；每层最多一个 child
+        CommandResult child = result.getChild();
+        if (child != null) {
             CommandHandler childHandler = resolveDeepestHandler(child);
             if (childHandler != null) {
                 return childHandler;
@@ -382,12 +383,8 @@ public final class CommandDispatcher {
                     event.getUserId(), result.getMatchedKey(), required, userPermission);
             return false;
         }
-        for (CommandResult child : result.getChildren().values()) {
-            if (!checkNodePermission(child, event, registration)) {
-                return false;
-            }
-        }
-        return true;
+        CommandResult child = result.getChild();
+        return child == null || checkNodePermission(child, event, registration);
     }
 
     /**
