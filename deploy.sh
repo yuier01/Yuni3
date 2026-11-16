@@ -1,13 +1,13 @@
 #!/bin/bash
 # Yuni3 服务器端部署脚本
 # 由 webhook 触发，或手动执行
-# 用法: ./deploy.sh [image_tag]
+# 默认从 GitHub Container Registry 拉取镜像；可传完整镜像名覆盖
+# 用法: ./deploy.sh [image]
 
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${1:-yuier/yuni3:latest}"
-BACKUP_IMAGE="${2:-ghcr.io/yuier01/yuni3:latest}"
+IMAGE="${1:-ghcr.io/yuier01/yuni3:latest}"
 PLUGINS_JSON="$DEPLOY_DIR/plugins.json"
 PLUGIN_REPO="yuier01/Yuni3-plugin-repo"
 PLUGIN_POM_URL="https://raw.githubusercontent.com/${PLUGIN_REPO}/master/pom.xml"
@@ -103,12 +103,8 @@ rm -f "$PLUGIN_LIST"
 echo "[deploy] 插件下载完成"
 
 # ── 启动 / 更新容器 ──────────────────────────────────────────────────
-echo "[deploy] 拉取镜像 $IMAGE ..."
-if ! docker pull "$IMAGE"; then
-  echo "[deploy] Docker Hub 拉取失败，尝试备份镜像 $BACKUP_IMAGE ..."
-  docker pull "$BACKUP_IMAGE"
-  docker tag "$BACKUP_IMAGE" "$IMAGE"
-fi
+echo "[deploy] 从 GitHub Container Registry 拉取镜像 $IMAGE ..."
+docker pull "$IMAGE"
 
 if docker ps -q -f name=yuni3 | grep -q .; then
   echo "[deploy] 停止旧容器..."
