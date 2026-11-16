@@ -14,7 +14,9 @@
           "name": "maimai-连接器",
           "version": "0.0.1",
           "description": "启动 WebSocket 服务器，接受 MaiBot-Napcat-Adapter 连接，实现 OneBot 协议核心动作",
-          "tips": ["NapCat ←→ Yuni ←→ maimai 双向中转"],
+          "tips": [
+            "NapCat ←→ Yuni ←→ maimai 双向中转"
+          ],
           "author": "Yuier me@yuier.com"
         },
         {
@@ -22,7 +24,9 @@
           "name": "maimai-消息转发",
           "version": "0.0.1",
           "description": "将 QQ 群聊/私聊消息（非命令）转发给 maimai",
-          "tips": ["不转发命令消息，maimai 专注于群聊自然对话"],
+          "tips": [
+            "不转发命令消息，maimai 专注于群聊自然对话"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]
@@ -88,7 +92,9 @@
           "name": "戳一戳事件处理",
           "version": "0.0.1",
           "description": "戳一戳事件处理",
-          "tips": ["戳一戳 bot ，bot 会回复"],
+          "tips": [
+            "戳一戳 bot ，bot 会回复"
+          ],
           "author": "Yuier me@yuier.com"
         },
         {
@@ -96,7 +102,9 @@
           "name": "OneBot 心跳事件处理",
           "version": "0.0.1",
           "description": "OneBot 心跳事件处理",
-          "tips": ["接收心跳事件，简单打印一下"],
+          "tips": [
+            "接收心跳事件，简单打印一下"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]
@@ -115,7 +123,9 @@
           "name": "帮助信息",
           "version": "0.0.1",
           "description": "输出帮助信息",
-          "tips": ["向群聊发送 “/帮助” 可以查看帮助信息"],
+          "tips": [
+            "向群聊发送 “/帮助” 可以查看帮助信息"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]
@@ -252,7 +262,9 @@
           "name": "骑空士陷阱粉碎机",
           "version": "0.0.1",
           "description": "警惕骑空士的陷阱",
-          "tips": ["检测到消息中含有 `granbluefantasy.jp` 文本，自动警告骑空士的陷阱"],
+          "tips": [
+            "检测到消息中含有 `granbluefantasy.jp` 文本，自动警告骑空士的陷阱"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]
@@ -270,7 +282,9 @@
           "name": "要我一直 IMAGE 吗",
           "version": "0.0.1",
           "description": "一直.image",
-          "tips": ["向群聊发送 `/一直 {图片}` ，bot 会向群聊发送一张 “<大图> 要我一直<小图>吗” 的图片"],
+          "tips": [
+            "向群聊发送 `/一直 {图片}` ，bot 会向群聊发送一张 “<大图> 要我一直<小图>吗” 的图片"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]
@@ -288,7 +302,9 @@
           "name": "定时插件示例",
           "version": "0.0.1",
           "description": "定时任务插件示例",
-          "tips": ["每天早上会向 bot master 问好。"],
+          "tips": [
+            "每天早上会向 bot master 问好。"
+          ],
           "author": "Yuier me@yuier.com"
         },
         {
@@ -296,7 +312,9 @@
           "name": "指令插件示例",
           "version": "0.0.1",
           "description": "验证指令系统可用性",
-          "tips": ["在群聊内发送“/test”，bot 会响应 “Hello Command!”"],
+          "tips": [
+            "在群聊内发送“/test”，bot 会响应 “Hello Command!”"
+          ],
           "author": "Yuier me@yuier.com"
         },
         {
@@ -304,7 +322,9 @@
           "name": "规则插件示例",
           "version": "0.0.1",
           "description": "验证模式匹配可用性",
-          "tips": ["在群聊内发送带有“你好”的消息，bot 会响应 “你好，我是 {bot 昵称} !”"],
+          "tips": [
+            "在群聊内发送带有“你好”的消息，bot 会响应 “你好，我是 {bot 昵称} !”"
+          ],
           "author": "Yuier me@yuier.com"
         },
         {
@@ -312,7 +332,77 @@
           "name": "即时插件示例",
           "version": "0.0.1",
           "description": "即时任务插件实例",
-          "tips": ["启动后会向特定群聊发送一条消息“我是后背”"],
+          "tips": [
+            "启动后会向特定群聊发送一条消息“我是后背”"
+          ],
+          "author": "Yuier me@yuier.com"
+        }
+      ]
+    },
+    {
+      "id": "steam",
+      "repo": "yuier01/Yuni3-plugin-repo",
+      "module": "steam",
+      "description": "Steam 游戏状态监控",
+      "author": "Yuier me@yuier.com",
+      "type": "builtin",
+      "buildIn": true,
+      "plugins": [
+        {
+          "id": "Steam",
+          "name": "Steam 状态监控与绑定",
+          "version": "0.0.1",
+          "description": "监控群友的 steam 游戏状态，并提供绑定/解绑命令",
+          "tips": [
+            "群友绑定 steam id 后，其开始/停止/更换游戏时 bot 会在群内播报",
+            "使用 `/steam 绑定id {steam id}` 绑定",
+            "使用 `/steam 解绑id` 解绑"
+          ],
+          "author": "Yuier me@yuier.com"
+        }
+      ]
+    },
+    {
+      "id": "mcmanage",
+      "repo": "yuier01/Yuni3-plugin-repo",
+      "module": "mcmanage",
+      "description": "MC 服务器管理",
+      "author": "Yuier me@yuier.com",
+      "type": "builtin",
+      "buildIn": true,
+      "plugins": [
+        {
+          "id": "MCManage",
+          "name": "MC 服务管理",
+          "version": "0.0.1",
+          "description": "MC 服务器管理",
+          "tips": [
+            "使用 `/mc` 查询本群服务器状态",
+            "使用 `/mc 添加 {名称} {地址}` 添加服务器",
+            "使用 `/mc 删除 {名称}` 删除服务器"
+          ],
+          "author": "Yuier me@yuier.com"
+        }
+      ]
+    },
+    {
+      "id": "bilibili",
+      "repo": "yuier01/Yuni3-plugin-repo",
+      "module": "bilibili",
+      "description": "B站工具箱",
+      "author": "Yuier me@yuier.com",
+      "type": "builtin",
+      "buildIn": true,
+      "plugins": [
+        {
+          "id": "BilibiliVideoParser",
+          "name": "B 站视频解析",
+          "version": "0.0.1",
+          "description": "识别 BV 号或 b23.tv 短链接并展示视频基本信息",
+          "tips": [
+            "检测到聊天消息中包含 BV 号或 b23.tv 短链接，自动解析视频相关信息",
+            "支持普通文本消息与 QQ 分享卡片"
+          ],
           "author": "Yuier me@yuier.com"
         }
       ]

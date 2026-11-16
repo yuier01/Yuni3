@@ -32,24 +32,30 @@ chmod -R 755 "$DEPLOY_DIR/plugins"
 # ── 下载插件 ─────────────────────────────────────────────────────────
 echo "[deploy] 下载插件..."
 # 写入临时文件避免管道中的 subshell 问题（& + wait 需要在同一 shell）
-jq -r '.packages[] | "\(.id) \(.repo)"' "$PLUGINS_JSON" > /tmp/plugin-list.txt
+jq -r '.packages[] | "\(.id) \(.repo) \(.module // .id)"' "$PLUGINS_JSON" > /tmp/plugin-list.txt
 
-while read -r id repo; do
+while read -r id repo module; do
   (
-    base="https://github.com/${repo}/releases/download/${id}/${id}.zip"
+    # GitHub Release 的 tag / zip 名使用模块目录名；
+    # 包 id 是展示/分类标识，可能与模块目录不同（例如 event-manage / eventmanage）。
+    release_id="$(basename "$module")"
+    base="https://github.com/${repo}/releases/download/${release_id}/${release_id}.zip"
+    target="$DEPLOY_DIR/plugins/$release_id"
     ok=0
     for proxy in "${GHPROXIES[@]}"; do
       url="${proxy}${base}"
-      if curl -fsSL --connect-timeout 5 --max-time 120 "$url" -o "/tmp/${id}.zip"; then
-        mkdir -p "$DEPLOY_DIR/plugins/$id"
-        unzip -o "/tmp/${id}.zip" -d "$DEPLOY_DIR/plugins/" >/dev/null 2>&1
-        rm "/tmp/${id}.zip"
-        echo "  $id OK"
+      if curl -fsSL --connect-timeout 5 --max-time 120 "$url" -o "/tmp/${release_id}.zip"; then
+        mkdir -p "$target"
+        # 保留插件自己的配置/数据文件，只清掉旧 jar，避免加载多个版本
+        rm -f "$target"/*.jar
+        unzip -o "/tmp/${release_id}.zip" -d "$DEPLOY_DIR/plugins/" >/dev/null 2>&1
+        rm "/tmp/${release_id}.zip"
+        echo "  $id ($release_id) OK"
         ok=1
         break
       fi
     done
-    [ "$ok" -eq 0 ] && echo "  $id FAIL (所有代理均不可达)"
+    [ "$ok" -eq 0 ] && echo "  $id ($release_id) FAIL (所有代理均不可达)"
   ) &
 done < /tmp/plugin-list.txt
 
