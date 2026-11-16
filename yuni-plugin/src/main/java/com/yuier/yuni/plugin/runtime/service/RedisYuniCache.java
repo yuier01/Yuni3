@@ -62,7 +62,12 @@ public final class RedisYuniCache implements YuniCache {
 
     @Override
     public void set(String key, Object value) {
-        RedisUtil.set(key, encode(value));
+        try {
+            RedisUtil.set(key, encode(value));
+        } catch (Exception e) {
+            // 缓存写入失败不应中断插件逻辑；例如 Redis 暂时不可用或鉴权配置不一致
+            log.warn("写入缓存失败，已跳过: key={}", key, e);
+        }
     }
 
     @Override
@@ -71,7 +76,11 @@ public final class RedisYuniCache implements YuniCache {
             set(key, value);
             return;
         }
-        RedisUtil.set(key, encode(value), ttl.getSeconds(), TimeUnit.SECONDS);
+        try {
+            RedisUtil.set(key, encode(value), ttl.getSeconds(), TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("写入缓存失败，已跳过: key={}, ttl={}s", key, ttl.getSeconds(), e);
+        }
     }
 
     @Override
@@ -148,7 +157,11 @@ public final class RedisYuniCache implements YuniCache {
 
     @Override
     public void hashSet(String key, String field, Object value) {
-        RedisUtil.hSet(key, field, encode(value));
+        try {
+            RedisUtil.hSet(key, field, encode(value));
+        } catch (Exception e) {
+            log.warn("写入缓存哈希字段失败，已跳过: key={}, field={}", key, field, e);
+        }
     }
 
     @Override
