@@ -7,7 +7,8 @@ import com.yuier.yuni.core.event.matched.CommandResult;
  * 命令处理器——绑定到 {@code CommandNode} 上的执行入口。
  *
  * <p>命令处理器与其他消息处理器使用同一个 {@link YuniMessageEvent}，
- * 额外接收命令匹配结果 {@link CommandResult}。参数与子命令从结果中读取，
+ * 额外接收<b>当前 handler 所在节点</b>的匹配结果 {@link CommandResult}。
+ * 参数与子命令从结果中读取，
  * 不需要插件自己解析消息链：</p>
  *
  * <pre>{@code
@@ -37,7 +38,7 @@ public interface CommandHandler {
      * 执行命令。
      *
      * @param event  消息事件
-     * @param result 命令匹配结果，提供参数与子命令
+     * @param result 当前 handler 所在节点的匹配结果，提供参数与子命令
      * @param reply  回复入口；可为 {@code null}（例如无法确定会话时）
      * @throws Exception 执行失败；由框架统一兜底并回复用户
      */

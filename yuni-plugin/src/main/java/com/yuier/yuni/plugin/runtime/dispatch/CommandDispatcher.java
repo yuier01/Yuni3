@@ -254,8 +254,8 @@ public final class CommandDispatcher {
                 continue;
             }
 
-            CommandHandler handler = resolveDeepestHandler(result);
-            if (handler == null) {
+            ResolvedHandler resolved = resolveDeepestHandler(result);
+            if (resolved == null) {
                 // 只声明不绑定处理器的命令树：合法的「纯帮助项」，不算命中
                 log.debug("命令树命中但未绑定处理器，视为帮助声明: {}",
                         registration.owner() == null ? "?" : registration.owner().getId());
@@ -265,7 +265,7 @@ public final class CommandDispatcher {
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    handler.handle(event, result, reply);
+                    resolved.handler().handle(event, resolved.result(), reply);
                 } catch (Throwable t) {
                     log.error("插件 {} 执行命令失败", registration.owner() == null ? "?" : registration.owner().getId(), t);
                     if (reply != null) {
@@ -287,22 +287,32 @@ public final class CommandDispatcher {
      * 有更具体的处理器；输入「添加」时应走后者。</p>
      *
      * @param result 匹配结果（树形）
-     * @return 处理器；整棵匹配路径上都没有绑定则返回 {@code null}
+     * @return 最深节点的 handler 及其对应结果；都没有绑定则返回 {@code null}
      */
-    private CommandHandler resolveDeepestHandler(CommandResult result) {
+    private ResolvedHandler resolveDeepestHandler(CommandResult result) {
         if (result == null) {
             return null;
         }
         // 先深后浅：子命令更具体；每层最多一个 child
         CommandResult child = result.getChild();
         if (child != null) {
-            CommandHandler childHandler = resolveDeepestHandler(child);
-            if (childHandler != null) {
-                return childHandler;
+            ResolvedHandler childResolved = resolveDeepestHandler(child);
+            if (childResolved != null) {
+                return childResolved;
             }
         }
         CommandNode node = findNodeByKey(result.getMatchedKey(), result);
-        return node == null ? null : Commands.handlerOf(node).orElse(null);
+        CommandHandler handler = node == null ? null : Commands.handlerOf(node).orElse(null);
+        return handler == null ? null : new ResolvedHandler(handler, result);
+    }
+
+    /**
+     * 最深节点 handler 及其对应的命令结果。
+     *
+     * @param handler 处理器
+     * @param result  该 handler 所在节点的匹配结果
+     */
+    private record ResolvedHandler(CommandHandler handler, CommandResult result) {
     }
 
     /**
