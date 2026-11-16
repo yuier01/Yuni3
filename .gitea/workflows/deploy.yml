@@ -21,8 +21,14 @@ jobs:
           docker push localhost:5000/yuni3:latest
 
       - name: Notify deploy
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
         run: |
+          if [ -z "${DEPLOY_TOKEN:-}" ]; then
+            echo "缺少 DEPLOY_TOKEN secret，无法通知部署"
+            exit 1
+          fi
           curl -X POST http://localhost:9000/hooks/deploy-yuni3 \
-            -H "Authorization: Bearer yuni-deploy-token" \
+            -H "Authorization: Bearer ${DEPLOY_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '{}'
