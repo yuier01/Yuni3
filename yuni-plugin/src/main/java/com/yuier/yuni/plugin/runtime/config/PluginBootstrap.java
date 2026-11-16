@@ -1,5 +1,6 @@
 package com.yuier.yuni.plugin.runtime.config;
 
+import com.yuier.yuni.core.util.LogStringUtil;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
@@ -52,6 +53,7 @@ public final class PluginBootstrap {
 
         List<PluginFiber> all = new ArrayList<>();
         for (File jarFile : jarFiles) {
+            log.info("扫描 jar 包: {}", LogStringUtil.buildYellowLog(jarFile.getName()));
             // 绝对路径一定有父目录（jar 不可能是文件系统根）；用绝对路径避免
             // 「目录配置为空 → Files.walk 返回裸文件名 → getParentFile() 为 null」这一死角
             Path artifactDir = jarFile.toPath().toAbsolutePath().getParent();

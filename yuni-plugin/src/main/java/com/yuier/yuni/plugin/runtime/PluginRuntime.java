@@ -5,6 +5,7 @@ import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.bot.YuniBot;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.task.DynamicTaskManager;
+import com.yuier.yuni.core.util.LogStringUtil;
 import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.PluginDeclaration;
 import com.yuier.yuni.plugin.api.PluginDescriptor;
@@ -337,7 +338,8 @@ public final class PluginRuntime {
         try {
             fiber.getPlugin().apply(ctx);
             if (fiber.tryMarkActive()) {
-                log.info("插件已加载: {} | 贡献能力 {}", fiber.getId(), registry.kindsOf(fiber));
+                log.info("插件已加载: {} | 贡献能力 {}",
+                        LogStringUtil.buildBrightBlueLog(fiber.getId()), registry.kindsOf(fiber));
                 return true;
             }
 
@@ -355,7 +357,8 @@ public final class PluginRuntime {
             // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
             boolean marked = fiber.tryMarkFailed(t);
             if (marked) {
-                log.error("插件 {} 加载失败，已回滚其 PluginEffect", fiber.getId(), t);
+                log.error("插件 {} 加载失败，已回滚其 PluginEffect",
+                    LogStringUtil.buildBrightRedLog(fiber.getId()), t);
             } else {
                 log.warn("插件 {} 加载失败，但期间已被卸载，状态不再改为 FAILED", fiber.getId(), t);
             }
@@ -527,7 +530,7 @@ public final class PluginRuntime {
          */
 
         if (failures.isEmpty()) {
-            log.info("插件已卸载: {}", pluginId);
+            log.info("插件已卸载: {}", LogStringUtil.buildBrightBlueLog(pluginId));
         } else {
             log.warn("插件 {} 已卸载，但有 {} 项清理失败: {}", pluginId, failures.size(), failures);
         }
@@ -613,7 +616,8 @@ public final class PluginRuntime {
         fibers.removeArtifact(artifactId);
         closeQuietly(artifact.getClassLoader());
 
-        log.info("加载单元 {} 已卸载，开始重新加载 {}", artifactId, jarFile.getName());
+        log.info("加载单元 {} 已卸载，开始重新加载 {}",
+                    LogStringUtil.buildBrightBlueLog(artifactId), jarFile.getName());
 
         List<PluginFiber> loaded =
                 artifactLoader.loadArtifact(jarFile, artifact.getDataDir());

@@ -1,6 +1,7 @@
 package com.yuier.yuni.plugin.runtime.load;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yuier.yuni.core.util.LogStringUtil;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.PluginDescriptor;
 import com.yuier.yuni.plugin.runtime.PluginArtifact;
@@ -197,7 +198,8 @@ public final class PluginArtifactLoader {
 
             List<Class<?>> pluginClasses = discoverPluginClasses(jarFile, classLoader);
             if (pluginClasses.isEmpty()) {
-                log.warn("加载单元 {} 未发现任何插件类（jar: {}）", artifactId, jarFile.getName());
+                log.warn("加载单元 {} 未发现任何插件类（jar: {}）",
+                        LogStringUtil.buildYellowLog(artifactId), jarFile.getName());
                 return loaded;
             }
 
@@ -212,13 +214,14 @@ public final class PluginArtifactLoader {
                 } catch (Throwable t) {
                     // 必须捕获 Throwable：类加载失败抛的是 Error。
                     // 只 catch Exception 会让插件静默消失（2026-08 P0 事故的教训）
-                    log.error("加载插件 {} 失败", pluginClass.getName(), t);
+                    log.error("加载插件 {} 失败", LogStringUtil.buildBrightRedLog(pluginClass.getName()), t);
                 }
             }
 
-            log.info("加载单元 {} 加载完成，共 {} 个插件", artifactId, loaded.size());
+            log.info("加载单元 {} 加载完成，共 {} 个插件",
+                    LogStringUtil.buildBrightBlueLog(artifactId), loaded.size());
         } catch (Throwable t) {
-            log.error("加载插件 jar 失败: {}", jarFile.getName(), t);
+            log.error("加载插件 jar 失败: {}", LogStringUtil.buildBrightRedLog(jarFile.getName()), t);
         }
         return loaded;
     }
