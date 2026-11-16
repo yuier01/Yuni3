@@ -62,7 +62,7 @@ public final class RedisYuniCache implements YuniCache {
 
     @Override
     public void set(String key, Object value) {
-        RedisUtil.set(key, value);
+        RedisUtil.set(key, encode(value));
     }
 
     @Override
@@ -71,7 +71,7 @@ public final class RedisYuniCache implements YuniCache {
             set(key, value);
             return;
         }
-        RedisUtil.set(key, value, ttl.getSeconds(), TimeUnit.SECONDS);
+        RedisUtil.set(key, encode(value), ttl.getSeconds(), TimeUnit.SECONDS);
     }
 
     @Override
@@ -148,7 +148,7 @@ public final class RedisYuniCache implements YuniCache {
 
     @Override
     public void hashSet(String key, String field, Object value) {
-        RedisUtil.hSet(key, field, value);
+        RedisUtil.hSet(key, field, encode(value));
     }
 
     @Override
@@ -236,6 +236,20 @@ public final class RedisYuniCache implements YuniCache {
     // ==================== 内部 ====================
 
     /**
+     * 把缓存值编码为 JSON 字符串。
+     *
+     * <p>不使用 Redis 的默认类型信息：插件类由 PluginClassLoader 加载，
+     * 核心 ObjectMapper 看不到这些类型。存字符串、按调用方 Class 反序列化
+     * 可以避开这个 ClassLoader 边界。</p>
+     *
+     * @param value 缓存值
+     * @return JSON 字符串
+     */
+    private String encode(Object value) {
+        return jsonCodec.toJson(value);
+    }
+
+    /**
      * 把缓存里取到的对象转换为目标类型。
      *
      * <p>转换策略：类型已匹配则直接返回；否则经 JSON 往返转换一次。
@@ -252,10 +266,15 @@ public final class RedisYuniCache implements YuniCache {
         if (value == null) {
             return Optional.empty();
         }
-        if (clazz.isInstance(value)) {
-            return Optional.of(clazz.cast(value));
-        }
         try {
+            // 缓存值统一以 JSON 字符串存储；反序列化使用调用方传入的 Class，
+            // 避免 Redis 的默认类型信息在插件 ClassLoader 之外解析失败。
+            if (value instanceof String json) {
+                return Optional.ofNullable(jsonCodec.fromJson(json, clazz));
+            }
+            if (clazz.isInstance(value)) {
+                return Optional.of(clazz.cast(value));
+            }
             return Optional.ofNullable(jsonCodec.convertValue(value, clazz));
         } catch (Exception e) {
             // 常见于「缓存里存的类型与本次请求的类型不一致」（如某插件改了缓存结构）。
