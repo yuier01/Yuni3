@@ -189,7 +189,7 @@ class EventPipelineTest {
 
         pipeline.onNotice(notice);
 
-        await(() -> pokes.get() > 0, 2000);
+        await(() -> pokes.get() > 0 && others.get() > 0, 2000);
         assertEquals(1, pokes.get(), "poke 子类型处理器应被调用");
         assertEquals(1, others.get(), "无条件处理器也应被调用");
     }

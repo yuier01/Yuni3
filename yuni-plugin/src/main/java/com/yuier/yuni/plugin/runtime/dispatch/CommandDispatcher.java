@@ -240,6 +240,9 @@ public final class CommandDispatcher {
             }
 
             matched = true;
+            if (registration.owner() != null) {
+                log.info("匹配到插件: {}", registration.owner().getMetadata().getName());
+            }
 
             // 节点级权限校验：沿匹配路径递归比对每一层
             if (!checkNodePermission(result, event, registration)) {

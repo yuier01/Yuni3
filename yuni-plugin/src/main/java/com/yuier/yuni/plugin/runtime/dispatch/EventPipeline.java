@@ -214,6 +214,9 @@ public final class EventPipeline {
                                String logTag,
                                Reply reply,
                                ThrowingRunnable action) {
+        if (owner != null) {
+            log.info("匹配到插件: {}", owner.getMetadata().getName());
+        }
         CompletableFuture.runAsync(() -> invokeSafely(owner, logTag, reply, action));
     }
 
