@@ -11,6 +11,7 @@ import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
+import com.yuier.yuni.plugin.data.PluginDataService;
 import com.yuier.yuni.plugin.runtime.config.PluginBootstrap;
 import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
 import com.yuier.yuni.plugin.runtime.service.DefaultPermissionService;
@@ -79,6 +80,12 @@ public final class PluginSystem {
      */
     private final ObjectProvider<YuniBot> botProvider;
 
+    /** 机器人配置实体（Bot 服务）。 */
+    private final ObjectProvider<Bot> botConfigProvider;
+
+    /** 插件数据服务（PluginDataService 服务）。 */
+    private final ObjectProvider<PluginDataService> dataServiceProvider;
+
     /** 插件目录。 */
     private final String pluginDirectory;
 
@@ -119,6 +126,7 @@ public final class PluginSystem {
      * @param objectMapper    jar 描述解析
      * @param botProvider     机器人实例提供者（延迟解析）
      * @param botConfig       机器人配置（权限服务的 masterId）
+     * @param dataServiceProvider 插件数据服务
      * @param botApp          机器人业务配置
      * @param permissionStore 权限例外数据访问
      * @param abilityService  群插件启停表数据访问
@@ -129,6 +137,7 @@ public final class PluginSystem {
                         ObjectMapper objectMapper,
                         ObjectProvider<YuniBot> botProvider,
                         ObjectProvider<Bot> botConfig,
+                        ObjectProvider<PluginDataService> dataServiceProvider,
                         BotApp botApp,
                         GroupUserPluginPermissionService permissionStore,
                         GroupPluginAbilityService abilityService,
@@ -137,6 +146,8 @@ public final class PluginSystem {
         this.jsonCodec = jsonCodec;
         this.objectMapper = objectMapper;
         this.botProvider = botProvider;
+        this.botConfigProvider = botConfig;
+        this.dataServiceProvider = dataServiceProvider;
         this.botApp = botApp;
         this.pluginDirectory = pluginDirectory;
 
@@ -174,6 +185,19 @@ public final class PluginSystem {
         newRuntime.registerService(YuniHttp.class, yuniHttp);
         newRuntime.registerService(PermissionService.class, permissionService);
         newRuntime.registerService(JsonCodec.class, jsonCodec);
+
+        YuniBot bot = botProvider.getIfAvailable();
+        if (bot != null) {
+            newRuntime.registerService(YuniBot.class, bot);
+        }
+        Bot botConfig = botConfigProvider.getIfAvailable();
+        if (botConfig != null) {
+            newRuntime.registerService(Bot.class, botConfig);
+        }
+        PluginDataService dataService = dataServiceProvider.getIfAvailable();
+        if (dataService != null) {
+            newRuntime.registerService(PluginDataService.class, dataService);
+        }
 
         PluginArtifactLoader newLoader = new PluginArtifactLoader(objectMapper, newRuntime);
         newRuntime.bindArtifactLoader(newLoader);
