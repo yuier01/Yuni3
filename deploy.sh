@@ -80,21 +80,51 @@ while read -r id repo module; do
     release_id="$(basename "$module")"
     base="https://github.com/${repo}/releases/download/${release_id}/${release_id}.zip"
     target="$DEPLOY_DIR/plugins/$release_id"
+    zip="/tmp/${release_id}.zip"
+    stage="/tmp/yuni3-plugin-stage-${release_id}"
     ok=0
     for proxy in "${GHPROXIES[@]}"; do
       url="${proxy}${base}"
-      if curl -fsSL --connect-timeout 5 --max-time 120 "$url" -o "/tmp/${release_id}.zip"; then
-        mkdir -p "$target"
-        # 保留插件自己的配置/数据文件，只清掉旧 jar，避免加载多个版本
-        rm -f "$target"/*.jar
-        unzip -o "/tmp/${release_id}.zip" -d "$DEPLOY_DIR/plugins/" >/dev/null 2>&1
-        rm "/tmp/${release_id}.zip"
+      if ! curl -fsSL --connect-timeout 5 --max-time 120 "$url" -o "$zip"; then
+        continue
+      fi
+
+      # 代理服务可能在目标不存在时返回 200 HTML；必须先验证是否为 zip。
+      if ! unzip -t "$zip" >/dev/null 2>&1; then
+        echo "  $id ($release_id) 下载内容不是有效 zip，继续尝试下一个代理"
+        rm -f "$zip"
+        continue
+      fi
+
+      rm -rf "$stage"
+      mkdir -p "$stage"
+      if ! unzip -q "$zip" -d "$stage"; then
+        echo "  $id ($release_id) 解压失败"
+        rm -rf "$stage" "$zip"
+        continue
+      fi
+
+      src="$stage/$release_id"
+      [ -d "$src" ] || src="$stage"
+      if ! find "$src" -type f -name '*.jar' -print -quit | grep -q .; then
+        echo "  $id ($release_id) 包内没有 jar，跳过"
+        rm -rf "$stage" "$zip"
+        continue
+      fi
+
+      mkdir -p "$target"
+      # 保留插件自己的配置/数据文件，只清掉旧 jar，避免加载多个版本
+      find "$target" -type f -name '*.jar' -delete
+      if cp -a "$src/." "$target/"; then
+        rm -rf "$stage" "$zip"
         echo "  $id ($release_id) OK"
         ok=1
         break
       fi
+      echo "  $id ($release_id) 复制产物失败"
+      rm -rf "$stage" "$zip"
     done
-    [ "$ok" -eq 0 ] && echo "  $id ($release_id) FAIL (所有代理均不可达)"
+    [ "$ok" -eq 0 ] && echo "  $id ($release_id) FAIL (没有可用的插件产物)"
   ) &
 done < "$PLUGIN_LIST"
 
