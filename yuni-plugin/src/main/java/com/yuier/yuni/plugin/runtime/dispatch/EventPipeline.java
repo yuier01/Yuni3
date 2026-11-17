@@ -148,6 +148,12 @@ public final class EventPipeline {
     public void onNotice(YuniNoticeEvent event) {
         Long groupId = event.getGroupId();
         Reply reply = replyFactory.forNotice(event);
+
+        // 会话清理：退群/踢出时关闭或移除对应通道
+        if (sessionManager != null) {
+            sessionManager.onNotice(event);
+        }
+
         for (PluginAbilityRegistry.Registration.Notice registration :
                 registry.getNoticeRegistrations()) {
             if (!passesGates(registration, event.getSubType(), groupId)) {

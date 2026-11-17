@@ -11,6 +11,7 @@ import com.yuier.yuni.plugin.api.PluginAdmin;
 import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.YuniHttp;
 import com.yuier.yuni.plugin.api.service.PermissionService;
+import com.yuier.yuni.plugin.api.session.admin.SessionAdmin;
 import com.yuier.yuni.plugin.data.PluginDataService;
 import com.yuier.yuni.plugin.runtime.config.PluginBootstrap;
 import com.yuier.yuni.plugin.runtime.load.PluginArtifactLoader;
@@ -215,6 +216,7 @@ public final class PluginSystem {
         // 运行时需要的是「怎么取 bot」而不是 bot 本身：插件处理事件时才解析
         newRuntime.bindBot(botProvider::getIfAvailable, botApp);
         newRuntime.bindSessionSettings(sessionSettings());
+        newRuntime.registerService(SessionAdmin.class, newRuntime.getSessionAdmin());
 
         // 内置服务登记进运行时：插件拿到的都是同一份共享实例
         newRuntime.registerService(YuniCache.class, yuniCache);

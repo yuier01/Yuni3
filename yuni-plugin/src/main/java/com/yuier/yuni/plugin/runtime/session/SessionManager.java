@@ -1,6 +1,8 @@
 package com.yuier.yuni.plugin.runtime.session;
 
 import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.notice.GroupDecreaseEvent;
+import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.session.SessionCloseReason;
@@ -11,9 +13,13 @@ import com.yuier.yuni.plugin.api.session.SessionLimitExceededException;
 import com.yuier.yuni.plugin.api.session.SessionSpec;
 import com.yuier.yuni.plugin.api.session.SessionTarget;
 import com.yuier.yuni.plugin.api.session.SessionUnavailableException;
+import com.yuier.yuni.plugin.api.session.admin.SessionAdmin;
+import com.yuier.yuni.plugin.api.session.admin.SessionInfo;
+import com.yuier.yuni.plugin.api.session.admin.SessionStats;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -27,6 +33,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -35,7 +42,7 @@ import org.slf4j.LoggerFactory;
 /**
  * 会话管理器——注册、路由、参与者归属、超时与关闭。
  */
-public final class SessionManager {
+public final class SessionManager implements SessionAdmin {
 
     private static final Logger log = LoggerFactory.getLogger(SessionManager.class);
 
@@ -65,6 +72,12 @@ public final class SessionManager {
     private final Set<PluginFiber> unloading = ConcurrentHashMap.newKeySet();
 
     private final AtomicLong idSeq = new AtomicLong();
+
+    private final LongAdder totalOpened = new LongAdder();
+    private final LongAdder totalClosed = new LongAdder();
+    private final LongAdder totalTimeouts = new LongAdder();
+    private final LongAdder totalErrors = new LongAdder();
+    private final LongAdder totalDropped = new LongAdder();
 
     public SessionManager(SessionSettings settings,
                           Function<String, Optional<ScopeFilter>> scopeResolver,
@@ -147,6 +160,7 @@ public final class SessionManager {
             rollbackOpen(session);
             throw new SessionUnavailableException("注册会话清理器失败", t);
         }
+        totalOpened.increment();
         return session.handle();
     }
 
@@ -312,6 +326,64 @@ public final class SessionManager {
         return session != null && session.isActive() ? session : null;
     }
 
+    // ==================== 通知事件 ====================
+
+    /**
+     * 处理通知事件：退群/踢出时清理对应会话。
+     *
+     * <p>只处理 {@link GroupDecreaseEvent}；插件通知处理器仍会照常收到该事件。</p>
+     *
+     * @param event 通知事件
+     */
+    public void onNotice(YuniNoticeEvent event) {
+        if (!(event instanceof GroupDecreaseEvent decrease)) {
+            return;
+        }
+        Long groupId = decrease.getGroupId();
+        if (groupId == null) {
+            return;
+        }
+        String subType = decrease.getSubType();
+        if ("kick_me".equals(subType)) {
+            closeGroup(groupId);
+            return;
+        }
+        if (!"leave".equals(subType) && !"kick".equals(subType)) {
+            return;
+        }
+        Long userId = decrease.getUserId();
+        if (userId == null) {
+            return;
+        }
+
+        SessionImpl member = active(byTarget.get(
+                SessionTarget.groupMember(groupId, userId)));
+        if (member != null) {
+            close(member, SessionCloseReason.TARGET_UNAVAILABLE);
+        }
+
+        SessionImpl owned = active(membership.get(new GroupUserKey(groupId, userId)));
+        if (owned != null && owned.getTarget().isGroupParticipants()) {
+            lock.lock();
+            try {
+                if (leave(owned, userId) && owned.getParticipantCount() == 0) {
+                    close(owned, SessionCloseReason.TARGET_UNAVAILABLE);
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    private void closeGroup(long groupId) {
+        for (SessionImpl session : snapshot()) {
+            Long targetGroup = session.getTarget().groupId();
+            if (targetGroup != null && targetGroup == groupId) {
+                close(session, SessionCloseReason.TARGET_UNAVAILABLE);
+            }
+        }
+    }
+
     // ==================== 参与者 ====================
 
     JoinStatus join(SessionImpl session, long userId) {
@@ -378,6 +450,14 @@ public final class SessionManager {
         if (session == null || !session.tryBeginClose(reason)) {
             return;
         }
+        totalClosed.increment();
+        if (reason == SessionCloseReason.IDLE_TIMEOUT
+                || reason == SessionCloseReason.MAX_DURATION) {
+            totalTimeouts.increment();
+        } else if (reason == SessionCloseReason.ERROR_LIMIT) {
+            totalErrors.increment();
+        }
+        totalDropped.add(session.mailbox().droppedCount() + session.getPendingMessageCount());
         lock.lock();
         try {
             unregister(session);
@@ -619,6 +699,76 @@ public final class SessionManager {
         }
         sweeper.shutdownNow();
         sessionExecutor.shutdownNow();
+    }
+
+    // ==================== SessionAdmin ====================
+
+    @Override
+    public List<SessionInfo> list() {
+        List<SessionInfo> infos = new ArrayList<>();
+        for (SessionImpl session : snapshot()) {
+            if (!session.isActive()) {
+                continue;
+            }
+            infos.add(new SessionInfo(
+                    session.getId(),
+                    session.getTarget(),
+                    session.getPluginId(),
+                    session.getTag(),
+                    session.getOpenerUserId(),
+                    session.getCreatedAt(),
+                    session.getLastActiveAt(),
+                    session.getExpiresAt(),
+                    session.getTurnCount(),
+                    session.getParticipantCount(),
+                    session.getPendingMessageCount(),
+                    true));
+        }
+        return List.copyOf(infos);
+    }
+
+    @Override
+    public boolean close(long sessionId, SessionCloseReason reason) {
+        SessionCloseReason effective =
+                reason == null ? SessionCloseReason.ADMIN_CLOSED : reason;
+        for (SessionImpl session : snapshot()) {
+            if (session.getId() == sessionId && session.isActive()) {
+                close(session, effective);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public SessionStats stats() {
+        Set<String> plugins = new HashSet<>();
+        int participants = 0;
+        int active = 0;
+        for (SessionImpl session : byTarget.values()) {
+            if (!session.isActive()) {
+                continue;
+            }
+            active++;
+            plugins.add(session.getPluginId());
+            participants += session.getParticipantCount();
+        }
+        return new SessionStats(
+                active,
+                plugins.size(),
+                participants,
+                totalOpened.sum(),
+                totalClosed.sum(),
+                totalTimeouts.sum(),
+                totalErrors.sum(),
+                totalDropped.sum());
+    }
+
+    /**
+     * 立即执行一次超时扫描（测试/管理端使用）。
+     */
+    void sweepNow() {
+        sweep();
     }
 
     /**

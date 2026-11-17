@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.yuier.yuni.core.bot.JsonCodec;
 import com.yuier.yuni.core.event.YuniMessageEvent;
+import com.yuier.yuni.core.event.notice.GroupDecreaseEvent;
 import com.yuier.yuni.core.model.bot.BotApp;
 import com.yuier.yuni.core.model.message.MessageChain;
 import com.yuier.yuni.core.model.user.MessageSender;
@@ -20,6 +21,8 @@ import com.yuier.yuni.plugin.api.session.SessionHandle;
 import com.yuier.yuni.plugin.api.session.SessionHandler;
 import com.yuier.yuni.plugin.api.session.SessionSpec;
 import com.yuier.yuni.plugin.api.session.SessionTarget;
+import com.yuier.yuni.plugin.api.session.admin.SessionAdmin;
+import com.yuier.yuni.plugin.api.session.admin.SessionStats;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.TestPlugins;
@@ -28,8 +31,10 @@ import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
 import com.yuier.yuni.plugin.runtime.dispatch.CommandDispatcher;
 import com.yuier.yuni.plugin.runtime.dispatch.EventPipeline;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -379,6 +384,105 @@ class SessionIntegrationTest {
         pipeline.onMessage(groupMessage(123L, 10002L, "/join-a"));
         await(() -> memberHits.get() == 1);
         assertEquals(1, partial.getParticipantCount(), "单人通道用户不能被拉进部分群友通道");
+    }
+
+    @Test
+    @DisplayName("管理端可列出、统计并强制关闭会话")
+    void adminCanListAndCloseSessions() {
+        SessionHandle handle = openPartial(123L, "a", 10001L,
+                "/join-a", "/exit-a", true,
+                (session, event, reply) -> SessionAction.CONSUMED);
+
+        SessionAdmin admin = runtime.getSessionAdmin();
+        assertEquals(1, admin.list().size());
+        SessionStats before = admin.stats();
+        assertEquals(1, before.activeSessions());
+        assertEquals(1, before.totalOpened());
+
+        assertTrue(admin.close(handle.getId(), SessionCloseReason.ADMIN_CLOSED));
+        await(() -> !handle.isActive());
+        assertEquals(0, admin.list().size());
+        assertEquals(1, admin.stats().totalClosed());
+    }
+
+    @Test
+    @DisplayName("成员退群移除参与者，机器人被踢关闭整群通道")
+    void groupDecreaseCleansSessions() {
+        SessionHandle handle = openPartial(123L, "a", 10001L,
+                "/join-a", "/exit-a", true,
+                (session, event, reply) -> SessionAction.CONSUMED);
+
+        pipeline.onMessage(groupMessage(123L, 10002L, "/join-a"));
+        await(() -> handle.getParticipantCount() == 2);
+
+        GroupDecreaseEvent leave = new GroupDecreaseEvent();
+        leave.setSubType("leave");
+        leave.setGroupId(123L);
+        leave.setUserId(10002L);
+        leave.setSelfId(10000L);
+        pipeline.onNotice(leave);
+        await(() -> handle.getParticipantCount() == 1);
+        assertTrue(handle.isActive());
+
+        GroupDecreaseEvent kickMe = new GroupDecreaseEvent();
+        kickMe.setSubType("kick_me");
+        kickMe.setGroupId(123L);
+        kickMe.setUserId(10000L);
+        kickMe.setSelfId(10000L);
+        pipeline.onNotice(kickMe);
+        await(() -> !handle.isActive());
+    }
+
+    @Test
+    @DisplayName("空闲超时关闭会话")
+    void idleTimeoutClosesSession() {
+        FakeClock clock = new FakeClock();
+        PluginRuntime timeoutRuntime = new PluginRuntime(null);
+        timeoutRuntime.bindSessionSettings(SessionSettings.withoutSweeper());
+        timeoutRuntime.bindSessionClock(clock);
+        PluginFiber timeoutFiber = TestPlugins.load(timeoutRuntime,
+                YuniPlugin.of("timeout", ctx -> { }));
+
+        AtomicReference<SessionCloseReason> reason = new AtomicReference<>();
+        SessionSpec spec = SessionSpec.builder(
+                        SessionTarget.groupParticipants(123L, "a"))
+                .opener(10001L)
+                .initialParticipants(Set.of(10001L))
+                .joinCommands("/join-a")
+                .exitCommands("/exit-a")
+                .idleTimeout(Duration.ofMinutes(5))
+                .maxDuration(Duration.ofMinutes(30))
+                .onClose(close -> reason.set(close.reason()))
+                .build();
+        SessionHandle handle = timeoutRuntime.openSession(timeoutFiber, spec,
+                (session, event, reply) -> SessionAction.CONSUMED);
+
+        clock.advance(Duration.ofMinutes(6));
+        timeoutRuntime.getSessionManager().sweepNow();
+        await(() -> !handle.isActive());
+        assertEquals(SessionCloseReason.IDLE_TIMEOUT, reason.get());
+        timeoutRuntime.shutdown();
+    }
+
+    private static final class FakeClock implements SessionClock {
+
+        private long nanos;
+        private Instant instant = Instant.parse("2026-01-01T00:00:00Z");
+
+        @Override
+        public long nanoTime() {
+            return nanos;
+        }
+
+        @Override
+        public Instant now() {
+            return instant;
+        }
+
+        void advance(Duration duration) {
+            nanos += duration.toNanos();
+            instant = instant.plus(duration);
+        }
     }
 
     private static YuniMessageEvent privateMessage(long userId, String text) {

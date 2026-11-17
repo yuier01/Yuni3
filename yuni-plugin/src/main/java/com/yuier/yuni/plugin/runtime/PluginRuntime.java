@@ -18,6 +18,7 @@ import com.yuier.yuni.plugin.api.session.SessionHandle;
 import com.yuier.yuni.plugin.api.session.SessionHandler;
 import com.yuier.yuni.plugin.api.session.SessionSpec;
 import com.yuier.yuni.plugin.api.session.SessionTarget;
+import com.yuier.yuni.plugin.api.session.admin.SessionAdmin;
 import com.yuier.yuni.plugin.runtime.session.SessionClock;
 import com.yuier.yuni.plugin.runtime.session.SessionManager;
 import com.yuier.yuni.plugin.runtime.session.SessionSettings;
@@ -152,6 +153,9 @@ public final class PluginRuntime {
 
     /** 长会话全局配置。 */
     private volatile SessionSettings sessionSettings = SessionSettings.defaults();
+
+    /** 长会话时钟；测试可替换。 */
+    private volatile SessionClock sessionClock = SessionClock.system();
 
     /** 长会话管理器；首次访问时构造并缓存。 */
     private volatile SessionManager sessionManager;
@@ -718,6 +722,21 @@ public final class PluginRuntime {
     }
 
     /**
+     * 绑定会话时钟。必须在第一次访问 {@link #getSessionManager()} 之前调用。
+     *
+     * @param clock 时钟
+     * @return {@code this}
+     */
+    public PluginRuntime bindSessionClock(SessionClock clock) {
+        Objects.requireNonNull(clock, "clock");
+        if (sessionManager != null) {
+            throw new IllegalStateException("会话管理器已创建，不能再替换时钟");
+        }
+        this.sessionClock = clock;
+        return this;
+    }
+
+    /**
      * 取长会话管理器（惰性构造）。
      *
      * @return 管理器
@@ -730,7 +749,7 @@ public final class PluginRuntime {
         synchronized (this) {
             if (this.sessionManager == null) {
                 this.sessionManager = new SessionManager(
-                        sessionSettings, this::effectiveScopeOf, SessionClock.system());
+                        sessionSettings, this::effectiveScopeOf, sessionClock);
             }
             return this.sessionManager;
         }
@@ -775,6 +794,15 @@ public final class PluginRuntime {
             return List.of();
         }
         return getSessionManager().getOwnSessions(fiber);
+    }
+
+    /**
+     * 会话管理端接口。
+     *
+     * @return 管理端接口
+     */
+    public SessionAdmin getSessionAdmin() {
+        return getSessionManager();
     }
 
     /**
