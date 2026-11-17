@@ -14,9 +14,14 @@ import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
 import com.yuier.yuni.plugin.api.service.*;
 import com.yuier.yuni.plugin.api.service.YuniCache;
+import com.yuier.yuni.plugin.api.session.SessionHandle;
+import com.yuier.yuni.plugin.api.session.SessionHandler;
+import com.yuier.yuni.plugin.api.session.SessionSpec;
+import com.yuier.yuni.plugin.api.session.SessionTarget;
 import com.yuier.yuni.plugin.data.PluginDataService;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -213,6 +218,60 @@ public interface YuniContext {
      * <p>注册随插件卸载自动撤销，无需手动管理返回值。</p>
      */
     void onMessageSent(Predicate<YuniMessageSentEvent> when, MessageSentHandler handler);
+
+    // ==================== 长会话 ====================
+
+    /**
+     * 打开一个长会话通道。
+     *
+     * <p>成功返回句柄；关闭句柄即撤销通道。同一目标已有会话（含正在关闭的）
+     * 时抛出 {@code SessionConflictException}。</p>
+     *
+     * <p><b>先打开，再发提示</b>：先发提示再打开，用户可能在
+     * “提示已发出、通道未建立”的窗口里回复，导致第一条消息漏掉。</p>
+     *
+     * <p>通道内所有消息（包括命令）不会进入常规命令/消息匹配；唯一例外是
+     * 插件通过 {@code SessionSpec.exitEnabled(true)} 声明的退出指令，
+     * 以及通道自己的加入/自定义指令。</p>
+     *
+     * <p>同一群可同时存在多个 {@code GROUP_PARTICIPANTS}，用
+     * {@link SessionTarget#groupParticipants(long, String) channelKey} 区分；
+     * 每个通道的加入指令必须独有。一个用户在一个群内只能属于一个通道。</p>
+     *
+     * @param spec    会话参数
+     * @param handler 消息入口
+     * @return 会话句柄
+     */
+    SessionHandle openSession(SessionSpec spec, SessionHandler handler);
+
+    /**
+     * 使用默认参数打开一个长会话。
+     *
+     * <p>只适用于 {@code GROUP_MEMBER} / {@code PRIVATE}。
+     * {@code GROUP_PARTICIPANTS} 必须显式提供 opener、初始参与者与独有加入指令。</p>
+     *
+     * @param target  会话目标
+     * @param handler 消息入口
+     * @return 会话句柄
+     */
+    default SessionHandle openSession(SessionTarget target, SessionHandler handler) {
+        return openSession(SessionSpec.defaults(target), handler);
+    }
+
+    /**
+     * 查找<b>本插件</b>在目标上的活跃会话。
+     *
+     * @param target 会话目标
+     * @return 句柄；不是本插件持有或不存在时为空
+     */
+    Optional<SessionHandle> findOwnSession(SessionTarget target);
+
+    /**
+     * 本插件当前持有的全部活跃会话。
+     *
+     * @return 句柄快照
+     */
+    List<SessionHandle> getOwnSessions();
 
     // ==================== 命令注册 ====================
 

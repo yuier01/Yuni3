@@ -13,6 +13,14 @@ import com.yuier.yuni.plugin.api.PluginMetadata;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.YuniPlugin;
 import com.yuier.yuni.plugin.api.service.PermissionService;
+import com.yuier.yuni.plugin.api.session.SessionCloseReason;
+import com.yuier.yuni.plugin.api.session.SessionHandle;
+import com.yuier.yuni.plugin.api.session.SessionHandler;
+import com.yuier.yuni.plugin.api.session.SessionSpec;
+import com.yuier.yuni.plugin.api.session.SessionTarget;
+import com.yuier.yuni.plugin.runtime.session.SessionClock;
+import com.yuier.yuni.plugin.runtime.session.SessionManager;
+import com.yuier.yuni.plugin.runtime.session.SessionSettings;
 import com.yuier.yuni.plugin.runtime.UserScopeStore.UserScopeRecord;
 import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
 import com.yuier.yuni.plugin.runtime.admin.PluginAdminRuntime;
@@ -141,6 +149,12 @@ public final class PluginRuntime {
 
     /** 回复入口工厂；由 {@link #getPipeline()} 惰性构造。 */
     private volatile ReplyFactory replyFactory;
+
+    /** 长会话全局配置。 */
+    private volatile SessionSettings sessionSettings = SessionSettings.defaults();
+
+    /** 长会话管理器；首次访问时构造并缓存。 */
+    private volatile SessionManager sessionManager;
 
     /** 机器人业务配置（提供命令前缀）；由启动流程设置。 */
     private volatile BotApp botApp;
@@ -510,6 +524,13 @@ public final class PluginRuntime {
         }
         PluginFiber fiber = found.get();
 
+        // 会话必须先于服务/PluginEffect 关闭：插件卸载后不再接收通道消息
+        SessionManager sessions = this.sessionManager;
+        if (sessions != null) {
+            sessions.beginUnload(fiber);
+            sessions.closeAllOf(fiber, SessionCloseReason.PLUGIN_UNLOAD);
+        }
+
         // 先注销服务：让依赖它的插件后续查询失败，而不是拿到一个已卸载插件的对象
         List<Class<?>> removedServices = services.unregisterAll(fiber);
         if (!removedServices.isEmpty()) {
@@ -523,6 +544,9 @@ public final class PluginRuntime {
         // 否则会出现「已卸载却仍在分发表里」的悬挂引用
         fibers.remove(fiber);
         pluginDataDirs.remove(pluginId);
+        if (sessions != null) {
+            sessions.endUnload(fiber);
+        }
         /*
          * 用户配置的群例外（{@link #userScopeOverrides}）<b>不</b>在这里清除
          * ——重载会先 unload 再 load，清掉就等于重载丢配置。
@@ -674,6 +698,96 @@ public final class PluginRuntime {
         return this;
     }
 
+    // ==================== 长会话 ====================
+
+    /**
+     * 绑定长会话全局配置。
+     *
+     * <p>必须在第一次访问 {@link #getSessionManager()} 之前调用。</p>
+     *
+     * @param settings 配置
+     * @return {@code this}
+     */
+    public PluginRuntime bindSessionSettings(SessionSettings settings) {
+        Objects.requireNonNull(settings, "settings");
+        if (sessionManager != null) {
+            throw new IllegalStateException("会话管理器已创建，不能再修改全局配置");
+        }
+        this.sessionSettings = settings;
+        return this;
+    }
+
+    /**
+     * 取长会话管理器（惰性构造）。
+     *
+     * @return 管理器
+     */
+    public SessionManager getSessionManager() {
+        SessionManager current = this.sessionManager;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (this.sessionManager == null) {
+                this.sessionManager = new SessionManager(
+                        sessionSettings, this::effectiveScopeOf, SessionClock.system());
+            }
+            return this.sessionManager;
+        }
+    }
+
+    /**
+     * 打开一个会话。
+     *
+     * @param fiber   插件
+     * @param spec    参数
+     * @param handler 入口
+     * @return 句柄
+     */
+    public SessionHandle openSession(PluginFiber fiber,
+                                     SessionSpec spec,
+                                     SessionHandler handler) {
+        return getSessionManager().open(fiber, spec, handler);
+    }
+
+    /**
+     * 查找本插件在目标上的会话。
+     *
+     * @param fiber  插件
+     * @param target 目标
+     * @return 句柄
+     */
+    public Optional<SessionHandle> findOwnSession(PluginFiber fiber, SessionTarget target) {
+        if (fiber == null) {
+            return Optional.empty();
+        }
+        return getSessionManager().findOwnSession(fiber, target);
+    }
+
+    /**
+     * 本插件持有的全部会话。
+     *
+     * @param fiber 插件
+     * @return 句柄列表
+     */
+    public List<SessionHandle> getOwnSessions(PluginFiber fiber) {
+        if (fiber == null) {
+            return List.of();
+        }
+        return getSessionManager().getOwnSessions(fiber);
+    }
+
+    /**
+     * 关闭会话管理器与执行器。仅用于应用停止。
+     */
+    public void shutdown() {
+        SessionManager current = this.sessionManager;
+        if (current != null) {
+            current.shutdown();
+            this.sessionManager = null;
+        }
+    }
+
     // ==================== 事件分发 ====================
 
     /**
@@ -709,7 +823,8 @@ public final class PluginRuntime {
                         // 随时可变，因此必须在分发时查而不是注册时定
                         this::effectiveScopeOf);
                 this.pipeline = new EventPipeline(
-                        registry, this, replyFactory, commandDispatcher);
+                        registry, this, replyFactory, commandDispatcher,
+                        getSessionManager());
             }
             return this.pipeline;
         }
@@ -934,6 +1049,12 @@ public final class PluginRuntime {
         log.info("插件 {} 在群 {} 的生效状态改为 {}（当前: {}）",
                 pluginId, groupId, enabled, describeScope(owner));
         persistScope(owner);
+        if (!enabled) {
+            SessionManager sessions = this.sessionManager;
+            if (sessions != null) {
+                sessions.closeForPluginInGroup(pluginId, groupId, SessionCloseReason.SCOPE_REVOKED);
+            }
+        }
     }
 
     /**
@@ -959,6 +1080,12 @@ public final class PluginRuntime {
         userScopeOverrides.setGlobalDefault(owner, enabled);
         log.info("插件 {} 的全局启停改为 {}（当前: {}）", pluginId, enabled, describeScope(owner));
         persistScope(owner);
+        if (!enabled) {
+            SessionManager sessions = this.sessionManager;
+            if (sessions != null) {
+                sessions.closeAllOfPlugin(pluginId, SessionCloseReason.SCOPE_REVOKED);
+            }
+        }
     }
 
     /**
@@ -974,6 +1101,11 @@ public final class PluginRuntime {
         if (hadExceptions || hadGlobal) {
             persistScope(owner);
             log.info("插件 {} 的群例外与全局开关已重置为插件默认值", pluginId);
+        }
+        SessionManager sessions = this.sessionManager;
+        if (sessions != null) {
+            // 重置可能让插件重新生效，也可能让它失效；保守地关闭全部会话
+            sessions.closeAllOfPlugin(pluginId, SessionCloseReason.SCOPE_REVOKED);
         }
         return hadExceptions || hadGlobal;
     }
@@ -1204,7 +1336,10 @@ public final class PluginRuntime {
      * @return 形如 {@code "artifacts=13, plugins=23, effects=41, states={...}"}
      */
     public String describe() {
-        return fibers.describe() + ", registrations=" + registry.getTotalSize();
+        SessionManager sessions = this.sessionManager;
+        String sessionDescription = sessions == null ? "sessions=0" : sessions.describe();
+        return fibers.describe() + ", registrations=" + registry.getTotalSize()
+                + ", " + sessionDescription;
     }
 
     // ==================== 内部 ====================

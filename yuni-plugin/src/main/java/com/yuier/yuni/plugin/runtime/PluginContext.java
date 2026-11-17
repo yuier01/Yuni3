@@ -23,6 +23,11 @@ import com.yuier.yuni.plugin.api.handler.MessageSentHandler;
 import com.yuier.yuni.plugin.api.handler.MetaHandler;
 import com.yuier.yuni.plugin.api.handler.NoticeHandler;
 import com.yuier.yuni.plugin.api.handler.RequestHandler;
+import com.yuier.yuni.plugin.api.session.SessionHandle;
+import com.yuier.yuni.plugin.api.session.SessionHandler;
+import com.yuier.yuni.plugin.api.session.SessionSpec;
+import com.yuier.yuni.plugin.api.session.SessionTarget;
+import com.yuier.yuni.plugin.api.session.SessionUnavailableException;
 import com.yuier.yuni.plugin.api.service.YuniCache;
 import com.yuier.yuni.plugin.api.service.ConfigLoader;
 import com.yuier.yuni.plugin.api.service.YuniHttp;
@@ -323,6 +328,33 @@ public final class PluginContext implements YuniContext {
     public void onMessageSent(Predicate<YuniMessageSentEvent> when, MessageSentHandler handler) {
         register(new PluginAbilityRegistry.Registration.MessageSent(
                 fiber, ScopeFilter.ALL, when, handler));
+    }
+
+    // ==================== 长会话 ====================
+
+    @Override
+    public SessionHandle openSession(SessionSpec spec, SessionHandler handler) {
+        if (runtime == null) {
+            throw new SessionUnavailableException(
+                    "会话能力不可用：本上下文未绑定 PluginRuntime");
+        }
+        return runtime.openSession(fiber, spec, handler);
+    }
+
+    @Override
+    public Optional<SessionHandle> findOwnSession(SessionTarget target) {
+        if (runtime == null || fiber == null) {
+            return Optional.empty();
+        }
+        return runtime.findOwnSession(fiber, target);
+    }
+
+    @Override
+    public List<SessionHandle> getOwnSessions() {
+        if (runtime == null || fiber == null) {
+            return List.of();
+        }
+        return runtime.getOwnSessions(fiber);
     }
 
     // ==================== 命令注册 ====================

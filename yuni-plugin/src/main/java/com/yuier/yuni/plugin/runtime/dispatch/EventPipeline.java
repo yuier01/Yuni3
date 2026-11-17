@@ -12,9 +12,9 @@ import com.yuier.yuni.plugin.runtime.PluginExecutionContext;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
+import com.yuier.yuni.plugin.runtime.session.SessionManager;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -30,7 +30,6 @@ import lombok.extern.slf4j.Slf4j;
  * @see PluginAbilityRegistry
  */
 @Slf4j
-@RequiredArgsConstructor
 public final class EventPipeline {
 
     /** 能力注册总表。 */
@@ -45,6 +44,45 @@ public final class EventPipeline {
     /** 命令匹配器。 */
     private final CommandDispatcher commandDispatcher;
 
+    /** 长会话管理器；为 {@code null} 时退化为旧版流水线（测试兼容）。 */
+    private final SessionManager sessionManager;
+
+    /**
+     * 旧版构造器：不接长会话（测试兼容）。
+     *
+     * @param registry          能力注册表
+     * @param runtime           运行时
+     * @param replyFactory      回复工厂
+     * @param commandDispatcher 命令分发器
+     */
+    public EventPipeline(PluginAbilityRegistry registry,
+                         PluginRuntime runtime,
+                         ReplyFactory replyFactory,
+                         CommandDispatcher commandDispatcher) {
+        this(registry, runtime, replyFactory, commandDispatcher, null);
+    }
+
+    /**
+     * 构造流水线。
+     *
+     * @param registry          能力注册表
+     * @param runtime           运行时
+     * @param replyFactory      回复工厂
+     * @param commandDispatcher 命令分发器
+     * @param sessionManager    长会话管理器；可为 {@code null}
+     */
+    public EventPipeline(PluginAbilityRegistry registry,
+                         PluginRuntime runtime,
+                         ReplyFactory replyFactory,
+                         CommandDispatcher commandDispatcher,
+                         SessionManager sessionManager) {
+        this.registry = registry;
+        this.runtime = runtime;
+        this.replyFactory = replyFactory;
+        this.commandDispatcher = commandDispatcher;
+        this.sessionManager = sessionManager;
+    }
+
     // ==================== 公开入口 ====================
 
     /**
@@ -55,6 +93,11 @@ public final class EventPipeline {
     public void onMessage(YuniMessageEvent event) {
         Long groupId = event.getGroupId();
         Reply reply = replyFactory.forMessage(event);
+
+        // 阶段 0：长会话——绝对优先，命中即结束
+        if (sessionManager != null && sessionManager.route(event, reply)) {
+            return;
+        }
 
         // 阶段 1：命令（同步匹配）——直接使用原始 core 事件
         if (commandDispatcher != null && commandDispatcher.dispatch(event, groupId, reply)) {

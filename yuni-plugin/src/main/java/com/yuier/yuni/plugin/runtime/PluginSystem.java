@@ -18,7 +18,10 @@ import com.yuier.yuni.plugin.runtime.service.DefaultPermissionService;
 import com.yuier.yuni.plugin.runtime.service.MybatisUserScopeStore;
 import com.yuier.yuni.plugin.runtime.service.RedisYuniCache;
 import com.yuier.yuni.plugin.runtime.service.RestTemplateYuniHttp;
+import com.yuier.yuni.plugin.runtime.session.SessionSettings;
 import com.yuier.yuni.plugin.service.GroupPluginAbilityService;
+import jakarta.annotation.PreDestroy;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
@@ -88,6 +91,38 @@ public final class PluginSystem {
 
     /** 插件目录。 */
     private final String pluginDirectory;
+
+    // ==================== 长会话配置（Spring 属性注入） ====================
+
+    @Value("${bot.session.enabled:true}")
+    private boolean sessionEnabled;
+
+    @Value("${bot.session.sweep-interval:5s}")
+    private Duration sessionSweepInterval;
+
+    @Value("${bot.session.max-sessions:10000}")
+    private int sessionMaxSessions;
+
+    @Value("${bot.session.max-sessions-per-plugin:1000}")
+    private int sessionMaxSessionsPerPlugin;
+
+    @Value("${bot.session.close-wait-timeout:2s}")
+    private Duration sessionCloseWaitTimeout;
+
+    @Value("${bot.session.default-idle-timeout:5m}")
+    private Duration sessionDefaultIdleTimeout;
+
+    @Value("${bot.session.default-max-duration:30m}")
+    private Duration sessionDefaultMaxDuration;
+
+    @Value("${bot.session.max-duration-limit:24h}")
+    private Duration sessionMaxDurationLimit;
+
+    @Value("${bot.session.max-idle-timeout-limit:2h}")
+    private Duration sessionMaxIdleTimeoutLimit;
+
+    @Value("${bot.session.default-max-participants:200}")
+    private int sessionDefaultMaxParticipants;
 
     // ==================== 框架内置服务（构造时创建并持有） ====================
 
@@ -179,6 +214,7 @@ public final class PluginSystem {
         PluginRuntime newRuntime = new PluginRuntime(taskManager, jsonCodec);
         // 运行时需要的是「怎么取 bot」而不是 bot 本身：插件处理事件时才解析
         newRuntime.bindBot(botProvider::getIfAvailable, botApp);
+        newRuntime.bindSessionSettings(sessionSettings());
 
         // 内置服务登记进运行时：插件拿到的都是同一份共享实例
         newRuntime.registerService(YuniCache.class, yuniCache);
@@ -300,5 +336,35 @@ public final class PluginSystem {
             failed.forEach(item -> log.warn("  - {}", item));
         }
         log.info("插件系统就绪：{}", pluginRuntime.describe());
+    }
+
+    /**
+     * 从 Spring 属性构造会话配置。
+     *
+     * @return 配置
+     */
+    private SessionSettings sessionSettings() {
+        return new SessionSettings(
+                sessionEnabled,
+                sessionSweepInterval,
+                sessionMaxSessions,
+                sessionMaxSessionsPerPlugin,
+                sessionCloseWaitTimeout,
+                sessionDefaultIdleTimeout,
+                sessionDefaultMaxDuration,
+                sessionMaxDurationLimit,
+                sessionMaxIdleTimeoutLimit,
+                sessionDefaultMaxParticipants);
+    }
+
+    /**
+     * 应用停止时关闭会话执行器与 sweeper。
+     */
+    @PreDestroy
+    public void destroy() {
+        PluginRuntime current = runtime;
+        if (current != null) {
+            current.shutdown();
+        }
     }
 }
