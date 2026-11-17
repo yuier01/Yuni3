@@ -459,7 +459,8 @@ class SessionIntegrationTest {
 
         clock.advance(Duration.ofMinutes(6));
         timeoutRuntime.getSessionManager().sweepNow();
-        await(() -> !handle.isActive());
+        // isActive 在进入 CLOSING 时就变 false；onClose 在清理阶段才执行，需等 reason
+        await(() -> !handle.isActive() && reason.get() != null);
         assertEquals(SessionCloseReason.IDLE_TIMEOUT, reason.get());
         timeoutRuntime.shutdown();
     }
