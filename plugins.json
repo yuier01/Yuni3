@@ -386,6 +386,28 @@
       ]
     },
     {
+      "id": "guess-number",
+      "repo": "yuier01/Yuni3-plugin-repo",
+      "module": "guess-number",
+      "description": "长会话猜数字示例",
+      "author": "Yuier me@yuier.com",
+      "type": "builtin",
+      "plugins": [
+        {
+          "id": "GuessNumber",
+          "name": "猜数字（长会话示例）",
+          "version": "0.0.1",
+          "description": "多轮猜数字：初始只有发起者，其他人通过独有加入指令参与",
+          "tips": [
+            "在群聊发送 `/猜数字` 创建游戏",
+            "其他人发送 `/加入 猜数字` 参与，发送 `/退出 猜数字` 离开",
+            "参与者直接发送 1~100 的整数猜数；猜中后游戏结束"
+          ],
+          "author": "Yuier me@yuier.com"
+        }
+      ]
+    },
+    {
       "id": "bilibili",
       "repo": "yuier01/Yuni3-plugin-repo",
       "module": "bilibili",
