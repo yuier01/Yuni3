@@ -28,7 +28,13 @@ RUN mvn clean package -pl yuni-application -am -DskipTests -q
 # ===== Stage 3: Runtime =====
 FROM eclipse-temurin:21-jre-alpine
 
-RUN apk add --no-cache redis nginx supervisor sqlite bash
+RUN apk add --no-cache redis nginx supervisor sqlite bash nodejs chromium font-noto-cjk
+
+# Playwright 的 driver-bundle 自带 glibc Node/Chromium，Alpine 无法执行；
+# 使用 Alpine 的 node + 系统 Chromium，跳过 Playwright 下载浏览器。
+ENV PLAYWRIGHT_NODEJS_PATH=/usr/bin/node \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    YUNI_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 RUN mkdir -p /app/config /app/data /app/logs /app/plugins /app/log
