@@ -222,7 +222,11 @@ public class OneBotBot implements YuniBot {
                 params.put("user_id", Long.parseLong(userId));
                 params.put("no_cache", noCache);
                 String responseJson = transport.sendApiRequest("get_group_member_info", params);
-                return Optional.ofNullable(convert(extractResponseData(responseJson, GroupMemberInfo.class)));
+                GroupMemberInfo member = extractResponseData(responseJson, GroupMemberInfo.class);
+                if (!isRealMember(member, userId)) {
+                    return Optional.empty();
+                }
+                return Optional.of(convert(member));
             }, "getGroupMemberInfo", properties.getMaxRetries());
         } catch (Exception e) {
             log.error("[OneBotBot] 获取群成员信息失败: groupId={} userId={}", groupId, userId, e);
@@ -310,6 +314,29 @@ public class OneBotBot implements YuniBot {
         b.setRole(m.getRole());
         b.setTitle(m.getTitle());
         return b;
+    }
+
+    /**
+     * 判断 {@code get_group_member_info} 返回的是真实成员还是占位对象。
+     *
+     * <p>部分 OneBot 实现（如 NapCat）对<b>非群成员</b>仍返回
+     * {@code status=ok / retcode=0}，并在 data 中回填请求里的
+     * {@code group_id}、{@code user_id}，但 {@code nickname}、{@code join_time}
+     * 等字段为空或 0。若只判断 {@code Optional} 是否为空，会把任意用户都
+     * 当成每个群的成员。</p>
+     *
+     * @param member 接口返回的成员对象
+     * @param userId 请求中的用户 QQ 号
+     * @return 真实成员返回 {@code true}；占位对象或空响应返回 {@code false}
+     */
+    private static boolean isRealMember(GroupMemberInfo member, String userId) {
+        if (member == null || member.getUserId() == null
+                || !String.valueOf(member.getUserId()).equals(userId)) {
+            return false;
+        }
+        boolean hasJoinTime = member.getJoinTime() != null && member.getJoinTime() > 0;
+        boolean hasNickname = member.getNickname() != null && !member.getNickname().isBlank();
+        return hasJoinTime || hasNickname;
     }
 
     private BotUserInfo convert(GetStrangerInfo u) {
