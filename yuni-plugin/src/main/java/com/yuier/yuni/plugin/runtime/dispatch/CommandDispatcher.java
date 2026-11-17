@@ -13,6 +13,7 @@ import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.api.ScopeFilter;
 import com.yuier.yuni.plugin.api.service.PermissionService;
 import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
+import com.yuier.yuni.plugin.runtime.PluginExecutionContext;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
@@ -265,7 +266,8 @@ public final class CommandDispatcher {
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    resolved.handler().handle(event, resolved.result(), reply);
+                    PluginExecutionContext.run(registration.owner(),
+                            () -> resolved.handler().handle(event, resolved.result(), reply));
                 } catch (Throwable t) {
                     log.error("插件 {} 执行命令失败", registration.owner() == null ? "?" : registration.owner().getId(), t);
                     if (reply != null) {

@@ -336,7 +336,7 @@ public final class PluginRuntime {
         ctx.bindRuntime(this);
 
         try {
-            fiber.getPlugin().apply(ctx);
+            PluginExecutionContext.run(fiber, () -> fiber.getPlugin().apply(ctx));
             if (fiber.tryMarkActive()) {
                 log.info("插件已加载: {} | 贡献能力 {}",
                         LogStringUtil.buildBrightBlueLog(fiber.getId()), registry.kindsOf(fiber));

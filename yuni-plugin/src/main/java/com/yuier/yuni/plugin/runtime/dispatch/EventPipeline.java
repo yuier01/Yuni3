@@ -8,6 +8,7 @@ import com.yuier.yuni.core.event.notice.YuniNoticeEvent;
 import com.yuier.yuni.core.event.request.YuniRequestEvent;
 import com.yuier.yuni.plugin.api.Reply;
 import com.yuier.yuni.plugin.runtime.PluginAbilityRegistry;
+import com.yuier.yuni.plugin.runtime.PluginExecutionContext;
 import com.yuier.yuni.plugin.runtime.PluginFiber;
 import com.yuier.yuni.plugin.runtime.PluginRuntime;
 import com.yuier.yuni.plugin.runtime.adapter.ReplyFactory;
@@ -233,7 +234,7 @@ public final class EventPipeline {
                               Reply reply,
                               ThrowingRunnable action) {
         try {
-            action.run();
+            PluginExecutionContext.run(owner, action::run);
         } catch (Throwable t) {
             String pluginId = owner == null ? "?" : owner.getId();
             log.error("插件 {} 处理事件失败: {}", pluginId, logTag, t);

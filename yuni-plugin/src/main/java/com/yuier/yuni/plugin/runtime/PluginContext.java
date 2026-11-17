@@ -414,7 +414,7 @@ public final class PluginContext implements YuniContext {
                 return;
             }
             try {
-                task.run();
+                PluginExecutionContext.run(fiber, task::run);
             } catch (Throwable t) {
                 // 必须捕获 Throwable：否则 Error 会被 commonPool 静默吞掉
                 // （2026-08 P0 事故的教训之一）
@@ -453,7 +453,7 @@ public final class PluginContext implements YuniContext {
                 return;
             }
             try {
-                task.run();
+                PluginExecutionContext.run(fiber, task::run);
             } catch (Throwable t) {
                 log.error("[{}] 定时任务执行失败", getSelf().getName(), t);
             }
